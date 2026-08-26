@@ -22,5 +22,7 @@ including for projects whose own repos are public.
 
 ## Status
 
-Planning. Implementation has not started. Start with `AGENTS.md`, then
+Phase 1 done: `git.ts` wrapper, `status`, `sync`, and the `marrow` CLI entry point are
+built and tested (`bun test`, 21 tests). No project has been adopted yet — Phase 2
+(`adopt`, `new`, `doctor`, `grep`, `convention`) is next. Start with `AGENTS.md`, then
 `plans/implementation-plan.md`.
