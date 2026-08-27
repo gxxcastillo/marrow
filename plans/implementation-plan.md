@@ -42,126 +42,37 @@ and health. `CONVENTION.md` (this repo) becomes the single canonical convention 
 
 ## 2. Design
 
-- **Self-hosted vault.** `main` = tool + docs. One orphan branch per project, branch name
-  = project directory name. Worktree checked out at `~/dev/<project>/.agents`.
-- **Zero config; worktrees are the registry.** `marrow status`/`sync`/`doctor` discover
-  projects from `git worktree list --porcelain` run in `MARROW_HOME`, excluding the main
-  checkout. No config file. A worktree whose path doesn't match
-  `<MARROW_DEV_ROOT>/<branch>/.agents` is a `doctor` error, not a supported state.
-- **Branches never merge.** No shared history between `main` and project branches, or
-  between project branches. Cross-project search is `marrow grep`, not git.
-- **Deliberate syncs are primary; automation is the floor.** Agents working in a project
-  run `marrow sync <project> -m "<summary>"` at session end (per the Persistence block in
-  each `.agents/README.md`). A Claude Code `SessionEnd` hook and a launchd timer run
-  `marrow sync --auto` as backstops.
-- **Env overrides** (primarily for tests): `MARROW_HOME` (vault repo path, default
-  `~/dev/marrow`), `MARROW_DEV_ROOT` (projects root, default `~/dev`).
+Superseded by `spec/architecture.md`, which is authoritative on the design model —
+including the tool/vault repo split decided 2026-08-26 (§7 Decisions #3; build work in
+Phase 2.5 below). Do not restate design content here; if this plan and the spec ever
+disagree, the spec wins and this section should be trimmed further to match, not the
+other way around.
 
-Push races are structurally impossible between projects (disjoint branches). Concurrent
-syncs of the same project serialize on git's own locks; treat a lock failure as a retryable
-warning, not an error.
+## 3. Repo layout
 
-## 3. Repo layout (main branch)
-
-```
-marrow/
-├── README.md
-├── AGENTS.md
-├── CONVENTION.md            # canonical .agents convention (already drafted)
-├── plans/implementation-plan.md
-├── templates/
-│   ├── readme-seed.md       # seeds `marrow new`
-│   └── persistence-block.md # appended to adopted READMEs
-├── src/
-│   ├── cli.ts               # entry, arg parsing (node:util parseArgs), dispatch
-│   ├── git.ts               # thin Bun.spawn git wrapper; worktree discovery
-│   └── commands/…           # one small module per command (or fold into cli.ts if tiny)
-├── test/                    # bun test; fixtures in temp dirs only
-├── bin/marrow               # `#!/usr/bin/env bun` shim importing src/cli.ts
-├── package.json             # name, bin entry; no dependencies
-├── .gitignore               # backups/, logs/, node_modules/
-├── backups/                 # tarballs made by adopt (gitignored)
-└── logs/                    # sync logs (gitignored)
-```
-
-Install: symlink `bin/marrow` into a PATH dir (`ln -s ~/dev/marrow/bin/marrow
-~/.local/bin/marrow` or `bun link`). Record whichever is used in README.
+Superseded by `spec/architecture.md` → "Repo layout", which now describes two trees (the
+`marrow` tool repo and the separate vault repo) instead of one.
 
 ## 4. CLI specification
 
-Global behavior: plain text output, one line per project where applicable. Exit 0 on
-success, 1 on any error, except `--auto` mode (below). Unknown command or bad args →
-usage to stderr, exit 2.
-
-### `marrow status`
-For each project worktree: branch, clean/dirty (count of modified+untracked), ahead/behind
-origin, last commit date + subject. One summary line at the end. Read-only.
-
-### `marrow sync [project…] [-m <message>] [--auto]`
-For each target (default: all project worktrees): if dirty, `git add -A` + commit.
-Message: `-m` value prefixed with `<project>: `, else `<project>: sync <ISO-8601 local>`.
-Then a single `git push origin --all` from `MARROW_HOME` (skip if no `origin`, warn).
-`--auto`: for hook/timer use — quiet, auto-message only, always exit 0, log one line per
-action to `logs/sync.log`, tolerate offline push failures with a logged warning.
-Future seam (do not build now): if `<worktree>/.beads/` exists, run the beads JSONL
-flush before committing (exact command TBD during the beads pilot — plan Phase 5).
-
-### `marrow adopt <project> [--dry-run]`
-`<project>` = name resolved against `MARROW_DEV_ROOT`, or a path. Algorithm:
-
-1. Preconditions (abort with a clear message if any fail):
-   - `<project>/.agents` exists and is a directory, not already a worktree of this repo
-     (no `.git` file/dir inside it).
-   - No branch named `<project>` exists in marrow.
-   - Parent repo state: if `.agents` is ignored → OK. If untracked and not ignored →
-     append `.agents/` to the parent's `.gitignore` and tell the user to commit that
-     change (do not commit in the parent repo yourself). If **tracked** → print the
-     required untracking steps and abort; untracking is a manual, attended step (see
-     migration table).
-2. Backup: `tar -czf backups/<project>-<ISO-date>.tar.gz -C <project> .agents`. Verify the
-   tarball is non-empty and lists successfully. Never proceed on backup failure.
-3. Move `<project>/.agents` → `<project>/.agents.pre-marrow` (rename, same volume).
-4. `git worktree add --orphan -b <project> <project>/.agents` (git ≥ 2.42; verify the
-   installed git supports this form, otherwise use the documented
-   `git switch --orphan` fallback in a temp worktree).
-5. Move contents of `.agents.pre-marrow/` into the new worktree (including dotfiles),
-   remove the now-empty `.agents.pre-marrow`.
-6. Append `templates/persistence-block.md` (with `<project>` substituted) to
-   `.agents/README.md` (create the README from the template seed if absent).
-7. Commit: `<project>: adopt into marrow` and push the branch.
-8. Print a verification summary: file count and total size before (from the tarball
-   listing) vs. after in the worktree — they must match (± the README block).
-`--dry-run`: run step 1, then print what steps 2–7 would do. Keep tarballs until Gabriel
-deletes them; `doctor` lists tarballs older than 30 days as a reminder.
-
-### `marrow new <project>`
-For a project with no `.agents/`: same as adopt steps 4, 6, 7 but starting from the
-`templates/readme-seed.md` skeleton. Fails if `.agents` already exists (use adopt).
-
-### `marrow doctor`
-Checks, one line each, exit 1 if any fail: every project branch has a worktree at the
-conventional path and vice versa; each worktree's parent repo ignores `.agents`; `origin`
-exists, is reachable, and is **private** (`gh repo view --json visibility` when `gh` is
-available; warn-only if `gh` is absent); no branch is unpushed by more than N commits
-(warn); stale `backups/` tarballs (warn); `bin/marrow` on PATH (warn).
-
-### `marrow grep <pattern> [rg-args…]`
-`rg --hidden --no-ignore <pattern>` across all project worktree paths, excluding `.git`.
-Falls back to `grep -rn` if `rg` is absent.
-
-### `marrow convention`
-Prints `CONVENTION.md` to stdout.
+Superseded by `spec/cli.md`, which is authoritative on every command's arguments,
+options, behavior, output, and exit codes — including the path changes from the Phase 2.5
+tool/vault split.
 
 ## 5. Testing
 
-- `bun test`. Fixtures: build a fake `MARROW_DEV_ROOT` in a temp dir with 2–3 fake
-  project repos (one ignoring `.agents`, one untracked, one tracking it) and a fake
-  `MARROW_HOME` vault with a file:// bare repo as `origin`.
+- `bun test`. Fixtures build throwaway stand-ins for both repos in the two-repo design: a
+  fake tool root (for `templates/`/`CONVENTION.md` resolution) and a fake bare vault (a
+  fake `MARROW_DEV_ROOT` with 2–3 fake project repos — one ignoring `.agents`, one
+  untracked, one tracking it — plus a `file://` bare repo as the vault's own `origin`).
+  Phase 0–2's fixtures already do the vault half of this; Phase 2.5 adds the tool-root
+  half.
 - End-to-end per command: adopt (happy path, each precondition failure, dry-run,
   content-preservation check including dotfiles), sync (dirty/clean, custom message,
   offline push, `--auto` exit code), status, doctor (each failure mode), new, grep.
 - A test must fail if adopt ever loses a file (compare recursive listings).
-- Guard: tests refuse to run if `MARROW_HOME` resolves to the real `~/dev/marrow`.
+- Guard: tests refuse to run if `MARROW_HOME` resolves to the real vault location
+  (`~/dev/marrow` originally; `~/.marrow` from Phase 2.5 on).
 
 ## 6. Phases
 
@@ -179,11 +90,53 @@ PATH shim. *Accept: full test suite green, including the content-preservation an
 precondition tests; `marrow adopt --dry-run ossa` prints a correct plan against the real
 tree (read-only).*
 
-**Phase 3 — migration (ATTENDED, Gabriel approving each project).** Order:
+**Phase 2.5 — tool/vault repo split (retrofit).** Decided 2026-08-26, see §7 Decisions
+#3. Inserted between Phase 2 and Phase 3 — not renumbered further out, so existing
+cross-references to Phase 3/4/5 elsewhere (`AGENTS.md`, `spec/architecture.md`) stay
+valid — because Phase 3 must not begin migrating real projects into a vault structure
+that's about to move. The shipped Phase 0–2 code still implements the original one-repo
+design; `spec/architecture.md` already describes the target two-repo design as of this
+plan revision, so until this phase lands, spec and code are intentionally out of sync
+(see `README.md` → Status for current ground truth).
+
+1. Create the vault as a **bare** git repo at `~/.marrow/vault.git` by default.
+   `MARROW_HOME` continues to be overridable, and now names the `~/.marrow`-style parent
+   directory (containing `vault.git/`, `backups/`, `logs/`), not the bare repo itself.
+2. `backups/` and `logs/` move to `~/.marrow/backups/` and `~/.marrow/logs/`, as siblings
+   of `vault.git/` outside any git working tree — neither needs a `.gitignore` entry
+   anymore, since there's no enclosing repo to accidentally track them into.
+3. `gh repo create gxxcastillo/marrow-vault --private` — requires Gabriel's explicit
+   go-ahead, the same gate Phase 0 used for the tool repo's remote. Verify
+   `gh repo view gxxcastillo/marrow-vault --json visibility` is PRIVATE before the first
+   push.
+4. Re-point every git-invoking command (`git.ts`, and the `adopt`/`new`/`sync`/`doctor`
+   commands built on it) at `<MARROW_HOME>/vault.git` as the actual repo path.
+5. Drop the `branch !== "main"` filter in `listProjectWorktrees` — a bare vault has no
+   `main` worktree to exclude, so every registered worktree is a real project by
+   construction.
+6. Resolve `templates/` and `CONVENTION.md` relative to the running tool's own install
+   location, independent of `MARROW_HOME` — `adopt`, `new`, and `convention` all need
+   this change; today they read from `MARROW_HOME`, which stops being where the tool's
+   own files live.
+7. Update `doctor`'s origin/reachability/visibility checks to target the vault repo
+   specifically — the tool repo's own git hygiene isn't marrow's concern, the same as it
+   isn't marrow's job to audit `pho`'s or `ossa`'s own repos.
+8. Update test fixtures to build a throwaway tool root *and* a throwaway bare vault
+   (instead of one merged fixture — see §5 Testing); extend the `MARROW_HOME` real-path
+   guard to also refuse resolving to the real `~/.marrow`.
+9. Update `README.md`/`AGENTS.md` install instructions for the new vault bootstrap step.
+
+*Accept: full test suite green against the two-repo fixtures; `marrow adopt --dry-run
+ossa` and `marrow doctor` both run correctly against the real split (tool checkout at
+`~/dev/marrow`, vault at `~/.marrow/vault.git`); `gh repo view gxxcastillo/marrow-vault`
+shows PRIVATE.*
+
+**Phase 3 — migration (ATTENDED, Gabriel approving each project).** Depends on Phase 2.5
+landing first. Order:
 1. `ossa` (small, clean) — adopt, then verify: file diff vs. tarball, `git log` on the
    branch, README block present, project session still reads `.agents/` normally.
-2. `solid-forms`, `embracingroots`, `c8platform` (fix its `.gitignore` per §4),
-   `ultra-sound-music`, `sobremesa`.
+2. `solid-forms`, `embracingroots`, `c8platform` (fix its `.gitignore` per
+   `spec/cli.md` → `adopt`), `ultra-sound-music`, `sobremesa`.
 3. `pho` — after the pattern is proven. Extra care: 1.7M, contains `research/` code and
    an empty `.claude/` dir; verify counts match exactly.
 4. `eos` — manual untracking first (in eos: `git rm -r --cached .agents`, add to
@@ -206,7 +159,12 @@ tree (read-only).*
 nine READMEs carry the block.*
 
 **Phase 5 — deferred (do not build now).** Marrow self-adoption (`marrow` branch for its
-own `.agents/`); beads flush seam in `sync` (pilot beads inside `~/dev/pho/.agents/`
+own `.agents/`) — structurally unblocked by the Phase 2.5 tool/vault split: once the tool
+repo and the vault are separate, self-adoption is an ordinary `marrow adopt marrow`
+(worktree of the vault, checked out at `~/dev/marrow/.agents`, `adopt`'s normal
+untracked-state handling appends `.agents/` to the tool repo's own `.gitignore`) — no
+special-casing needed. Still deliberately deferred, not urgent, just no longer blocked.
+Also deferred: beads flush seam in `sync` (pilot beads inside `~/dev/pho/.agents/`
 first); compaction passes on pho's oversized files (separate effort, enabled by history).
 
 ## 7. Decisions
@@ -215,10 +173,25 @@ first); compaction passes on pho's oversized files (separate effort, enabled by 
    `.agents/` going forward only (`git rm -r --cached`, ignore, commit); existing content
    stays in the public repo's history.
 2. **Tarball retention — resolved 2026-08-26.** Keep `backups/` tarballs until Phase 4
-   completes, then Gabriel deletes them manually.
-3. **Open: future split** if marrow-the-tool should ever go public: fork `src/` out to a
-   public repo, keep this one as the private data vault. No action now; noted so the
-   one-repo choice isn't mistaken for permanent.
+   completes, then Gabriel deletes them manually. (Location moves to `~/.marrow/backups/`
+   under Phase 2.5; the retention policy itself is unchanged.)
+3. **Tool/vault repo split — resolved 2026-08-26; supersedes the "future split if marrow
+   goes public" framing this decision originally held.** The tool (`marrow` — CLI, spec,
+   tests) stays at `~/dev/marrow`, a normal dev project like every other. The vault (the
+   git-backed `.agents/` data — every project's orphan branches) moves to a separate
+   private repo (`gxxcastillo/marrow-vault`), bare, outside `~/dev`, at
+   `~/.marrow/vault.git` by default. Motivation: the vault isn't a coding project — it's
+   infrastructure backing data that lives distributed across other projects
+   (`<project>/.agents`) — and forcing it to share both a directory and a git repo with
+   the tool's own source created a real structural problem: marrow could never adopt its
+   own `.agents/` without nesting a worktree inside its own main checkout. The split
+   resolves that self-hosting collision with zero special-casing (see Phase 5) and
+   mirrors the tool-repo/private-workspace separation `~/dev/ossa/spec/architecture.md`
+   ("Name And Split") already established for `ossa` — a reusable tool repo plus a
+   separate private workspace that need not live under `~/dev` at all. See
+   `spec/architecture.md` and Phase 2.5 for the resulting design and build work. Whether
+   the tool repo additionally goes fully public later remains separate, still open, and
+   still not acted on.
 
 ## 8. Out of scope
 

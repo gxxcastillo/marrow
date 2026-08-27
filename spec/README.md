@@ -6,15 +6,17 @@ describes the system as it exists today — no changelog sections, no "previousl
 was X" notes; git history is the record of how it got here.
 
 marrow gives each project's `.agents/` working-memory directory a private git backing: a
-worktree of this repo on a branch named after the project, pushed to one private remote.
-This spec is about marrow the tool. What actually goes inside `.agents/` — file names,
+worktree of a private vault repo, on a branch named after the project, pushed to a
+private remote. marrow is two repos — the tool (this one) and a separate vault that
+holds nothing but that data — see `architecture.md` → "Two repos: tool and vault". This
+spec is about marrow the tool. What actually goes inside `.agents/` — file names,
 maintenance discipline, promotion rules — is `../CONVENTION.md`'s job, not this spec's.
 
 ## Spec files
 
 | File | Use it for |
 |---|---|
-| [architecture.md](./architecture.md) | design model — self-hosted vault, worktree-as-registry, branch model, repo layout, env overrides, non-goals |
+| [architecture.md](./architecture.md) | design model — tool/vault repo split, worktree-as-registry, branch model, repo layout, env overrides, non-goals |
 | [cli.md](./cli.md) | every command: arguments, options, behavior, output shape, exit codes |
 | [safety.md](./safety.md) | the hard guarantees — private-remote requirement, no history rewrites, adopt's backup/rollback/verification contract, attended operation, known gaps |
 
@@ -28,12 +30,15 @@ change, or fix the code if the spec was the intended design.
 
 ## Canonical names
 
-- Project/repo: `marrow`
+- Tool repo: `marrow` (`gxxcastillo/marrow`), lives at `~/dev/marrow` — an ordinary dev
+  project
+- Vault repo: `marrow-vault` (`gxxcastillo/marrow-vault`), bare, lives outside `~/dev`
 - CLI command: `marrow`
-- Vault root (`MARROW_HOME`): `~/dev/marrow` by default, overridable
+- Vault parent directory (`MARROW_HOME`): `~/.marrow` by default, overridable — contains
+  `vault.git/` (the bare repo), `backups/`, and `logs/`
 - Projects root (`MARROW_DEV_ROOT`): `~/dev` by default, overridable
 - Per-project worktree path: `<MARROW_DEV_ROOT>/<project>/.agents`
-- No config file — the registry is `git worktree list` against `MARROW_HOME`
+- No config file — the registry is `git worktree list` against `<MARROW_HOME>/vault.git`
 
 ```bash
 marrow status

@@ -10,23 +10,28 @@ operation either safe or loud about not being safe — never silently lossy.
 
 ## Private-only vault
 
-`MARROW_HOME`'s `origin` must be a **private** remote. The project branches carry
-personal planning content — including, for `sobremesa`, `solid-forms`,
-`ultra-sound-music`, `embracingroots`, and `event-link`, content about projects whose own
-repos are public. Creating that remote (`gh repo create ... --private`) requires an
-explicit human go-ahead the first time; every push after that assumes the remote's
-visibility hasn't changed underneath it. `doctor` re-checks visibility on every run (via
+The vault's (`<MARROW_HOME>/vault.git`) `origin` must be a **private** remote
+(`gxxcastillo/marrow-vault`). The project branches carry personal planning content —
+including, for `sobremesa`, `solid-forms`, `ultra-sound-music`, `embracingroots`, and
+`event-link`, content about projects whose own repos are public. This is a stricter bar
+than the tool repo (`gxxcastillo/marrow`) needs, which is exactly why they're separate
+repos: the tool repo could in principle go public later (open, deferred question — see
+`architecture.md` → Non-goals) without ever putting the vault at risk. Creating the
+vault's remote (`gh repo create ... --private`) requires an explicit human go-ahead the
+first time; every push after that assumes the remote's visibility hasn't changed
+underneath it. `doctor` re-checks the vault's visibility on every run (via
 `gh repo view --json visibility` when `gh` is available) specifically to catch that drift
-— see `cli.md` → `doctor`.
+— see `cli.md` → `doctor`. `doctor` does not audit the tool repo's own visibility or
+hygiene; that's an ordinary dev-project concern, not a marrow safety property.
 
 ## No destructive git operations, ever
 
-Never force-push. Never rewrite history, on `main` or on any project branch. This applies
-even to `event-link`, whose parent repo is public and once tracked `.agents/` directly in
-its history: the fix there is to untrack going forward, not to scrub the past (see
-`../plans/implementation-plan.md` decision log). A project branch that needs correcting
-gets a new commit, the same as any other git history — never `reset --hard` + force-push,
-never `filter-repo`.
+Never force-push. Never rewrite history — on any vault project branch, or on the tool
+repo's own `main`. This applies even to `event-link`, whose parent repo is public and
+once tracked `.agents/` directly in its history: the fix there is to untrack going
+forward, not to scrub the past (see `../plans/implementation-plan.md` decision log). A
+branch that needs correcting gets a new commit, the same as any other git history — never
+`reset --hard` + force-push, never `filter-repo`.
 
 ## Backup before mutate
 
@@ -38,9 +43,10 @@ ever **moved**, never deleted outright: it goes through a same-volume rename to
 `.agents.pre-marrow`, and that staging directory is only removed once its contents have
 been moved into the new worktree.
 
-**Backups are never auto-deleted.** They accumulate under `backups/` (gitignored) until a
-human removes them. `doctor` warns — never fails — on a tarball older than 30 days, as a
-nudge, not a cleanup mechanism.
+**Backups are never auto-deleted.** They accumulate under `<MARROW_HOME>/backups/` — a
+plain directory outside any git working tree, so there's no `.gitignore` entry needed to
+keep them out of a repo — until a human removes them. `doctor` warns — never fails — on a
+tarball older than 30 days, as a nudge, not a cleanup mechanism.
 
 ## Rollback on partial failure
 
@@ -69,7 +75,10 @@ own untracking — `event-link`), `adopt` refuses outright rather than attemptin
 `git rm --cached` on a repo it doesn't own. It prints the exact untracking commands and
 stops; the human runs them, commits in the parent repo themselves, and re-invokes `adopt`.
 marrow never commits inside a project's own repository — the only repo it ever commits
-into is itself (`MARROW_HOME` and its worktrees).
+into is the vault, via its worktrees. This holds even when the "project" being adopted is
+marrow's own tool repo (Phase 5, self-adoption): `adopt` may append `.agents/` to that
+repo's `.gitignore` on disk, but it still never commits that change itself — the human
+does, the same as for any other project.
 
 ## Attended operation
 
@@ -97,9 +106,11 @@ against a real project directory without writing anything, anywhere.
 
 ## Test isolation
 
-`bun test` fixtures build a throwaway `MARROW_HOME`/`MARROW_DEV_ROOT` pair under a temp
-directory (including a `file://`-backed bare `origin`, and — for `adopt`/`new`/`doctor`
-tests — real, disposable parent project repos in each of the three gitignore states) and
-refuse to run if `MARROW_HOME` would resolve to the real `~/dev/marrow`. This is the
+`bun test` fixtures build throwaway stand-ins for both repos under a temp directory: a
+fake tool root (so `templates/`/`CONVENTION.md` resolution is exercised without touching
+the real install) and a fake `MARROW_HOME`/`MARROW_DEV_ROOT` pair for the vault
+(including a `file://`-backed bare `origin`, and — for `adopt`/`new`/`doctor` tests —
+real, disposable parent project repos in each of the three gitignore states). Tests
+refuse to run if `MARROW_HOME` would resolve to the real vault location. This is the
 mechanism that makes it safe to exercise `adopt`'s live (non-`--dry-run`) path in CI/local
 test runs at all — see `../AGENTS.md` for the full build-discipline rule this backs.

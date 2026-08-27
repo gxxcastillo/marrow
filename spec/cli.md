@@ -2,11 +2,15 @@
 
 Authoritative on command syntax, options, output, and exit codes.
 
-Global behavior: plain text output, one line per project where applicable. Every command
-assumes `MARROW_HOME` is an initialized git repository; if it is not, a command fails with
-an uncaught error (stack trace, non-zero exit) rather than a clean message — this is a
-known gap, not a designed error path. Unknown command, or a required argument missing,
-prints usage to stderr and exits `2`.
+Global behavior: plain text output, one line per project where applicable. `MARROW_HOME`
+names the vault parent directory; every command that touches the vault's git history
+actually runs `git` against `<MARROW_HOME>/vault.git`, the bare repo (see
+`architecture.md` → Env overrides). Every such command assumes that bare repo already
+exists and is initialized; if it doesn't, a command fails with an uncaught error (stack
+trace, non-zero exit) rather than a clean message — this is a known gap, not a designed
+error path. `templates/` and `CONVENTION.md` are resolved relative to the running tool's
+own install location, never relative to `MARROW_HOME`. Unknown command, or a required
+argument missing, prints usage to stderr and exits `2`.
 
 | Command | Purpose | Mutates |
 |---|---|---|
@@ -24,8 +28,8 @@ prints usage to stderr and exits `2`.
 marrow status
 ```
 
-For each project worktree (from `git worktree list --porcelain` against `MARROW_HOME`,
-excluding `main`): one tab-separated line —
+For each project worktree (from `git worktree list --porcelain` against the vault): one
+tab-separated line —
 `<branch>\t<clean|dirty (N)>\t<+ahead/-behind|no upstream>\t<last commit date + subject|no commits>`.
 "Dirty" counts lines from `git status --porcelain` (i.e. files changed, not diff hunks).
 Ahead/behind compares `HEAD` against the local `origin/<branch>` ref — it does not fetch
@@ -49,9 +53,10 @@ For each target: if dirty (`git status --porcelain` non-empty), `git add -A` the
 project is skipped — its last commit is untouched.
 
 After every target has been processed (regardless of per-project failures), one
-`git push origin --all` runs from `MARROW_HOME`. If `origin` isn't configured, the push is
-skipped with a warning (not a failure). Concurrent syncs of the same project serialize on
-git's own lock; a lock failure should be treated as retryable, not a hard error.
+`git push origin --all` runs from `<MARROW_HOME>/vault.git`. If `origin` isn't configured,
+the push is skipped with a warning (not a failure). Concurrent syncs of the same project
+serialize on git's own lock; a lock failure should be treated as retryable, not a hard
+error.
 
 `--auto`: for a session-end hook or a periodic timer. Every line normally printed to
 stdout/stderr instead appends to `<MARROW_HOME>/logs/sync.log` (created if absent), one
@@ -79,7 +84,7 @@ on stderr and exit `1`, `--dry-run` included):
 
 1. `<project>/.agents` must exist and be a directory.
 2. `<project>/.agents/.git` must not exist (i.e. it isn't already a marrow worktree).
-3. No branch named `<project>` may already exist in `MARROW_HOME`.
+3. No branch named `<project>` may already exist in the vault.
 4. `<project>` must be a git repository, and `.agents` must not be **tracked** by it (see
    the state table below).
 
@@ -92,16 +97,16 @@ on stderr and exit `1`, `--dry-run` included):
 
 **`--dry-run`**: runs preconditions and the `.gitignore`-state check (reporting what it
 *would* append, without writing), then prints the six numbered steps below with resolved
-paths, and exits `0`. Nothing is written to disk in either the project directory or
-`MARROW_HOME` — safe to run against a real project.
+paths, and exits `0`. Nothing is written to disk in either the project directory or the
+vault — safe to run against a real project.
 
 **Live run**, once preconditions pass:
 
 1. **Backup.** `tar -czf <MARROW_HOME>/backups/<project>-<ISO-date>.tar.gz -C <project> .agents`. The tarball's size and `tar -tzf` listing are both checked; any failure aborts before anything is moved.
 2. **Move aside.** `<project>/.agents` → `<project>/.agents.pre-marrow` (rename, same volume — not a copy).
-3. **Create the worktree.** `git worktree add --orphan -b <project> <project>/.agents` run against `MARROW_HOME`. On failure, step 2 is undone (`.agents.pre-marrow` renamed back to `.agents`) before erroring out — the project directory is never left without a `.agents/`.
+3. **Create the worktree.** `git worktree add --orphan -b <project> <project>/.agents` run against `<MARROW_HOME>/vault.git`. On failure, step 2 is undone (`.agents.pre-marrow` renamed back to `.agents`) before erroring out — the project directory is never left without a `.agents/`.
 4. **Restore contents.** Every entry under `.agents.pre-marrow/` — including dotfiles — is moved into the new (currently empty) worktree, then `.agents.pre-marrow` is removed.
-5. **README.** `templates/persistence-block.md` (`{{project}}` substituted) is appended to `.agents/README.md`; if no `README.md` existed, one is created first from `templates/readme-seed.md`.
+5. **README.** `templates/persistence-block.md` (`{{project}}` substituted, read from the tool's own install location) is appended to `.agents/README.md`; if no `README.md` existed, one is created first from `templates/readme-seed.md`.
 6. **Commit and push.** `git add -A`, commit `<project>: adopt into marrow`, `git push -u origin <project>`.
 
 **Verification.** After push succeeds, a recursive file-count/size snapshot of the new
@@ -124,10 +129,11 @@ marrow new <project>
 ```
 
 For a project with **no** existing `.agents/`. Fails (exit `1`) if `.agents` already
-exists (points at `adopt` instead) or if a branch named `<project>` already exists in
-`MARROW_HOME`. Otherwise: creates `<project>/` if needed, runs the same worktree-creation,
-README-seeding (from `templates/readme-seed.md` — there is no prior README to append to),
-and commit/push steps as `adopt` (steps 3, 5, 6 above), with the commit message
+exists (points at `adopt` instead) or if a branch named `<project>` already exists in the
+vault. Otherwise: creates `<project>/` if needed, runs the same worktree-creation,
+README-seeding (from `templates/readme-seed.md`, read from the tool's own install
+location — there is no prior README to append to), and commit/push steps as `adopt`
+(steps 3, 5, 6 above), with the commit message
 `<project>: init via marrow new`. There is no backup step — there is nothing to back up.
 Exit `2` on a missing `<project>` argument, `1` on any of the failures above or a
 worktree/commit/push failure, `0` on success.
@@ -143,14 +149,18 @@ order, followed by a summary line (`doctor: OK` or `doctor: FAIL`):
 
 | Check | Result on failure |
 |---|---|
-| Every local branch (except `main`) has a worktree at `<MARROW_DEV_ROOT>/<branch>/.agents` | FAIL |
+| Every branch in the vault has a worktree at `<MARROW_DEV_ROOT>/<branch>/.agents` | FAIL |
 | Every project worktree's parent repo ignores `.agents` (`git check-ignore -q -- .agents` in the parent dir) | FAIL |
-| `origin` remote is configured on `MARROW_HOME` | FAIL if absent |
+| `origin` remote is configured on `<MARROW_HOME>/vault.git` | FAIL if absent |
 | `origin` is reachable (`git ls-remote --exit-code origin`) | FAIL if unreachable |
 | `origin` visibility is `PRIVATE`, checked via `gh repo view --json visibility` when `gh` is on `PATH` | FAIL if a successful `gh` call reports non-`PRIVATE`; WARN (not FAIL) if `gh` is absent or the call itself fails for any other reason (e.g. not a GitHub-hosted remote) |
 | Each project worktree isn't more than 20 commits ahead of `origin/<branch>`, and has an `origin/<branch>` to compare against at all | WARN only |
-| No tarball under `backups/` is older than 30 days | WARN only |
+| No tarball under `<MARROW_HOME>/backups/` is older than 30 days | WARN only |
 | `marrow` resolves on `PATH` (`Bun.which("marrow")`) | WARN only |
+
+`doctor` checks the **vault's** origin only — the tool repo's own git hygiene (whether
+`~/dev/marrow` itself is clean, pushed, etc.) isn't marrow's concern, the same as it
+isn't marrow's job to audit `pho`'s or `ossa`'s own repos.
 
 Path comparisons resolve both sides with `fs.realpath` before comparing, so a worktree
 under a symlinked mount (e.g. macOS's `/var` → `/private/var`) isn't reported as
@@ -164,8 +174,9 @@ never affects the exit code.
 marrow grep <pattern> [rg-args...]
 ```
 
-Runs across every project worktree path (not `MARROW_HOME` itself, not `main`'s files).
-Prefers `rg --hidden --no-ignore -g '!.git' <pattern> [rg-args...] <worktree paths...>`;
+Runs across every project worktree path (not the tool repo's own files, not anything
+under `MARROW_HOME` directly). Prefers
+`rg --hidden --no-ignore -g '!.git' <pattern> [rg-args...] <worktree paths...>`;
 falls back to `grep -rn --exclude-dir=.git <pattern> <worktree paths...> [rg-args...]` if
 `rg` isn't on `PATH`. The `-g '!.git'` exclusion is deliberate and load-bearing:
 `rg --hidden --no-ignore` on its own still descends into `.git` directories (verified
@@ -186,9 +197,9 @@ also results from `marrow`'s own dispatch if `<pattern>` is omitted entirely.
 marrow convention
 ```
 
-Reads and prints `<MARROW_HOME>/CONVENTION.md` verbatim. Exits `0`, or crashes with an
-uncaught error if the file is missing (see the top-of-file caveat about `MARROW_HOME`
-assumptions).
+Reads and prints `CONVENTION.md` verbatim from the tool's own install location (not from
+`MARROW_HOME` — see the top-of-file caveat). Exits `0`, or crashes with an uncaught error
+if the file is missing.
 
 ## Typical workflow
 
