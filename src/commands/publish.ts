@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { git, run, vaultDir } from "../git";
-import { commandOnPath, configureOriginFetch, localBranches, originUrl, verifyOriginReachable, verifyPrivateVisibility } from "../remote";
+import { commandOnPath, configureOriginFetch, originUrl, verifyOriginReachable, verifyPrivateVisibility } from "../remote";
+import { branchesForPublish, ensureVaultLandingBranch } from "../vault";
 
 export interface PublishOptions { dryRun?: boolean }
 class PublishAbort extends Error {}
@@ -47,7 +48,7 @@ export async function publishCommand(slug: string, opts: PublishOptions, marrowH
     if (!existsSync(vault)) throw new PublishAbort(`vault does not exist: ${vault}`);
     const existingOrigin = await originUrl(vault);
     if (existingOrigin) throw new PublishAbort(`vault already uses origin ${existingOrigin}`);
-    const branches = await localBranches(vault);
+    const branches = await branchesForPublish(vault);
 
     if (opts.dryRun) {
       console.log(`dry run: would publish vault to private GitHub repository ${slug}`);
@@ -57,6 +58,7 @@ export async function publishCommand(slug: string, opts: PublishOptions, marrowH
     }
 
     if (!commandOnPath("gh")) throw new PublishAbort("gh is required for marrow publish");
+    await ensureVaultLandingBranch(vault);
     console.log(`publishing vault to private GitHub repository ${slug}...`);
     const made = await run("gh", ["repo", "create", slug, "--private"], vault);
     if (made.code !== 0) throw new PublishAbort(`could not create GitHub repository: ${made.stderr || made.stdout}`);

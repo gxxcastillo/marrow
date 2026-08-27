@@ -36,13 +36,13 @@ describe("status", () => {
     expect(outLines.at(-1)).toBe("1 project: all clean, all synced");
   });
 
-  test("omits the internal branch namespace from project names", async () => {
-    await addProjectWorktree(fx, "ossa", "projects/github.com/test/ossa");
+  test("shows the branch key without rewriting it", async () => {
+    await addProjectWorktree(fx, "ossa", "ossa");
 
     const { outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
     expect(outLines[0]).toContain("KEY");
     expect(outLines[2]).toStartWith(path.join(await realpath(fx.projectsRoot), "ossa"));
-    expect(outLines[2]).toContain("github.com/test/ossa");
+    expect(outLines[2]).toContain("ossa");
     expect(outLines[2]).not.toContain("projects/");
   });
 

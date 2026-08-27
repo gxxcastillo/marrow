@@ -7,7 +7,7 @@ import { git, listProjectWorktrees, vaultDir } from "../src/git";
 import { makeFixture, makeProjectRepo, type Fixture } from "./fixtures";
 import { captureLogs, listFilesRecursive } from "./helpers";
 
-const branch = (name: string) => `projects/github.com/test/${name}`;
+const branch = (name: string) => name;
 
 describe("add", () => {
   let fx: Fixture;
@@ -154,10 +154,10 @@ describe("add", () => {
       expect(readme).toContain("## Persistence");
 
       const worktrees = await listProjectWorktrees(vaultDir(fx.marrowHome));
-      expect(worktrees.map((w) => w.branch)).toContain("projects/personal/freshproj");
+      expect(worktrees.map((w) => w.branch)).toContain("personal/freshproj");
 
       const rev = await git(["rev-parse", "HEAD"], agentsPath);
-      const remoteRev = await git(["rev-parse", "origin/projects/personal/freshproj"], agentsPath);
+      const remoteRev = await git(["rev-parse", "origin/personal/freshproj"], agentsPath);
       expect(remoteRev.stdout).toBe(rev.stdout);
     });
 
@@ -208,7 +208,7 @@ describe("add", () => {
 
     test("fails if a branch of that name already exists in marrow", async () => {
       const otherAgents = path.join(fx.projectsRoot, "other", ".agents");
-      await git(["worktree", "add", "--orphan", "-b", "projects/personal/dupbranch", otherAgents], vaultDir(fx.marrowHome));
+      await git(["worktree", "add", "--orphan", "-b", "personal/dupbranch", otherAgents], vaultDir(fx.marrowHome));
       // An orphan branch has no ref until its first commit ("unborn branch").
       await git(["commit", "--allow-empty", "-q", "-m", "seed"], otherAgents);
 

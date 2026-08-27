@@ -35,13 +35,14 @@ ordinary dev-project concern, not a marrow safety property.
 
 ## No destructive git operations, ever
 
-Never force-push. Never rewrite history — on any vault project branch, or on the tool
-repo's own `main`. This applies even to `event-link`, whose parent repo is public and
-once tracked `.agents/` directly in its history: the fix there is to untrack going
-forward, not to scrub the past. That was decided deliberately, not left undecided — the
-content stays in that repo's public history and marrow does not touch it. A
-branch that needs correcting gets a new commit, the same as any other git history — never
-`reset --hard` + force-push, never `filter-repo`.
+Never force-push. Never rewrite history — on any vault project branch, the vault's
+minimal `main` landing branch, or the tool repo's own `main`. This applies even to
+`event-link`, whose parent repo is public and once tracked `.agents/` directly in its
+history: the fix there is to untrack going forward, not to scrub the past. That was
+decided deliberately, not left undecided — the content stays in that repo's public
+history and marrow does not touch it. A branch that needs correcting gets a new commit,
+the same as any other git history — never `reset --hard` + force-push, never
+`filter-repo`.
 
 ## Backup before mutate
 

@@ -7,7 +7,7 @@ import { git, listProjectWorktrees, vaultDir } from "../src/git";
 import { makeFixture, makeProjectRepo, type Fixture } from "./fixtures";
 import { captureLogs } from "./helpers";
 
-const BRANCH = "projects/github.com/test/ossa";
+const BRANCH = "ossa";
 
 async function secondProject(fx: Fixture, name: string): Promise<string> {
   const dir = path.join(fx.root, "machine-b", "elsewhere", name);

@@ -16,10 +16,6 @@ function syncLabel(aheadBehind: { ahead: number; behind: number } | null): strin
   return pending.join(", ");
 }
 
-function displayProject(branch: string): string {
-  return branch.startsWith("projects/") ? branch.slice("projects/".length) : branch;
-}
-
 function displayPath(worktreePath: string): string {
   const projectPath = path.dirname(worktreePath);
   const relative = path.relative(os.homedir(), projectPath);
@@ -51,7 +47,7 @@ export async function statusCommand(marrowHome: string): Promise<number> {
 
     rows.push([
       displayPath(wt.path),
-      displayProject(wt.branch),
+      wt.branch,
       dirty > 0 ? countLabel(dirty, "uncommitted change") : "clean",
       syncLabel(ab),
       commit ? `${commit.date} ${commit.subject}` : "no commits",

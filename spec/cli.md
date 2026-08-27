@@ -89,8 +89,9 @@ marrow publish <owner>/<repo> [--dry-run]
 
 Publishes the local vault to a new private GitHub repository, configures it as `origin`
 on `<MARROW_HOME>/vault.git`, pushes every local vault branch, fetches remote refs, then
-verifies reachability and private visibility. This command is GitHub-specific because it
-uses `gh`.
+verifies reachability and private visibility. Before the remote is created, `publish`
+ensures the vault has a minimal `main` branch containing only a README for GitHub's
+default branch. This command is GitHub-specific because it uses `gh`.
 
 Calling `publish` live is the explicit authorization to create the GitHub repository
 named by `<owner>/<repo>`. The slug must contain exactly one slash, non-empty owner and
@@ -101,18 +102,19 @@ never deletes a GitHub repository, including after partial failure.
 
 **`--dry-run`.** Checks the local vault path, existing-origin precondition, slug syntax,
 and local branch list. It prints the intended repository, the origin URL that would be
-configured, and the branches that would be pushed. It does not invoke `gh` and does not
-run any Git mutation.
+configured, and the branches that would be pushed, including the `main` landing branch if
+it would need to be created. It does not invoke `gh` and does not run any Git mutation.
 
 **Live run.** The steps are:
 
-1. Create the GitHub repository as private.
-2. Read the repository's canonical Git URL.
-3. Add that URL as `origin` on the local vault.
-4. Push all local vault branches with ordinary `git push origin --all`.
-5. Fetch remote refs.
-6. Verify `origin` is reachable.
-7. Verify GitHub reports the repository visibility as `PRIVATE`.
+1. Ensure local branch `main` exists with the standard vault README if it was absent.
+2. Create the GitHub repository as private.
+3. Read the repository's canonical Git URL.
+4. Add that URL as `origin` on the local vault.
+5. Push all local vault branches with ordinary `git push origin --all`.
+6. Fetch remote refs.
+7. Verify `origin` is reachable.
+8. Verify GitHub reports the repository visibility as `PRIVATE`.
 
 If GitHub creation succeeds but a later step fails, the command exits `1` with a partial
 failure report naming the created repository, whether `origin` was configured, whether
@@ -125,13 +127,13 @@ deleting the repository, replacing an origin, force-pushing, or rewriting histor
 **Output.** In live mode, prints `publishing vault to private GitHub repository
 <owner>/<repo>...` before the first external mutation. On success, prints the created
 repository, configured origin URL, pushed branch count, and private-visibility
-verification. With no local vault branches, the push step is a no-op and the branch
-count is `0`.
+verification. With no project branches, the push still includes the `main` landing branch
+and the branch count is `1`.
 
 **Exit codes.** `2` (from `marrow` dispatch): missing `<owner>/<repo>` argument or an
 unrecognized option. `1`: invalid slug, missing `gh`, missing local vault, existing
-origin, GitHub creation failure, origin configuration failure, push failure, fetch
-failure, reachability failure, or non-private visibility. `0`: remote created,
+origin, landing-branch creation failure, GitHub creation failure, origin configuration
+failure, push failure, fetch failure, reachability failure, or non-private visibility. `0`: remote created,
 configured, pushed, fetched, reachable, and private.
 
 ## `status`
@@ -142,8 +144,7 @@ marrow status
 
 Prints an aligned table with `PROJECT`, `KEY`, `CHANGES`, `SYNC`, and `LAST COMMIT`
 columns. `PROJECT` is the parent directory of the `.agents` worktree, abbreviated with
-`~` when it is under the user's home directory. `KEY` shows the stable project identity;
-its internal `projects/` branch namespace is omitted.
+`~` when it is under the user's home directory. `KEY` shows the stable project identity.
 `CHANGES` is `clean` or a count of uncommitted changes. `SYNC` is `synced`, `not pushed`,
 or a count of commits to push and/or pull. "Uncommitted changes" counts lines from
 `git status --porcelain` (i.e. files changed, not diff hunks). Ahead/behind compares
@@ -193,11 +194,12 @@ push failed.
 marrow add <project-path> [--id <stable-id>] [--dry-run]
 ```
 
-`<project-path>` resolves to its parent Git repository's top-level directory. Its identity
-is the normalized GitHub `origin`, `github.com/<owner>/<repo>`, and its branch is
-`projects/<identity>`. SSH and HTTPS forms produce the same identity. `--id` supplies a
-stable identity for a project without a supported origin. The path basename is a display
-name only.
+`<project-path>` resolves to its parent Git repository's top-level directory. Its default
+identity is the normalized repository name from the GitHub `origin`, and its branch is
+exactly that identity (`ossa`, `pho`, `marrow`). SSH and HTTPS forms produce the same
+identity. `--id` supplies a stable identity for a project without a supported origin, or
+for a GitHub project that needs a non-default name. The path basename is a display name
+only.
 
 Before deciding, `add` fetches `origin` when the vault has one; a fetch failure aborts.
 It then reconciles the local path and matching branch: an ordinary `.agents/` with no
@@ -225,7 +227,7 @@ on stderr and exit `1`, `--dry-run` included):
 
 1. `<project-path>/.agents` must be a directory (not e.g. a plain file).
 2. `<project-path>/.agents/.git` must not exist (i.e. it isn't already a marrow worktree).
-3. The deterministic `projects/<identity>` branch must not already exist.
+3. The deterministic `<identity>` branch must not already exist.
 4. `<project-path>` must be a git repository, and `.agents` must not be **tracked** by it (see
    the state table below).
 
@@ -245,7 +247,7 @@ vault — safe to run against a real project.
 
 1. **Backup.** `tar -czf <MARROW_HOME>/backups/<project>-<ISO-date>.tar.gz -C <project> .agents`. The tarball's size and `tar -tzf` listing are both checked; any failure aborts before anything is moved.
 2. **Move aside.** `<project>/.agents` → `<project>/.agents.pre-marrow` (rename, same volume — not a copy).
-3. **Create the worktree.** `git worktree add --orphan -b projects/<identity> <project>/.agents` runs against `<MARROW_HOME>/vault.git`. On failure, step 2 is undone (`.agents.pre-marrow` renamed back to `.agents`) before erroring out — the project directory is never left without a `.agents/`.
+3. **Create the worktree.** `git worktree add --orphan -b <identity> <project>/.agents` runs against `<MARROW_HOME>/vault.git`. On failure, step 2 is undone (`.agents.pre-marrow` renamed back to `.agents`) before erroring out — the project directory is never left without a `.agents/`.
 4. **Restore contents.** Every entry under `.agents.pre-marrow/` — including dotfiles — is moved into the new (currently empty) worktree, then `.agents.pre-marrow` is removed.
 5. **README.** `templates/persistence-block.md` (`{{project}}` substituted, read from the tool's own install location) is appended to `.agents/README.md`; if no `README.md` existed, one is created first from `templates/readme-seed.md`.
 6. **Commit and push.** `git add -A`, commit `<project>: adopt into marrow`. If the vault has no `origin` remote, the commit is left local; otherwise `git push -u origin <project>`.
@@ -287,17 +289,22 @@ worktree/commit/push failure, `0` on success.
 marrow doctor
 ```
 
-Runs a fixed set of checks, each producing one `OK`/`WARN`/`FAIL` line, printed in this
-order, followed by a summary line (`doctor: OK` or `doctor: FAIL`):
+Writes `checking vault and project worktree health...` as a transient terminal status,
+then replaces it with the fixed set of checks, printed in this order. Checks that pass
+for every attached project may be summarized as one `OK` line. Per-project `FAIL` and
+`WARN` lines stay explicit. Output ends with `doctor: OK`, `doctor: OK (<n> warnings)`, or
+`doctor: FAIL (<n> failures[, <n> warnings])`:
 
 | Check | Result on failure |
 |---|---|
 | Every locally registered worktree is named `.agents` | FAIL |
 | Every project worktree's parent repo ignores `.agents` (`git check-ignore -q -- .agents` in the parent dir). A parent directory that is not a git repository at all passes — there is nothing it could commit `.agents/` into | FAIL |
+| Every project worktree with a supported GitHub parent-repo `origin` uses the default repo-name identity; a non-default `--id` is surfaced here for review | WARN only |
 | `origin` remote is configured on `<MARROW_HOME>/vault.git` | WARN if absent |
 | `origin` is reachable (`git ls-remote --exit-code origin`) | FAIL if unreachable |
+| `origin` refs can be refreshed (`git fetch --prune origin`) | FAIL if fetch fails |
 | `origin` visibility is `PRIVATE`, checked via `gh repo view --json visibility` when `gh` is on `PATH` | FAIL if a successful `gh` call reports non-`PRIVATE`; WARN (not FAIL) if `gh` is absent or the call itself fails for any other reason (e.g. not a GitHub-hosted remote) |
-| Each project worktree isn't more than 20 commits ahead of `origin/<branch>`, and has an `origin/<branch>` to compare against at all | WARN only |
+| Each project worktree isn't more than 20 commits ahead of `origin/<branch>`, and has an `origin/<branch>` to compare against at all | WARN only; missing refs may be aggregated with `marrow sync` as the remediation |
 | No tarball under `<MARROW_HOME>/backups/` is older than 30 days | WARN only |
 | `marrow` resolves on `PATH` (`Bun.which("marrow")`) | WARN only |
 

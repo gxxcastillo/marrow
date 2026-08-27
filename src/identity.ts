@@ -11,14 +11,14 @@ export interface ProjectIdentity {
 const ID_PATTERN = /^[a-z0-9][a-z0-9._/-]*$/;
 
 export function branchFor(id: string): string {
-  return `projects/${id}`;
+  return id;
 }
 
 function validId(id: string): boolean {
   return ID_PATTERN.test(id) && !id.includes("..") && !id.includes("//") && !id.endsWith(".") && !id.endsWith("/");
 }
 
-function githubId(url: string): string | null {
+export function githubId(url: string): string | null {
   const value = url.trim();
   const scp = value.match(/^[^@\s]+@github\.com:(.+)$/i);
   const standard = value.match(/^(?:https?|ssh):\/\/(?:[^@/\s]+@)?github\.com\/(.+)$/i);
@@ -28,6 +28,10 @@ function githubId(url: string): string | null {
   const parts = tail.replace(/\.git\/?$/i, "").split("/");
   if (parts.length !== 2 || !parts.every((part) => /^[a-z0-9_.-]+$/i.test(part))) return null;
   return `github.com/${parts[0].toLowerCase()}/${parts[1].toLowerCase()}`;
+}
+
+export function githubProjectId(url: string): string | null {
+  return githubId(url)?.split("/").at(-1) ?? null;
 }
 
 export async function resolveIdentity(projectArg: string, explicitId?: string): Promise<ProjectIdentity> {
@@ -43,7 +47,7 @@ export async function resolveIdentity(projectArg: string, explicitId?: string): 
   let id = explicitId;
   if (!id) {
     const origin = await git(["remote", "get-url", "origin"], dir);
-    const resolved = origin.code === 0 ? githubId(origin.stdout) : null;
+    const resolved = origin.code === 0 ? githubProjectId(origin.stdout) : null;
     if (!resolved) {
       throw new Error(`${dir} has no supported GitHub origin; pass --id <stable-id>`);
     }

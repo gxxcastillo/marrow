@@ -23,9 +23,10 @@ marrow is deliberately two separate git repos, not one:
 - **The vault** — the git backing for every project's `.agents/` data: one orphan branch
   per adopted project, checked out as a worktree at `<project-path>/.agents`
   inside that project's own directory. The vault is not a coding project — it holds no
-  code of its own, only per-project data — so it does not live under `~/dev`. It is a
-  **bare** git repository at `~/.marrow/vault.git` by default, with `~/.marrow/backups/`
-  and `~/.marrow/logs/` alongside it as ordinary (non-git-tracked) sibling directories.
+  code of its own, only per-project data plus a minimal GitHub landing README on `main`
+  — so it does not live under `~/dev`. It is a **bare** git repository at
+  `~/.marrow/vault.git` by default, with `~/.marrow/backups/` and `~/.marrow/logs/`
+  alongside it as ordinary (non-git-tracked) sibling directories.
 
 Splitting these apart resolves a real structural problem: the tool repo and the vault
 used to be the same repository, which meant marrow could never adopt its own `.agents/`
@@ -44,19 +45,21 @@ current machine from `git worktree list --porcelain` against the vault. A vault 
 contains every project branch but may attach only the projects checked out locally. A
 branch without a local worktree is normal, not a health failure.
 
-**Project identity is independent of checkout path.** A GitHub project's identity is its
-normalized parent-repo `origin`, `github.com/<owner>/<repo>`; SSH and HTTPS forms resolve
-to the same identity. Its vault branch is `projects/<identity>`. `add --id <id>` supplies
-the identity for a project without a supported origin. A directory basename is a local
+**Project identity is independent of checkout path.** A GitHub project's default identity
+is its normalized repository name from the parent-repo `origin`; SSH and HTTPS forms
+resolve to the same repo name. Its vault branch is exactly that identity (`ossa`, `pho`,
+`marrow`). `add --id <id>` supplies the identity for a project without a supported origin,
+or for a GitHub project that needs a non-default name. A directory basename is a local
 display label only. This lets `~/dev/ossa` and `~/dev-stuff/ossa` attach the same branch.
 
 **Branches never merge.** No shared history between any two project branches — each is
 an independent orphan history, and none of them share history with the tool repo's
-`main` either, since they now live in a different repository entirely. Cross-project
-search is `marrow grep`, not `git log` or `git merge`. This makes push races between
-projects structurally impossible (disjoint branches); a concurrent sync of the *same*
-project serializes on git's own lock and should be treated as a retryable warning, not an
-error.
+`main` either, since they now live in a different repository entirely. The vault's own
+`main` is only a GitHub default branch with a short README; it is not registry data,
+project memory, or tool configuration. Cross-project search is `marrow grep`, not `git
+log` or `git merge`. This makes push races between projects structurally impossible
+(disjoint branches); a concurrent sync of the *same* project serializes on git's own lock
+and should be treated as a retryable warning, not an error.
 
 **Deliberate syncs are primary; automation is the floor.** The expected rhythm is an
 agent running `marrow sync <project> -m "<summary>"` at the end of a working session (per
@@ -123,11 +126,11 @@ publish <owner>/<repo>` creates a new private GitHub vault remote, while `marrow
 --from <vault-url>` attaches a machine to an existing private vault remote. Currently
 `~/.local/bin/marrow -> ~/dev/marrow/bin/marrow`.
 
-**Vault** (`~/.marrow` by default, no `main`/tool content, ever):
+**Vault** (`~/.marrow` by default, project branches plus a minimal `main` landing branch):
 
 ```
 .marrow/
-├── vault.git/                 # bare repo; one orphan branch per adopted project
+├── vault.git/                 # bare repo; project branches plus GitHub landing main
 ├── backups/                   # tarballs made by `add` when adopting — never auto-deleted
 └── logs/                      # `sync --auto` log
 ```

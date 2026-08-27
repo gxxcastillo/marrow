@@ -5,6 +5,7 @@ import { initCommand } from "../src/commands/init";
 import { publishCommand } from "../src/commands/publish";
 import { git, vaultDir } from "../src/git";
 import { fetchedOriginBranches, originUrl } from "../src/remote";
+import { VAULT_README } from "../src/vault";
 import { addProjectWorktree, makeFixture, type Fixture } from "./fixtures";
 import { captureLogs } from "./helpers";
 
@@ -12,7 +13,7 @@ async function removeVaultOrigin(fx: Fixture): Promise<void> {
   await git(["remote", "remove", "origin"], vaultDir(fx.marrowHome));
 }
 
-async function seedRemoteBranch(fx: Fixture, branch = "projects/github.com/test/remote"): Promise<void> {
+async function seedRemoteBranch(fx: Fixture, branch = "remote"): Promise<void> {
   const repo = path.join(fx.root, `seed-${branch.replaceAll("/", "-")}`);
   await mkdir(repo, { recursive: true });
   await git(["init", "-q", "-b", "main"], repo);
@@ -101,7 +102,9 @@ describe("remote lifecycle", () => {
     expect(code).toBe(0);
     expect(outLines).toContain("dry run: would publish vault to private GitHub repository gxxcastillo/marrow-vault");
     expect(outLines).toContain("origin: git@github.com:gxxcastillo/marrow-vault.git");
-    expect(outLines).toContain("branches: 1");
+    expect(outLines).toContain("branches: 2");
+    expect(outLines).toContain("  main");
+    expect((await git(["rev-parse", "--verify", "--quiet", "main"], vaultDir(fx.marrowHome))).code).toBe(1);
     expect(await originUrl(vaultDir(fx.marrowHome))).toBe(null);
   });
 
@@ -117,10 +120,13 @@ describe("remote lifecycle", () => {
     expect(code).toBe(0);
     expect(outLines[0]).toBe("publishing vault to private GitHub repository gxxcastillo/marrow-vault...");
     expect(outLines).toContain(`origin: ${fx.bareOrigin}`);
-    expect(outLines).toContain("pushed branches: 1");
+    expect(outLines).toContain("pushed branches: 2");
     expect(outLines).toContain("origin is PRIVATE");
     expect(await originUrl(vaultDir(fx.marrowHome))).toBe(fx.bareOrigin);
     expect((await git(["rev-parse", "origin/ossa"], vaultDir(fx.marrowHome))).code).toBe(0);
+    const readme = await git(["show", "origin/main:README.md"], vaultDir(fx.marrowHome));
+    expect(readme.stdout).toBe(VAULT_README.trim());
+    expect(readme.stdout).toContain("[marrow](https://github.com/gxxcastillo/marrow)");
   });
 
   test("publish refuses an existing origin", async () => {
@@ -199,7 +205,7 @@ describe("remote lifecycle", () => {
     expect(code).toBe(0);
     expect(outLines).toContain(`hydrated vault from ${fx.bareOrigin}`);
     expect(await originUrl(vaultDir(fx.marrowHome))).toBe(fx.bareOrigin);
-    expect(await fetchedOriginBranches(vaultDir(fx.marrowHome))).toEqual(["projects/github.com/test/remote"]);
+    expect(await fetchedOriginBranches(vaultDir(fx.marrowHome))).toEqual(["remote"]);
   });
 
   test("init --from refuses existing origin and populated local vaults before mutation", async () => {

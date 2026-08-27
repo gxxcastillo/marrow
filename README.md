@@ -3,7 +3,7 @@
 Private git backing for the `.agents/` working-memory directories across `~/dev` projects.
 
 Each project's `.agents/` stays gitignored by its parent repo but becomes a git worktree of
-a separate private vault repo, on a stable branch derived from the parent repo's identity. git history replaces
+a separate private vault repo, on a stable branch named for the project. git history replaces
 the append-only narrative style the directories used before.
 
 marrow is two repos, not one — see `spec/architecture.md` → "Two repos: tool and vault"
@@ -15,11 +15,11 @@ for the full rationale:
   READMEs point here instead of restating it) and this spec. An ordinary dev project,
   lives at `~/dev/marrow` like everything else under `~/dev`. Design, CLI contract, and
   safety guarantees: `spec/README.md`.
-- **The vault — a separate repo, outside `~/dev`.** Holds nothing but data: one orphan
-  branch per adopted project (`pho`, `ossa`, `sobremesa`, …), each checked out as a
-  worktree at `<project-path>/.agents`. Branches never merge with each other or with
-  this repo's `main`. It is not a coding project, which is exactly why it doesn't live
-  alongside the ones that are.
+- **The vault — a separate repo, outside `~/dev`.** Holds one orphan branch per adopted
+  project (`pho`, `ossa`, `sobremesa`, …), each checked out as a worktree at
+  `<project-path>/.agents`. A minimal `main` branch exists only as the GitHub default
+  branch. Project branches never merge with each other or with this repo's `main`. It is
+  not a coding project, which is exactly why it doesn't live alongside the ones that are.
 
 The vault must remain **private**: the project branches contain personal planning
 content, including for projects whose own repos are public.
@@ -44,8 +44,8 @@ if already done, and it refuses to overwrite a non-marrow file already at the sy
 target. It never touches the vault's GitHub remote unless you explicitly pass
 `marrow init --from <vault-url>` to attach this machine to an existing private vault.
 Use `marrow publish <owner>/<repo>` to create a new private GitHub vault remote after
-explicit go-ahead. The remote contains only vault branches, not project repositories or
-backup tarballs.
+explicit go-ahead. The remote contains the vault landing branch and project branches, not
+project repositories or backup tarballs.
 
 Equivalent by hand:
 ```
