@@ -9,17 +9,18 @@ This repo is the CLI tool. The vault is a separate repo under `MARROW_HOME` (def
 `spec/architecture.md` → "Two repos: tool and vault" for the full design, including the
 `.agents/` directory convention.
 
-## Install
+## Dependencies
 
-Requires `bun` and git 2.42 or newer — `git worktree add --orphan`, which backs every
-adopted project, landed in 2.42. `bin/install` checks both before doing anything.
+`bun` and git 2.42+.
+
+## Install
 
 ```
 bin/install
 ```
 
-Symlinks `bin/marrow` onto `~/.local/bin` and creates the vault at `MARROW_HOME` (default
-`~/.marrow`). Safe to re-run.
+Symlinks `bin/marrow` onto `~/.local/bin` and creates the vault at `MARROW_HOME`
+(default `~/.marrow`). Safe to re-run.
 
 ## Everyday commands
 
