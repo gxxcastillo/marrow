@@ -150,8 +150,14 @@ or a count of commits to push and/or pull. "Uncommitted changes" counts lines fr
 `git status --porcelain` (i.e. files changed, not diff hunks). Ahead/behind compares
 `HEAD` against the local `origin/<branch>` ref — it does not fetch first, so it can be
 stale relative to a remote no one has pulled recently. Ends with a grammatical summary of
-the project count, uncommitted projects, and sync work remaining. With zero project
-worktrees, prints `No projects attached on this machine. Run \`marrow add <project-path>\` to get started.`instead. Always exits`0`.
+the project count, uncommitted projects, and sync work remaining.
+
+The table covers attached worktrees only. When the vault holds project branches with no
+worktree here, one further line follows the summary — `2 project branches not attached
+here: docs, notes` — so a partially attached machine is not read as a complete view.
+With zero project worktrees, prints `No projects attached on this machine. Run \`marrow add <project-path>\` to get started.` instead, followed by `The vault has <n> project
+branches not attached here: ...` when any exist — an empty vault and an unattached one
+are different situations and must not print the same thing. Always exits `0`.
 
 ## `sync`
 
@@ -296,7 +302,9 @@ for every attached project may be summarized as one `OK` line. Per-project `FAIL
 
 | Check                                                                                                                                                                                                                         | Result on failure                                                                                                                                                       |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `git --version` is at least 2.42, the release that added `git worktree add --orphan`                                                                                                                                         | FAIL below 2.42 — `add` and `publish` cannot run at all. WARN if the version string cannot be parsed, so an exotic build is never blocked. Checked first, before any vault finding |
 | Every locally registered worktree is named `.agents`                                                                                                                                                                          | FAIL                                                                                                                                                                    |
+| Project branches in the vault with no worktree on this machine are listed by name                                                                                                                                            | Never fails — reported as an `OK` line. Attaching a subset is a deliberate choice, not drift; it is surfaced only because it bounds what `grep` and `status` can see    |
 | Every project worktree's parent repo ignores `.agents` (`git check-ignore -q -- .agents` in the parent dir). A parent directory that is not a git repository at all passes — there is nothing it could commit `.agents/` into | FAIL                                                                                                                                                                    |
 | Every project worktree with a supported GitHub parent-repo `origin` uses the default repo-name identity; a non-default `--id` is surfaced here for review                                                                     | WARN only                                                                                                                                                               |
 | `origin` remote is configured on `<MARROW_HOME>/vault.git`                                                                                                                                                                    | WARN if absent                                                                                                                                                          |
@@ -333,9 +341,24 @@ flags (`-i`, `-C3`, …) work as expected. marrow does not parse them at all —
 includes `-h`/`--help`, which `rg` receives rather than marrow (see "Global flags"
 above).
 
+When the vault holds project branches that have no worktree on this machine, `grep`
+writes one caveat line to **stderr** before running the search, naming the count and the
+branches:
+
+```
+marrow grep: searched 4 of 7 project branches; 3 branches in the vault not attached on this machine (attach with `marrow add <project-path>`): docs, notes, scratch
+```
+
+This is stderr, never stdout, so it does not contaminate the match stream callers pipe,
+and it does not affect the exit code. It exists because a partial search that reports as
+a complete one is a false negative — the searcher concludes the note isn't there. The
+same line appears (worded `no project branches are attached here`) in the zero-worktree
+case, where the bare `No project worktrees.` would otherwise read as "the vault is
+empty".
+
 Output streams directly to the terminal (not buffered/parsed by marrow). With zero
-project worktrees, prints `No project worktrees.` and exits `0` without invoking `rg`/
-`grep` at all. Otherwise the exit code is whatever the underlying `rg`/`grep` process
+project worktrees, prints `No project worktrees.` to stdout and exits `0` without
+invoking `rg`/`grep` at all. Otherwise the exit code is whatever the underlying `rg`/`grep` process
 returns — conventionally `0` (match found), `1` (no match), `2` (usage/other error). `2`
 also results from `marrow`'s own dispatch if `<pattern>` is omitted entirely.
 

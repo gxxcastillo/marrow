@@ -11,6 +11,9 @@ This repo is the CLI tool. The vault is a separate repo under `MARROW_HOME` (def
 
 ## Install
 
+Requires `bun` and git 2.42 or newer — `git worktree add --orphan`, which backs every
+adopted project, landed in 2.42. `bin/install` checks both before doing anything.
+
 ```
 bin/install
 ```

@@ -4,7 +4,7 @@ import path from "node:path";
 import { addCommand } from "../src/commands/add";
 import { doctorCommand } from "../src/commands/doctor";
 import { git, vaultDir } from "../src/git";
-import { addProjectWorktree, makeFixture, makeProjectRepo, type Fixture } from "./fixtures";
+import { addProjectWorktree, addUnattachedBranch, makeFixture, makeProjectRepo, type Fixture } from "./fixtures";
 import { captureLogs } from "./helpers";
 
 describe("doctor", () => {
@@ -182,5 +182,32 @@ describe("doctor", () => {
 
     const { outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
     expect(outLines.some((l) => l.startsWith("WARN") && l.includes("old-project") && l.includes("day"))).toBe(true);
+  });
+
+  test("reports unattached vault branches as OK, not as a warning", async () => {
+    await addProjectWorktree(fx, "alpha");
+    await addUnattachedBranch(fx, "beta");
+
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
+    const line = outLines.find((l) => l.includes("not attached on this machine"));
+    expect(line).toBeDefined();
+    // Attaching a subset is a deliberate choice, not drift: it is reported,
+    // but must never produce a WARN/FAIL line or affect the exit code.
+    expect(line).toStartWith("OK");
+    expect(line).toContain("1 project branch");
+    expect(line).toContain("beta");
+    expect(outLines.some((l) => /^(WARN|FAIL)/.test(l) && l.includes("not attached"))).toBe(false);
+    expect(code).toBe(0);
+  });
+
+  test("reports git worktree --orphan support before vault findings", async () => {
+    await addProjectWorktree(fx, "alpha");
+
+    const { outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
+    const line = outLines.find((l) => l.includes("worktree add --orphan"));
+    expect(line).toBeDefined();
+    expect(line).toStartWith("OK");
+    // It gates `add` and `publish` entirely, so it must precede vault checks.
+    expect(outLines.indexOf(line!)).toBe(0);
   });
 });

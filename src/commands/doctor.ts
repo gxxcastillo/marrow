@@ -1,9 +1,10 @@
 import { existsSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
-import { aheadBehind, git, listProjectWorktrees, vaultDir } from "../git";
+import { MIN_GIT_MAJOR, MIN_GIT_MINOR, aheadBehind, git, gitTooOld, gitVersion, listProjectWorktrees, vaultDir } from "../git";
 import { githubId, githubProjectId } from "../identity";
 import { originUrl, verifyOriginReachable, verifyPrivateVisibility } from "../remote";
+import { unattachedBranches } from "../vault";
 
 const UNPUSHED_WARN_THRESHOLD = 20;
 const STALE_BACKUP_DAYS = 30;
@@ -46,6 +47,18 @@ export async function doctorCommand(marrowHome: string): Promise<number> {
 
   const progressShown = showProgress();
 
+  // Checked before anything else: without `worktree add --orphan` neither
+  // `add` nor `publish` can run at all, so it outranks every vault finding.
+  const version = await gitVersion();
+  const minGit = `${MIN_GIT_MAJOR}.${MIN_GIT_MINOR}`;
+  if (!version) {
+    warn(`could not determine the git version; marrow needs git ${minGit}+ for \`git worktree add --orphan\``);
+  } else if (gitTooOld(version)) {
+    fail(`git ${minGit}+ is required by \`marrow add\` and \`marrow publish\` (found ${version.major}.${version.minor})`);
+  } else {
+    ok(`git ${version.major}.${version.minor} supports \`worktree add --orphan\``);
+  }
+
   const vault = vaultDir(marrowHome);
   const worktrees = await listProjectWorktrees(vault);
   // A vault clone contains every branch, but a machine may intentionally
@@ -56,6 +69,16 @@ export async function doctorCommand(marrowHome: string): Promise<number> {
   }
   for (const wt of worktrees) {
     if (path.basename(wt.path) !== ".agents") fail(`branch '${wt.branch}' worktree at ${wt.path} is not named .agents`);
+  }
+
+  // Reported, never a WARN: attaching a subset is a deliberate choice, not
+  // drift. It is surfaced because it silently bounds `grep` and `status`.
+  const unattached = await unattachedBranches(vault, worktrees);
+  if (unattached.length > 0) {
+    ok(
+      `${countLabel(unattached.length, "project branch", "project branches")} not attached on this machine (normal; ` +
+        `\`marrow grep\` and \`marrow status\` skip them): ${branchList(unattached)}`,
+    );
   }
 
   let ignoredParents = 0;

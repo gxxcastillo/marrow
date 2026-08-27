@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import path from "node:path";
-import { aheadBehind, dirtyCount, git, hasOrigin, lastCommit, listProjectWorktrees, vaultDir } from "../src/git";
+import { aheadBehind, dirtyCount, git, gitTooOld, gitVersion, hasOrigin, lastCommit, listProjectWorktrees, vaultDir } from "../src/git";
 import { addProjectWorktree, makeFixture, type Fixture } from "./fixtures";
 
 describe("git.ts", () => {
@@ -84,5 +84,27 @@ describe("git.ts", () => {
     const bareRepo = path.join(fx.root, "no-origin-repo");
     await git(["init", "-q", "-b", "main", bareRepo], fx.root);
     expect(await hasOrigin(bareRepo)).toBe(false);
+  });
+
+  // 2.42 is the floor because `git worktree add --orphan` landed there; every
+  // adopted project depends on it.
+  test.each([
+    [2, 41, true],
+    [2, 42, false],
+    [2, 43, false],
+    [1, 99, true],
+    [3, 0, false],
+  ])("gitTooOld(%i.%i) is %p", (major, minor, expected) => {
+    expect(gitTooOld({ major, minor })).toBe(expected);
+  });
+
+  test("reads the running git version", async () => {
+    const version = await gitVersion();
+    expect(version).not.toBeNull();
+    expect(Number.isInteger(version!.major)).toBe(true);
+    expect(Number.isInteger(version!.minor)).toBe(true);
+    // The suite itself uses `worktree add --orphan`, so a passing run proves
+    // the floor is met — this asserts the parser agrees with reality.
+    expect(gitTooOld(version!)).toBe(false);
   });
 });

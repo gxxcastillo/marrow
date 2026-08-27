@@ -3,7 +3,7 @@ import { realpath } from "node:fs/promises";
 import path from "node:path";
 import { statusCommand } from "../src/commands/status";
 import { git } from "../src/git";
-import { addProjectWorktree, makeFixture, type Fixture } from "./fixtures";
+import { addProjectWorktree, addUnattachedBranch, makeFixture, type Fixture } from "./fixtures";
 import { captureLogs } from "./helpers";
 
 describe("status", () => {
@@ -80,5 +80,24 @@ describe("status", () => {
     const { outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
     expect(outLines).toHaveLength(5); // header + divider + 2 projects + summary
     expect(outLines.at(-1)).toBe("2 projects: all clean, all synced");
+  });
+
+  test("names vault branches with no worktree here after the summary", async () => {
+    await addProjectWorktree(fx, "alpha");
+    await addUnattachedBranch(fx, "beta");
+
+    const { code, outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
+    expect(code).toBe(0);
+    expect(outLines.at(-2)).toBe("1 project: all clean, all synced");
+    expect(outLines.at(-1)).toBe("1 project branch not attached here: beta");
+  });
+
+  test("distinguishes an empty vault from one with nothing attached here", async () => {
+    await addUnattachedBranch(fx, "beta");
+    await addUnattachedBranch(fx, "gamma");
+
+    const { outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
+    expect(outLines[0]).toContain("No projects attached on this machine");
+    expect(outLines[1]).toBe("The vault has 2 project branches not attached here: beta, gamma.");
   });
 });

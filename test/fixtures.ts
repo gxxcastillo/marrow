@@ -123,3 +123,13 @@ export async function makeProjectRepo(
 
   return projectDir;
 }
+
+// Creates a project branch that exists in the vault but has no worktree on
+// this machine — the multi-machine normal case, where a clone carries every
+// branch and a machine attaches only the projects it works on.
+export async function addUnattachedBranch(fx: Fixture, branch: string): Promise<void> {
+  const agentsPath = await addProjectWorktree(fx, branch);
+  const vault = vaultDir(fx.marrowHome);
+  const removed = await git(["worktree", "remove", "--force", agentsPath], vault);
+  if (removed.code !== 0) throw new Error(`worktree remove failed: ${removed.stderr}`);
+}

@@ -1,9 +1,10 @@
 import os from "node:os";
 import path from "node:path";
 import { aheadBehind, dirtyCount, lastCommit, listProjectWorktrees, vaultDir } from "../git";
+import { unattachedBranches } from "../vault";
 
-function countLabel(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+function countLabel(count: number, noun: string, plural = `${noun}s`): string {
+  return `${count} ${count === 1 ? noun : plural}`;
 }
 
 function syncLabel(aheadBehind: { ahead: number; behind: number } | null): string {
@@ -23,9 +24,18 @@ function displayPath(worktreePath: string): string {
 }
 
 export async function statusCommand(marrowHome: string): Promise<number> {
-  const worktrees = await listProjectWorktrees(vaultDir(marrowHome));
+  const vault = vaultDir(marrowHome);
+  const worktrees = await listProjectWorktrees(vault);
+  // The table covers attached worktrees only. Naming what it leaves out keeps
+  // a partially attached machine from reading as an empty or complete vault.
+  const unattached = await unattachedBranches(vault, worktrees);
+  const unattachedNote = unattached.length === 0
+    ? ""
+    : `${countLabel(unattached.length, "project branch", "project branches")} not attached here: ${unattached.join(", ")}`;
+
   if (worktrees.length === 0) {
     console.log("No projects attached on this machine. Run `marrow add <project-path>` to get started.");
+    if (unattachedNote) console.log(`The vault has ${unattachedNote}.`);
     return 0;
   }
 
@@ -68,5 +78,6 @@ export async function statusCommand(marrowHome: string): Promise<number> {
     behindTotal > 0 ? `${countLabel(behindTotal, "commit")} to pull` : "",
   ].filter(Boolean);
   console.log(`${countLabel(worktrees.length, "project")}: ${changes}, ${sync.join(", ") || "all synced"}`);
+  if (unattachedNote) console.log(unattachedNote);
   return 0;
 }

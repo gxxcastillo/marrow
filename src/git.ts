@@ -73,3 +73,27 @@ export async function hasOrigin(cwd: string): Promise<boolean> {
   const res = await git(["remote"], cwd);
   return res.stdout.split("\n").includes("origin");
 }
+
+// `git worktree add --orphan` — the mechanism behind every adopted project
+// (`commands/add.ts`, `vault.ts`) — landed in git 2.42. Older git runs `init`
+// fine and then fails on the first `add`, so this is checked up front by
+// `bin/install` and re-checked by `doctor`.
+export const MIN_GIT_MAJOR = 2;
+export const MIN_GIT_MINOR = 42;
+
+export interface GitVersion {
+  major: number;
+  minor: number;
+}
+
+// null when `git --version` fails or prints something unparseable — an exotic
+// build is warned about, never blocked.
+export async function gitVersion(): Promise<GitVersion | null> {
+  const res = await run("git", ["--version"], process.cwd());
+  const parsed = res.code === 0 ? res.stdout.match(/^git version (\d+)\.(\d+)/) : null;
+  return parsed ? { major: Number(parsed[1]), minor: Number(parsed[2]) } : null;
+}
+
+export function gitTooOld({ major, minor }: GitVersion): boolean {
+  return major < MIN_GIT_MAJOR || (major === MIN_GIT_MAJOR && minor < MIN_GIT_MINOR);
+}

@@ -36,7 +36,10 @@ as any other project. That is the whole of the rationale.
 projects. `status`, `sync`, `doctor`, and `grep` discover the projects attached on the
 current machine from `git worktree list --porcelain` against the vault. A vault clone
 contains every project branch but may attach only the projects checked out locally. A
-branch without a local worktree is normal, not a health failure.
+branch without a local worktree is normal, not a health failure. Because that bounds
+what the registry-reading commands can see, `grep`, `status`, and `doctor` each name the
+unattached branches rather than presenting a partial view as a complete one — `cli.md`
+per command.
 
 **Project identity is independent of checkout path.** A GitHub project's default identity
 is its normalized repository name from the parent-repo `origin`; SSH and HTTPS forms
@@ -104,6 +107,13 @@ marrow/
 ├── package.json               # name, bin entry; no runtime dependencies
 └── .gitignore                 # node_modules/, .agents/
 ```
+
+The orphan-branch-per-project mechanism sets the tool's only hard version floor: `git
+worktree add --orphan` requires git 2.42+. `bin/install` refuses to proceed below it and
+`doctor` re-checks, because `init` itself does not use `--orphan` — without the check,
+install would succeed and the first `add` would fail on an unknown option. The floor
+lives in `src/git.ts` (`MIN_GIT_MAJOR`/`MIN_GIT_MINOR`) and is mirrored in `bin/install`,
+which cannot import it.
 
 Install: `bin/install` symlinks `bin/marrow` onto `PATH`, then runs `marrow init` (see
 `cli.md` → `init`) to create the local vault's bare repo; both steps are idempotent and

@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { git } from "./git";
-import { localBranches } from "./remote";
+import { fetchedOriginBranches, localBranches } from "./remote";
 
 export const VAULT_LANDING_BRANCH = "main";
 export const VAULT_README = `# marrow-vault
@@ -38,4 +38,21 @@ export async function ensureVaultLandingBranch(vault: string): Promise<void> {
     await git(["worktree", "remove", "--force", tmp], vault);
     await rm(tmp, { recursive: true, force: true });
   }
+}
+
+// Every project branch the vault knows about — local heads and fetched origin
+// refs alike — minus the landing branch, which is not project memory.
+export async function listProjectBranches(vault: string): Promise<string[]> {
+  const [local, fetched] = await Promise.all([localBranches(vault), fetchedOriginBranches(vault)]);
+  return [...new Set([...local, ...fetched])].filter((branch) => branch !== VAULT_LANDING_BRANCH).sort();
+}
+
+// Project branches with no worktree on this machine. Normal, not a health
+// failure (`../spec/architecture.md` → Design model): a vault clone carries
+// every branch but a machine attaches only what it needs. It does bound what
+// `grep` searches and what `status` reports, so those commands say so rather
+// than presenting a partial view as a complete one.
+export async function unattachedBranches(vault: string, worktrees: { branch: string }[]): Promise<string[]> {
+  const attached = new Set(worktrees.map((wt) => wt.branch));
+  return (await listProjectBranches(vault)).filter((branch) => !attached.has(branch));
 }

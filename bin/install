@@ -13,6 +13,18 @@ if ! command -v bun >/dev/null 2>&1; then
   echo "install: bun is required (to run marrow) but not found on PATH" >&2
   exit 1
 fi
+# `git worktree add --orphan`, which every `marrow add` depends on, landed in
+# git 2.42. `marrow init` does not use it, so without this check install would
+# report success and the first `marrow add` would fail on an unknown option.
+# Keep the floor in step with MIN_GIT_MAJOR/MIN_GIT_MINOR in src/git.ts.
+git_major="$(git --version | sed -n 's/^git version \([0-9][0-9]*\)\..*/\1/p')"
+git_minor="$(git --version | sed -n 's/^git version [0-9][0-9]*\.\([0-9][0-9]*\).*/\1/p')"
+if [ -z "$git_major" ] || [ -z "$git_minor" ]; then
+  echo "install: warning: could not parse '$(git --version)'; marrow needs git 2.42+ for 'git worktree add --orphan'" >&2
+elif [ "$git_major" -lt 2 ] || { [ "$git_major" -eq 2 ] && [ "$git_minor" -lt 42 ]; }; then
+  echo "install: git 2.42+ is required (found $git_major.$git_minor); 'git worktree add --orphan' is unavailable below it" >&2
+  exit 1
+fi
 if [ "$#" -ne 0 ]; then
   echo "install: unexpected arguments; run 'marrow init --from <vault-url>' after install to attach an existing vault" >&2
   exit 2
