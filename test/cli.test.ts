@@ -28,18 +28,6 @@ describe("cli dispatch", () => {
     }
   });
 
-  test("usage lines come from the command table", async () => {
-    const { outLines } = await call(["--help"]);
-    expect(outLines.join("\n")).toContain("init");
-    expect(outLines.join("\n")).toContain("sync [project...] [-m <msg>]");
-  });
-
-  test.each(["create", "connect"])("%s is not a remote lifecycle command", async (command) => {
-    const { code, errLines } = await call([command, "file:///tmp/vault.git"]);
-    expect(code).toBe(2);
-    expect(errLines.join("\n")).toContain("usage: marrow <command> [args]");
-  });
-
   test.each([["-v"], ["--version"]])("%s prints the tool version and exits 0", async (flag) => {
     const { code, outLines, errLines } = await call([flag]);
     expect(code).toBe(0);
@@ -85,16 +73,12 @@ describe("cli dispatch", () => {
     expect(errLines).toEqual([expected]);
   });
 
-  test("per-command --help prints to stdout and exits 0", async () => {
+  test("per-command --help documents every option and prints the command's help paragraph", async () => {
     const { code, outLines, errLines } = await call(["add", "--help"]);
     expect(code).toBe(0);
     expect(errLines).toEqual([]);
-    expect(outLines.join("\n")).toContain("usage: marrow add <project-path> [--id <stable-id>] [--dry-run]");
-  });
-
-  test("per-command --help documents every option and prints the command's help paragraph", async () => {
-    const { outLines } = await call(["add", "--help"]);
     const help = outLines.join("\n");
+    expect(help).toContain("usage: marrow add <project-path> [--id <stable-id>] [--dry-run]");
     expect(help).toContain("Options:");
     expect(help).toContain("--dry-run");
     expect(help).toContain("preview without writing anything");

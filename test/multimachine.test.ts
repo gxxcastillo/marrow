@@ -34,6 +34,10 @@ async function cloneVaultForSecondMachine(fx: Fixture): Promise<string> {
   return machineBHome;
 }
 
+async function expectCommandSuccess(fn: () => Promise<number>): Promise<void> {
+  expect((await captureLogs(fn)).code).toBe(0);
+}
+
 describe("multi-machine attachment", () => {
   let fx: Fixture;
   beforeEach(async () => { fx = await makeFixture(); });
@@ -41,7 +45,7 @@ describe("multi-machine attachment", () => {
 
   test("add attaches an existing branch at a different checkout path", async () => {
     const machineA = await makeProjectRepo(fx, "alpha", "ignored");
-    expect(await addCommand(machineA, {}, fx.marrowHome, fx.toolRoot)).toBe(0);
+    await expectCommandSuccess(() => addCommand(machineA, {}, fx.marrowHome, fx.toolRoot));
 
     const machineBHome = await cloneVaultForSecondMachine(fx);
     const machineB = await secondProject(fx, "alpha");
@@ -54,7 +58,7 @@ describe("multi-machine attachment", () => {
 
   test("doctor permits remote branches that this machine has not attached", async () => {
     const machineA = await makeProjectRepo(fx, "alpha", "ignored");
-    expect(await addCommand(machineA, {}, fx.marrowHome, fx.toolRoot)).toBe(0);
+    await expectCommandSuccess(() => addCommand(machineA, {}, fx.marrowHome, fx.toolRoot));
     const machineBHome = await cloneVaultForSecondMachine(fx);
     const { code, outLines } = await captureLogs(() => doctorCommand(machineBHome));
     expect(code).toBe(0);
@@ -63,18 +67,18 @@ describe("multi-machine attachment", () => {
 
   test("sync pushes cleanly from a second machine after another machine advances a branch it hasn't attached", async () => {
     const machineA = await makeProjectRepo(fx, "alpha", "ignored");
-    expect(await addCommand(machineA, {}, fx.marrowHome, fx.toolRoot)).toBe(0);
+    await expectCommandSuccess(() => addCommand(machineA, {}, fx.marrowHome, fx.toolRoot));
     const betaOnA = await makeProjectRepo(fx, "beta", "ignored");
-    expect(await addCommand(betaOnA, {}, fx.marrowHome, fx.toolRoot)).toBe(0);
+    await expectCommandSuccess(() => addCommand(betaOnA, {}, fx.marrowHome, fx.toolRoot));
 
     const machineBHome = await cloneVaultForSecondMachine(fx);
     const machineBBeta = await secondProject(fx, "beta");
-    expect(await addCommand(machineBBeta, {}, machineBHome, fx.toolRoot)).toBe(0);
+    await expectCommandSuccess(() => addCommand(machineBBeta, {}, machineBHome, fx.toolRoot));
 
     // Machine A advances alpha, a branch machine B carries a stale local head
     // for (the full-mirror `clone --bare`) but has never attached a worktree to.
     await Bun.write(path.join(machineA, ".agents", "advance.md"), "advanced\n");
-    expect(await syncCommand([], {}, fx.marrowHome)).toBe(0);
+    await expectCommandSuccess(() => syncCommand([], {}, fx.marrowHome));
 
     // Machine B commits its own beta change and syncs.
     await Bun.write(path.join(machineBBeta, ".agents", "note.md"), "note\n");

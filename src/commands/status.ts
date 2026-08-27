@@ -20,6 +20,50 @@ function displayPath(worktreePath: string): string {
   return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative) ? `~/${relative}` : projectPath;
 }
 
+function shorten(value: string, width: number): string {
+  if (value.length <= width) return value;
+  if (width <= 3) return ".".repeat(width);
+  return `${value.slice(0, width - 3)}...`;
+}
+
+function shortenProject(value: string, width: number): string {
+  if (value.length <= width) return value;
+  if (width <= 3) return ".".repeat(width);
+  return `...${value.slice(value.length - width + 3)}`;
+}
+
+function tableTargetWidth(): number {
+  return Math.max(50, Math.min(process.stdout.columns ?? 100, 100));
+}
+
+function printBranchList(header: string, branches: string[]): void {
+  console.log(`${header}:`);
+  for (const branch of branches) console.log(`  ${branch}`);
+}
+
+function printRows(rows: string[][]): void {
+  const headers = ["PROJECT", "KEY", "STATUS", "LAST COMMIT"];
+  const widths = headers.map((header, index) => Math.max(header.length, ...rows.map((row) => row[index].length)));
+  const target = tableTargetWidth();
+  const projectMax = Math.max(headers[0].length, Math.min(widths[0], Math.floor(target * 0.32)));
+  const fixedWidth = projectMax + widths[1] + widths[2] + 2 * (headers.length - 1);
+  widths[0] = projectMax;
+  widths[3] = Math.max(headers[3].length, Math.min(widths[3], target - fixedWidth));
+  const format = (row: string[]) =>
+    row.map((cell, index) => (index === 0 ? shortenProject(cell, widths[index]) : shorten(cell, widths[index])).padEnd(widths[index])).join("  ").trimEnd();
+
+  console.log(format(headers));
+  console.log(format(widths.map((width) => "-".repeat(width))));
+  for (const row of rows) console.log(format(row));
+}
+
+function displayCommit(commit: { date: string; subject: string } | null, projectKey: string): string {
+  if (!commit) return "no commits";
+  const prefix = `${projectKey}: `;
+  const subject = commit.subject.startsWith(prefix) ? commit.subject.slice(prefix.length) : commit.subject;
+  return `${commit.date} ${subject}`;
+}
+
 export async function statusCommand(marrowHome: string): Promise<number> {
   const vault = vaultDir(marrowHome);
   const worktrees = await listProjectWorktrees(vault);
@@ -28,11 +72,11 @@ export async function statusCommand(marrowHome: string): Promise<number> {
   const unattached = await unattachedBranches(vault, worktrees);
   const unattachedNote = unattached.length === 0
     ? ""
-    : `${countLabel(unattached.length, "project branch", "project branches")} not attached here: ${unattached.join(", ")}`;
+    : `${countLabel(unattached.length, "project branch", "project branches")} not attached here`;
 
   if (worktrees.length === 0) {
     console.log("No projects attached on this machine. Run `marrow add <project-path>` to get started.");
-    if (unattachedNote) console.log(`The vault has ${unattachedNote}.`);
+    if (unattachedNote) printBranchList(`The vault has ${unattachedNote}`, unattached);
     return 0;
   }
 
@@ -45,7 +89,7 @@ export async function statusCommand(marrowHome: string): Promise<number> {
   for (const wt of worktrees) {
     if (wt.missing) {
       missingBranches.push(wt.branch);
-      rows.push([displayPath(wt.path), wt.branch, "missing", "-", "-"]);
+      rows.push([displayPath(wt.path), wt.branch, "missing", "-"]);
       continue;
     }
     const dirty = await dirtyCount(wt.path);
@@ -61,27 +105,25 @@ export async function statusCommand(marrowHome: string): Promise<number> {
     rows.push([
       displayPath(wt.path),
       wt.branch,
-      dirty > 0 ? countLabel(dirty, "uncommitted change") : "clean",
-      syncLabel(ab),
-      commit ? `${commit.date} ${commit.subject}` : "no commits",
+      `${dirty > 0 ? countLabel(dirty, "uncommitted change") : "clean"}, ${syncLabel(ab)}`,
+      displayCommit(commit, wt.branch),
     ]);
   }
 
-  const headers = ["PROJECT", "KEY", "CHANGES", "SYNC", "LAST COMMIT"];
-  const widths = headers.map((header, index) => Math.max(header.length, ...rows.map((row) => row[index].length)));
-  const format = (row: string[]) => row.map((cell, index) => cell.padEnd(widths[index])).join("  ").trimEnd();
-  console.log(format(headers));
-  console.log(format(widths.map((width) => "-".repeat(width))));
-  for (const row of rows) console.log(format(row));
-
-  const changes = dirtyTotal === 0 ? "all clean" : `${dirtyTotal} with uncommitted changes`;
+  const changeSummary = [
+    missingBranches.length > 0 ? `${missingBranches.length} missing` : "",
+    dirtyTotal > 0 ? `${dirtyTotal} with uncommitted changes` : "",
+  ].filter(Boolean);
+  const changes = changeSummary.join(", ") || "all clean";
   const sync = [
     unpushedTotal > 0 ? `${unpushedTotal} not pushed` : "",
     aheadTotal > 0 ? `${countLabel(aheadTotal, "commit")} to push` : "",
     behindTotal > 0 ? `${countLabel(behindTotal, "commit")} to pull` : "",
   ].filter(Boolean);
   console.log(`${countLabel(worktrees.length, "project")}: ${changes}, ${sync.join(", ") || "all synced"}`);
-  if (unattachedNote) console.log(unattachedNote);
+  console.log("");
+  printRows(rows);
+  if (unattachedNote) printBranchList(unattachedNote, unattached);
   if (missingBranches.length > 0) {
     const subject = missingBranches.length === 1 ? "its worktree directory" : "their worktree directories";
     console.log(

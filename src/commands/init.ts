@@ -1,16 +1,17 @@
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
+import { countLabel } from "../format";
 import { git, vaultDir } from "../git";
 import {
   configureOriginFetch,
   emptyLocalVault,
-  fetchedOriginBranches,
   isBareVault,
   originUrl,
   validateRemoteUrl,
   verifyOriginReachable,
   verifyPrivateVisibility,
 } from "../remote";
+import { listProjectBranches } from "../vault";
 
 export interface InitOptions { from?: string; dryRun?: boolean }
 class InitAbort extends Error {}
@@ -53,7 +54,7 @@ async function initFrom(marrowHome: string, source: string, dryRun: boolean): Pr
 
   console.log(`${mode === "clone" ? "cloned" : "hydrated"} vault from ${source}`);
   console.log(`origin: ${await originUrl(vault)}`);
-  console.log(`fetched branches: ${(await fetchedOriginBranches(vault)).length}`);
+  console.log(`fetched ${countLabel((await listProjectBranches(vault)).length, "project branch", "project branches")}`);
   console.log(visibility.message);
   return 0;
 }

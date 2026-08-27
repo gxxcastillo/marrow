@@ -34,7 +34,7 @@ describe("sync", () => {
     const agentsPath = await addProjectWorktree(fx, "alpha");
     await Bun.write(path.join(agentsPath, "note.md"), "note\n");
 
-    const code = await syncCommand([], {}, fx.marrowHome);
+    const { code } = await captureLogs(() => syncCommand([], {}, fx.marrowHome));
     expect(code).toBe(0);
     expect(await dirtyCount(agentsPath)).toBe(0);
 
@@ -50,7 +50,7 @@ describe("sync", () => {
     const agentsPath = await addProjectWorktree(fx, "alpha");
     await Bun.write(path.join(agentsPath, "note.md"), "note\n");
 
-    await syncCommand([], { message: "did a thing" }, fx.marrowHome);
+    await captureLogs(() => syncCommand([], { message: "did a thing" }, fx.marrowHome));
     const commit = await lastCommit(agentsPath);
     expect(commit?.subject).toBe("alpha: did a thing");
   });
@@ -59,7 +59,7 @@ describe("sync", () => {
     const agentsPath = await addProjectWorktree(fx, "alpha");
     const before = await lastCommit(agentsPath);
 
-    await syncCommand([], {}, fx.marrowHome);
+    await captureLogs(() => syncCommand([], {}, fx.marrowHome));
     const after = await lastCommit(agentsPath);
     expect(after?.subject).toBe(before?.subject);
   });
@@ -70,7 +70,7 @@ describe("sync", () => {
     await Bun.write(path.join(alphaPath, "note.md"), "note\n");
     await Bun.write(path.join(betaPath, "note.md"), "note\n");
 
-    const code = await syncCommand(["alpha"], {}, fx.marrowHome);
+    const { code } = await captureLogs(() => syncCommand(["alpha"], {}, fx.marrowHome));
     expect(code).toBe(0);
     expect(await dirtyCount(alphaPath)).toBe(0);
     expect(await dirtyCount(betaPath)).toBe(1);
@@ -109,7 +109,7 @@ describe("sync", () => {
     await Bun.write(path.join(agentsPath, "note.md"), "note\n");
     await git(["remote", "set-url", "origin", path.join(fx.root, "does-not-exist.git")], vaultDir(fx.marrowHome));
 
-    const code = await syncCommand([], {}, fx.marrowHome);
+    const { code } = await captureLogs(() => syncCommand([], {}, fx.marrowHome));
     expect(code).toBe(1);
   });
 
@@ -118,7 +118,7 @@ describe("sync", () => {
     await git(["remote", "remove", "origin"], vaultDir(fx.marrowHome));
     await Bun.write(path.join(agentsPath, "note.md"), "note\n");
 
-    const code = await syncCommand([], {}, fx.marrowHome);
+    const { code } = await captureLogs(() => syncCommand([], {}, fx.marrowHome));
     expect(code).toBe(0);
     expect(await dirtyCount(agentsPath)).toBe(0);
   });

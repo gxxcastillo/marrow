@@ -197,7 +197,7 @@ describe("remote lifecycle", () => {
 
     expect(code).toBe(0);
     expect(outLines).toContain(`cloned vault from ${fx.bareOrigin}`);
-    expect(outLines).toContain("fetched branches: 1");
+    expect(outLines).toContain("fetched 1 project branch");
     expect(outLines).toContain("gh not available; skipped origin visibility check");
     expect(await originUrl(vaultDir(fx.marrowHome))).toBe(fx.bareOrigin);
   });

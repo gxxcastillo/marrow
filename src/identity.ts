@@ -42,11 +42,15 @@ export async function resolveIdentity(projectArg: string, explicitId?: string): 
   // `existsSync` guards the fresh-create case (`marrow add <new-path> --id
   // <id>`): the directory may not exist on disk yet, and spawning git against
   // a nonexistent cwd throws instead of failing gracefully.
-  const root = existsSync(dir) ? await git(["rev-parse", "--show-toplevel"], dir) : { code: 1, stdout: "" };
+  const exists = existsSync(dir);
+  const root = exists ? await git(["rev-parse", "--show-toplevel"], dir) : { code: 1, stdout: "" };
   if (root.code === 0) {
     dir = root.stdout;
   } else if (explicitId === undefined) {
-    throw new Error(`${dir} is not a git repository; pass --id <stable-id> for a project without origin`);
+    const reason = exists ? "is not a git repository" : "does not exist";
+    throw new Error(
+      `${dir} ${reason}; if the project already exists elsewhere, clone it here first — otherwise pass --id <stable-id> to create a new project there`,
+    );
   }
 
   let id = explicitId;

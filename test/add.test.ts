@@ -268,62 +268,19 @@ describe("add", () => {
     expect(existsSync(path.join(projectDir, ".agents"))).toBe(false);
   });
 
-  test("dispatches to adopt when .agents already exists, and to fresh-create otherwise", async () => {
-    const existing = await makeProjectRepo(fx, "alpha", "ignored");
-    const { code: adoptCode, outLines: adoptOut } = await captureLogs(() =>
-      addCommand(existing, {}, fx.marrowHome, fx.toolRoot),
+  test("attaches an existing branch when there is no local .agents directory", async () => {
+    const seededAgents = await addProjectWorktree(fx, "seeded", "local/attach");
+    await git(["worktree", "remove", seededAgents], vaultDir(fx.marrowHome));
+    const projectDir = path.join(fx.projectsRoot, "attach");
+    await mkdir(projectDir, { recursive: true });
+
+    const { code, outLines } = await captureLogs(() =>
+      addCommand(projectDir, { id: "local/attach" }, fx.marrowHome, fx.toolRoot),
     );
-    expect(adoptCode).toBe(0);
-    expect(adoptOut.join("\n")).toContain("added 'alpha': adopted existing .agents");
 
-    const fresh = path.join(fx.projectsRoot, "brandnew");
-    const { code: freshCode, outLines: freshOut } = await captureLogs(() =>
-      addCommand(fresh, { id: "local/brandnew" }, fx.marrowHome, fx.toolRoot),
-    );
-    expect(freshCode).toBe(0);
-    expect(freshOut.join("\n")).toContain("added 'brandnew': created .agents");
-  });
-
-  test("plans each accepted add mode before executing it", async () => {
-    const cases: {
-      name: string;
-      setup: () => Promise<{ projectDir: string; opts: Parameters<typeof addCommand>[1] }>;
-      expected: string;
-    }[] = [
-      {
-        name: "adopt",
-        setup: async () => ({ projectDir: await makeProjectRepo(fx, "table-adopt", "ignored"), opts: {} }),
-        expected: "adopted existing .agents",
-      },
-      {
-        name: "create",
-        setup: async () => ({
-          projectDir: path.join(fx.projectsRoot, "table-create"),
-          opts: { id: "local/table-create" },
-        }),
-        expected: "created .agents",
-      },
-      {
-        name: "attach",
-        setup: async () => {
-          const seededAgents = await addProjectWorktree(fx, "seeded", "local/table-attach");
-          await git(["worktree", "remove", seededAgents], vaultDir(fx.marrowHome));
-          const projectDir = path.join(fx.projectsRoot, "table-attach");
-          await mkdir(projectDir, { recursive: true });
-          return { projectDir, opts: { id: "local/table-attach" } };
-        },
-        expected: "attached local/table-attach",
-      },
-    ];
-
-    for (const c of cases) {
-      const { projectDir, opts } = await c.setup();
-      const { code, outLines } = await captureLogs(() => addCommand(projectDir, opts, fx.marrowHome, fx.toolRoot));
-
-      expect(code, c.name).toBe(0);
-      expect(outLines.join("\n"), c.name).toContain(c.expected);
-      expect(existsSync(path.join(projectDir, ".agents", ".git")), c.name).toBe(true);
-    }
+    expect(code).toBe(0);
+    expect(outLines.join("\n")).toContain("attached local/attach");
+    expect(existsSync(path.join(projectDir, ".agents", ".git"))).toBe(true);
   });
 
   test("plans conflict precedence without mutating rejected targets", async () => {

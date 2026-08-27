@@ -41,19 +41,19 @@ describe("grep", () => {
     const agentsPath = await addProjectWorktree(fx, "alpha");
     await Bun.write(path.join(agentsPath, "note.md"), "findme-marker\n");
 
-    const code = await grepCommand("findme-marker", [], fx.marrowHome);
+    const code = await grepCommand("findme-marker", ["-q"], fx.marrowHome);
     expect(code).toBe(0);
   });
 
   test("exits non-zero when nothing matches", async () => {
     await addProjectWorktree(fx, "alpha");
-    const code = await grepCommand("no-such-pattern-anywhere", [], fx.marrowHome);
+    const code = await grepCommand("no-such-pattern-anywhere", ["-q"], fx.marrowHome);
     expect(code).not.toBe(0);
   });
 
   test("stays silent when every vault branch is attached here", async () => {
     await addProjectWorktree(fx, "alpha");
-    const { errLines } = await captureLogs(() => grepCommand("findme-marker", [], fx.marrowHome));
+    const { errLines } = await captureLogs(() => grepCommand("findme-marker", ["-q"], fx.marrowHome));
     expect(errLines).toEqual([]);
   });
 
@@ -63,7 +63,7 @@ describe("grep", () => {
     await addUnattachedBranch(fx, "beta");
     await addUnattachedBranch(fx, "gamma");
 
-    const { errLines } = await captureLogs(() => grepCommand("findme-marker", [], fx.marrowHome));
+    const { errLines } = await captureLogs(() => grepCommand("findme-marker", ["-q"], fx.marrowHome));
     expect(errLines).toHaveLength(1);
     expect(errLines[0]).toContain("searched 1 of 3 project branches");
     expect(errLines[0]).toContain("beta, gamma");
@@ -87,7 +87,7 @@ describe("grep", () => {
     const betaPath = await addProjectWorktree(fx, "beta");
     await Bun.write(path.join(betaPath, "note.md"), "findme-marker\n");
 
-    const { code, errLines } = await captureLogs(() => grepCommand("findme-marker", [], fx.marrowHome));
+    const { code, errLines } = await captureLogs(() => grepCommand("findme-marker", ["-q"], fx.marrowHome));
     expect(code).toBe(0);
     expect(errLines.join("\n")).toContain("skipping 1 branch with a missing worktree directory");
     expect(errLines.join("\n")).toContain("marrow detach <project>");
