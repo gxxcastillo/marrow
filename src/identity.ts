@@ -35,8 +35,10 @@ export function githubProjectId(url: string): string | null {
 }
 
 export async function resolveIdentity(projectArg: string, explicitId?: string): Promise<ProjectIdentity> {
+  // `undefined` means no --id was given; an empty --id is a bad value, not an
+  // absent one, and must fail validation rather than silently deriving an id.
   let dir = path.resolve(projectArg);
-  if (!explicitId) {
+  if (explicitId === undefined) {
     const root = await git(["rev-parse", "--show-toplevel"], dir);
     if (root.code !== 0) {
       throw new Error(`${dir} is not a git repository; pass --id <stable-id> for a project without origin`);
@@ -45,7 +47,7 @@ export async function resolveIdentity(projectArg: string, explicitId?: string): 
   }
 
   let id = explicitId;
-  if (!id) {
+  if (id === undefined) {
     const origin = await git(["remote", "get-url", "origin"], dir);
     const resolved = origin.code === 0 ? githubProjectId(origin.stdout) : null;
     if (!resolved) {

@@ -154,6 +154,13 @@ describe("identity: resolveIdentity", () => {
     await expect(resolveIdentity(dir)).rejects.toThrow(/no supported GitHub origin/);
   });
 
+  test("rejects an empty explicit id instead of silently deriving one", async () => {
+    // `--id ""` is a bad value, not an absent flag: it must not fall through to
+    // origin-derived identity, even in a repo where derivation would succeed.
+    const dir = await makeRepo("empty-id", "git@github.com:gxxcastillo/ossa.git");
+    await expect(resolveIdentity(dir, "")).rejects.toThrow(/invalid project id ''/);
+  });
+
   test.each([
     ["Ossa"], // uppercase
     ["-alpha"], // must start alphanumeric
