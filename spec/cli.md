@@ -163,9 +163,9 @@ stale relative to a remote no one has pulled recently. The summary names the pro
 count, missing worktrees, uncommitted projects, and sync work remaining.
 
 The table covers attached worktrees only. When the vault holds project branches with no
-worktree here, a note follows the table — `2 project branches not attached here:` with
-one branch per following indented line — so a partially attached machine is not read as a
-complete view. With zero project worktrees, prints `No projects attached on this machine.
+worktree here, a blank line and note follow the table — `2 project branches not attached
+here:` with one branch per following indented line — so a partially attached machine is
+not read as a complete view. With zero project worktrees, prints `No projects attached on this machine.
 Run \`marrow add <project-path>\` to get started.` instead, followed by `The vault has
 <n> project branches not attached here:` and one branch per following indented line when
 any exist — an empty vault and an unattached one are different situations and must not
@@ -174,8 +174,9 @@ print the same thing. Always exits `0`.
 A registered worktree whose directory no longer exists on disk (deleted out from under the
 registration, rather than detached through marrow) still gets a row: `STATUS` prints
 `missing` and `LAST COMMIT` prints `-`. After the table and any unattached-branch note,
-one further line names every such project and its remediation: `1 project missing its
-worktree directory; run \`marrow detach
+a blank line separates this remediation from the table when there was no earlier
+post-table note. One further line names every such project and its remediation:
+`1 project missing its worktree directory; run \`marrow detach
 <project>\` to clear the registration: <branch>`.
 
 ## `sync`

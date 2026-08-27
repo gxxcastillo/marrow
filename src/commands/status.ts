@@ -123,8 +123,14 @@ export async function statusCommand(marrowHome: string): Promise<number> {
   console.log(`${countLabel(worktrees.length, "project")}: ${changes}, ${sync.join(", ") || "all synced"}`);
   console.log("");
   printRows(rows);
-  if (unattachedNote) printBranchList(unattachedNote, unattached);
+  let printedPostTableNote = false;
+  if (unattachedNote) {
+    console.log("");
+    printBranchList(unattachedNote, unattached);
+    printedPostTableNote = true;
+  }
   if (missingBranches.length > 0) {
+    if (!printedPostTableNote) console.log("");
     const subject = missingBranches.length === 1 ? "its worktree directory" : "their worktree directories";
     console.log(
       `${countLabel(missingBranches.length, "project")} missing ${subject}; run \`marrow detach <project>\` to clear ` +

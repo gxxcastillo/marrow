@@ -97,6 +97,7 @@ describe("status", () => {
     const { code, outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
     expect(code).toBe(0);
     expect(outLines[0]).toBe("1 project: all clean, all synced");
+    expect(outLines.at(-3)).toBe("");
     expect(outLines.at(-2)).toBe("1 project branch not attached here:");
     expect(outLines.at(-1)).toBe("  beta");
   });
@@ -123,6 +124,7 @@ describe("status", () => {
     expect(row).toContain("missing");
     expect(outLines.some((l) => l.includes("beta") && l.includes("clean"))).toBe(true);
     expect(outLines[0]).toBe("2 projects: 1 missing, all synced");
+    expect(outLines.at(-2)).toBe("");
     expect(outLines.at(-1)).toBe(
       "1 project missing its worktree directory; run `marrow detach <project>` to clear the registration: alpha",
     );
