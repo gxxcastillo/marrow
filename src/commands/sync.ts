@@ -81,13 +81,22 @@ export async function syncCommand(targets: string[], opts: SyncOptions, marrowHo
   }
 
   if (await hasOrigin(vault)) {
-    const pushRes = await git(["push", "origin", "--all"], vault);
-    if (pushRes.code !== 0) {
-      // Offline / unreachable push is tolerated in --auto mode; still surfaced as an error otherwise.
-      if (!opts.auto) hadError = true;
-      await report(marrowHome, opts.auto, `push: ERROR ${pushRes.stderr}`, true);
+    // Scoped to this machine's attached worktree branches, not `--all`: a
+    // bare-cloned vault (`init --from`) mirrors every branch as a local head,
+    // including ones never attached here. Pushing those stale heads fails
+    // non-fast-forward the moment another machine advances them.
+    const pushBranches = all.map((wt) => wt.branch);
+    if (pushBranches.length === 0) {
+      await report(marrowHome, opts.auto, "push: skipped (no project worktrees)");
     } else {
-      await report(marrowHome, opts.auto, "push: ok");
+      const pushRes = await git(["push", "origin", ...pushBranches], vault);
+      if (pushRes.code !== 0) {
+        // Offline / unreachable push is tolerated in --auto mode; still surfaced as an error otherwise.
+        if (!opts.auto) hadError = true;
+        await report(marrowHome, opts.auto, `push: ERROR ${pushRes.stderr}`, true);
+      } else {
+        await report(marrowHome, opts.auto, "push: ok");
+      }
     }
   } else {
     await report(marrowHome, opts.auto, "push: skipped (no origin)", true);

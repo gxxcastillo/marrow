@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { addCommand } from "../src/commands/add";
 import { doctorCommand } from "../src/commands/doctor";
+import { syncCommand } from "../src/commands/sync";
 import { git, listProjectWorktrees, vaultDir } from "../src/git";
 import { makeFixture, makeProjectRepo, type Fixture } from "./fixtures";
 import { captureLogs } from "./helpers";
@@ -60,4 +61,29 @@ describe("multi-machine attachment", () => {
     expect(outLines.some((line) => line.includes("has no worktree"))).toBe(false);
   });
 
+  test("sync pushes cleanly from a second machine after another machine advances a branch it hasn't attached", async () => {
+    const machineA = await makeProjectRepo(fx, "alpha", "ignored");
+    expect(await addCommand(machineA, {}, fx.marrowHome, fx.toolRoot)).toBe(0);
+    const betaOnA = await makeProjectRepo(fx, "beta", "ignored");
+    expect(await addCommand(betaOnA, {}, fx.marrowHome, fx.toolRoot)).toBe(0);
+
+    const machineBHome = await cloneVaultForSecondMachine(fx);
+    const machineBBeta = await secondProject(fx, "beta");
+    expect(await addCommand(machineBBeta, {}, machineBHome, fx.toolRoot)).toBe(0);
+
+    // Machine A advances alpha, a branch machine B carries a stale local head
+    // for (the full-mirror `clone --bare`) but has never attached a worktree to.
+    await Bun.write(path.join(machineA, ".agents", "advance.md"), "advanced\n");
+    expect(await syncCommand([], {}, fx.marrowHome)).toBe(0);
+
+    // Machine B commits its own beta change and syncs.
+    await Bun.write(path.join(machineBBeta, ".agents", "note.md"), "note\n");
+    const { code, errLines } = await captureLogs(() => syncCommand([], {}, machineBHome));
+
+    expect(code).toBe(0);
+    expect(errLines).toEqual([]);
+    const remoteBeta = await git(["rev-parse", "origin/beta"], vaultDir(machineBHome));
+    const localBeta = await git(["rev-parse", "refs/heads/beta"], vaultDir(machineBHome));
+    expect(remoteBeta.stdout).toBe(localBeta.stdout);
+  });
 });

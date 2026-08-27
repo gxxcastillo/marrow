@@ -176,11 +176,16 @@ reconciliation. For each remaining dirty target, `git add -A` then
 `-m` value if given, else `sync <ISO-8601 local timestamp, second precision>`. A clean
 project is skipped — its last commit is untouched.
 
-After every target has been processed (regardless of per-project failures), one
-`git push origin --all` runs from `<MARROW_HOME>/vault.git`. If `origin` isn't configured,
-the push is skipped with a warning (not a failure). Concurrent syncs of the same project
-serialize on git's own lock; a lock failure should be treated as retryable, not a hard
-error.
+After every target has been processed (regardless of per-project failures), `sync` pushes
+every project branch attached on this machine — `git push origin <branch>...` over the
+full local worktree list, not just the named targets — run once from
+`<MARROW_HOME>/vault.git`. This is scoped deliberately: `init --from`'s bare clone mirrors
+every branch as a local head, including branches this machine has never attached, and
+pushing `--all` would push those stale local heads too, failing non-fast-forward the
+moment another machine has advanced one of them. If `origin` isn't configured, the push is
+skipped with a warning (not a failure); with no project worktrees attached, it is skipped
+as well. Concurrent syncs of the same project serialize on git's own lock; a lock failure
+should be treated as retryable, not a hard error.
 
 `--auto`: for a session-end hook or a periodic timer. Every line normally printed to
 stdout/stderr instead appends to `<MARROW_HOME>/logs/sync.log` (created if absent), one
