@@ -5,18 +5,22 @@ Authoritative on command syntax, options, output, and exit codes.
 Global behavior: plain text output, one line per project where applicable. `MARROW_HOME`
 names the vault parent directory; every command that touches the vault's git history
 actually runs `git` against `<MARROW_HOME>/vault.git`, the bare repo (see
-`architecture.md` → Env overrides), initialized by [`init`](#init). Commands that are
-not part of vault setup assume that bare repo already exists; if it doesn't, they fail
-with an uncaught error (stack trace, non-zero exit) rather than a clean message — this is
-a known gap, not a designed error path.
+`architecture.md` → Env overrides), initialized by [`init`](#init). Every command except
+[`init`](#init) and [`convention`](#convention) requires that bare repo to already exist:
+`marrow` checks for it before dispatching and prints `no vault at <path> — run \`marrow
+init\`` to stderr, exit `1`, rather than letting the command underneath fail with an
+uncaught error.
 `templates/`, `CONVENTION.md` and `package.json` are resolved relative to the running
 tool's own install location, never relative to `MARROW_HOME`.
 
 **Global flags.** `-h`/`--help` prints the usage block to stdout and exits `0`;
-`<command> --help` (or `-h`) prints that one command's usage line and summary, also to
-stdout, exit `0`. `-v`/`--version` prints `marrow <version>`, read from the tool's own
-`package.json`, and exits `0`. [`grep`](#grep) is the exception: its arguments are never
-parsed by marrow, so `-h`/`--help` after `marrow grep` reach `rg` verbatim.
+`<command> --help` (or `-h`) prints that one command's usage line, its one-line summary,
+any documented options (one line each, in the command's own `[flags]` order), and the
+command's own help paragraph if it has one — all to stdout, exit `0`, and generated from
+the same command table this document is. `-v`/`--version` prints `marrow <version>`, read
+from the tool's own `package.json`, and exits `0`. [`grep`](#grep) is the exception: its
+arguments are never parsed by marrow, so `-h`/`--help` after `marrow grep` reach `rg`
+verbatim.
 
 **Dispatch errors.** No command, an unknown command, a required argument missing, or an
 unrecognized/malformed option prints usage to stderr and exits `2`. Option errors print

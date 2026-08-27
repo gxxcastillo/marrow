@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import path from "node:path";
 import { main } from "../src/cli";
+import { vaultDir } from "../src/git";
 import { FIXTURE_VERSION, makeFixture, type Fixture } from "./fixtures";
 import { captureLogs } from "./helpers";
 
@@ -90,6 +92,29 @@ describe("cli dispatch", () => {
     expect(outLines.join("\n")).toContain("usage: marrow add <project-path> [--id <stable-id>] [--dry-run]");
   });
 
+  test("per-command --help documents every option and prints the command's help paragraph", async () => {
+    const { outLines } = await call(["add", "--help"]);
+    const help = outLines.join("\n");
+    expect(help).toContain("Options:");
+    expect(help).toContain("--dry-run");
+    expect(help).toContain("preview without writing anything");
+    expect(help).toContain("--id");
+    expect(help).toContain("stable identity for a project with no supported GitHub origin");
+    expect(help).toContain("attended-only operation");
+  });
+
+  test("per-command --help documents a short option alongside its long form", async () => {
+    const { outLines } = await call(["sync", "--help"]);
+    const help = outLines.join("\n");
+    expect(help).toContain("--message, -m");
+    expect(help).toContain("commit message text");
+  });
+
+  test("a command with no documented options prints no Options section", async () => {
+    const { outLines } = await call(["status", "--help"]);
+    expect(outLines.join("\n")).not.toContain("Options:");
+  });
+
   test("grep does not intercept flags meant for rg", async () => {
     // Raw command: --help reaches grepCommand as an rg arg, not marrow's help.
     // The empty vault short-circuits before rg is spawned.
@@ -102,5 +127,39 @@ describe("cli dispatch", () => {
     const { code, outLines } = await call(["status"]);
     expect(code).toBe(0);
     expect(outLines).toEqual(["No projects attached on this machine. Run `marrow add <project-path>` to get started."]);
+  });
+});
+
+describe("first-run guard (no vault yet)", () => {
+  let fx: Fixture;
+
+  beforeEach(async () => {
+    fx = await makeFixture();
+  });
+
+  afterEach(async () => {
+    await fx.cleanup();
+  });
+
+  test.each([
+    ["status", []],
+    ["sync", []],
+    ["add", ["/tmp/whatever"]],
+    ["doctor", []],
+    ["grep", ["pattern"]],
+    ["detach", ["whatever"]],
+    ["publish", ["owner/repo"]],
+  ])("%s fails with one actionable line and exit 1 when there's no vault yet", async (command, args) => {
+    const noVaultHome = path.join(fx.root, "no-vault-home");
+    const { code, outLines, errLines } = await captureLogs(() => main([command, ...args], noVaultHome, fx.toolRoot));
+    expect(code).toBe(1);
+    expect(outLines).toEqual([]);
+    expect(errLines).toEqual([`no vault at ${vaultDir(noVaultHome)} — run \`marrow init\``]);
+  });
+
+  test.each(["init", "convention"])("%s does not require a vault to already exist", async (command) => {
+    const noVaultHome = path.join(fx.root, "no-vault-home");
+    const { code } = await captureLogs(() => main([command, ...(command === "init" ? ["--dry-run"] : [])], noVaultHome, fx.toolRoot));
+    expect(code).toBe(0);
   });
 });

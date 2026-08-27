@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { git, run, vaultDir } from "../git";
 import { commandOnPath, configureOriginFetch, originUrl, verifyOriginReachable, verifyPrivateVisibility } from "../remote";
 import { branchesForPublish, ensureVaultLandingBranch } from "../vault";
@@ -45,7 +44,6 @@ export async function publishCommand(slug: string, opts: PublishOptions, marrowH
   let pushed = false;
   try {
     validateSlug(slug);
-    if (!existsSync(vault)) throw new PublishAbort(`vault does not exist: ${vault}`);
     const existingOrigin = await originUrl(vault);
     if (existingOrigin) throw new PublishAbort(`vault already uses origin ${existingOrigin}`);
     const branches = await branchesForPublish(vault);
