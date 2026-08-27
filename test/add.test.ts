@@ -4,7 +4,8 @@ import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { addCommand } from "../src/commands/add";
 import { git, listProjectWorktrees, vaultDir } from "../src/git";
-import { makeFixture, makeProjectRepo, type Fixture } from "./fixtures";
+import { branchFor } from "../src/identity";
+import { addProjectWorktree, makeFixture, makeProjectRepo, type Fixture } from "./fixtures";
 import { captureLogs, listFilesRecursive } from "./helpers";
 
 const branch = (name: string) => name;
@@ -154,10 +155,10 @@ describe("add", () => {
       expect(readme).toContain("## Persistence");
 
       const worktrees = await listProjectWorktrees(vaultDir(fx.marrowHome));
-      expect(worktrees.map((w) => w.branch)).toContain("personal/freshproj");
+      expect(worktrees.map((w) => w.branch)).toContain(branchFor("personal/freshproj"));
 
       const rev = await git(["rev-parse", "HEAD"], agentsPath);
-      const remoteRev = await git(["rev-parse", "origin/personal/freshproj"], agentsPath);
+      const remoteRev = await git(["rev-parse", `origin/${branchFor("personal/freshproj")}`], agentsPath);
       expect(remoteRev.stdout).toBe(rev.stdout);
     });
 
@@ -208,7 +209,7 @@ describe("add", () => {
 
     test("fails if a branch of that name already exists in marrow", async () => {
       const otherAgents = path.join(fx.projectsRoot, "other", ".agents");
-      await git(["worktree", "add", "--orphan", "-b", "personal/dupbranch", otherAgents], vaultDir(fx.marrowHome));
+      await git(["worktree", "add", "--orphan", "-b", branchFor("personal/dupbranch"), otherAgents], vaultDir(fx.marrowHome));
       // An orphan branch has no ref until its first commit ("unborn branch").
       await git(["commit", "--allow-empty", "-q", "-m", "seed"], otherAgents);
 
@@ -234,5 +235,100 @@ describe("add", () => {
     );
     expect(freshCode).toBe(0);
     expect(freshOut.join("\n")).toContain("added 'brandnew': created .agents");
+  });
+
+  test("plans each accepted add mode before executing it", async () => {
+    const cases: {
+      name: string;
+      setup: () => Promise<{ projectDir: string; opts: Parameters<typeof addCommand>[1] }>;
+      expected: string;
+    }[] = [
+      {
+        name: "adopt",
+        setup: async () => ({ projectDir: await makeProjectRepo(fx, "table-adopt", "ignored"), opts: {} }),
+        expected: "adopted existing .agents",
+      },
+      {
+        name: "create",
+        setup: async () => ({
+          projectDir: path.join(fx.projectsRoot, "table-create"),
+          opts: { id: "personal/table-create" },
+        }),
+        expected: "created .agents",
+      },
+      {
+        name: "attach",
+        setup: async () => {
+          const seededAgents = await addProjectWorktree(fx, "seeded", branchFor("personal/table-attach"));
+          await git(["worktree", "remove", seededAgents], vaultDir(fx.marrowHome));
+          const projectDir = path.join(fx.projectsRoot, "table-attach");
+          await mkdir(projectDir, { recursive: true });
+          return { projectDir, opts: { id: "personal/table-attach" } };
+        },
+        expected: "attached personal/table-attach",
+      },
+    ];
+
+    for (const c of cases) {
+      const { projectDir, opts } = await c.setup();
+      const { code, outLines } = await captureLogs(() => addCommand(projectDir, opts, fx.marrowHome, fx.toolRoot));
+
+      expect(code, c.name).toBe(0);
+      expect(outLines.join("\n"), c.name).toContain(c.expected);
+      expect(existsSync(path.join(projectDir, ".agents", ".git")), c.name).toBe(true);
+    }
+  });
+
+  test("plans conflict precedence without mutating rejected targets", async () => {
+    const cases: {
+      name: string;
+      setup: () => Promise<{ projectDir: string; opts?: Parameters<typeof addCommand>[1]; unchangedPath: string }>;
+      expected: string;
+    }[] = [
+      {
+        name: "wrong worktree at target",
+        setup: async () => {
+          const projectDir = await makeProjectRepo(fx, "wrong-target", "ignored");
+          const agentsPath = path.join(projectDir, ".agents");
+          await rm(agentsPath, { recursive: true, force: true });
+          await git(["worktree", "add", "--orphan", "-b", branchFor("personal/other"), agentsPath], vaultDir(fx.marrowHome));
+          return { projectDir, unchangedPath: agentsPath };
+        },
+        expected: "is a worktree for 'personal/other'",
+      },
+      {
+        name: "same branch attached elsewhere",
+        setup: async () => {
+          const projectDir = await makeProjectRepo(fx, "attached-elsewhere", "ignored");
+          const agentsPath = path.join(projectDir, ".agents");
+          const otherAgents = path.join(fx.projectsRoot, "attached-elsewhere-other", ".agents");
+          await git(["worktree", "add", "--orphan", "-b", branch("attached-elsewhere"), otherAgents], vaultDir(fx.marrowHome));
+          await git(["commit", "--allow-empty", "-q", "-m", "seed"], otherAgents);
+          return { projectDir, unchangedPath: agentsPath };
+        },
+        expected: "already attached",
+      },
+      {
+        name: "local content and existing branch",
+        setup: async () => {
+          const projectDir = await makeProjectRepo(fx, "branch-and-content", "ignored");
+          const agentsPath = path.join(projectDir, ".agents");
+          const seededAgents = await addProjectWorktree(fx, "branch-and-content-seed", branch("branch-and-content"));
+          await git(["worktree", "remove", seededAgents], vaultDir(fx.marrowHome));
+          return { projectDir, unchangedPath: agentsPath };
+        },
+        expected: "has local content",
+      },
+    ];
+
+    for (const c of cases) {
+      const { projectDir, opts = {}, unchangedPath } = await c.setup();
+      const before = await listFilesRecursive(unchangedPath);
+      const { code, errLines } = await captureLogs(() => addCommand(projectDir, opts, fx.marrowHome, fx.toolRoot));
+
+      expect(code, c.name).toBe(1);
+      expect(errLines.join("\n"), c.name).toContain(c.expected);
+      expect(await listFilesRecursive(unchangedPath), c.name).toEqual(before);
+    }
   });
 });

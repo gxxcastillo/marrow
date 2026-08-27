@@ -33,9 +33,7 @@ used to be the same repository, which meant marrow could never adopt its own `.a
 without nesting a worktree inside its own main checkout. With the split, marrow's own
 `.agents/` is an ordinary `marrow add .` from the tool checkout — a vault worktree at
 `~/dev/marrow/.agents`, right next to the tool's own source, no different from any other
-adopted project. That is the whole of the rationale; the retrofit it required is recorded
-as Phase 2.5 of the build plan (`../.agents/plans/implementation-plan.md`, in the vault
-worktree).
+adopted project. That is the whole of the rationale.
 
 ## Design model
 
@@ -58,7 +56,7 @@ an independent orphan history, and none of them share history with the tool repo
 `main` is only a GitHub default branch with a short README; it is not registry data,
 project memory, or tool configuration. Cross-project search is `marrow grep`, not `git
 log` or `git merge`. This makes push races between projects structurally impossible
-(disjoint branches); a concurrent sync of the *same* project serializes on git's own lock
+(disjoint branches); a concurrent sync of the _same_ project serializes on git's own lock
 and should be treated as a retryable warning, not an error.
 
 **Deliberate syncs are primary; automation is the floor.** The expected rhythm is an
@@ -69,8 +67,8 @@ see `cli.md` → `sync`.
 
 ## Env overrides
 
-| Var | Purpose | Default |
-|---|---|---|
+| Var           | Purpose                                                                                                              | Default     |
+| ------------- | -------------------------------------------------------------------------------------------------------------------- | ----------- |
 | `MARROW_HOME` | vault parent directory — contains `vault.git/` (the bare repo git commands actually target), `backups/`, and `logs/` | `~/.marrow` |
 
 There is no env var for the tool's own location. `templates/` and `CONVENTION.md` are
@@ -140,7 +138,7 @@ is nothing to gitignore, since there's no enclosing repo to accidentally track t
 
 ## Non-goals
 
-- **Not a sync tool for `.agents/` *content* rules.** What belongs inside `.agents/` —
+- **Not a sync tool for `.agents/` _content_ rules.** What belongs inside `.agents/` —
   file names, when to promote content upward, maintenance discipline — is
   `../CONVENTION.md`'s job. marrow only backs the directory with git; it has no opinion
   on what's written there.

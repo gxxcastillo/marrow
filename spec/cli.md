@@ -24,16 +24,16 @@ the parser's message first, then the command's usage line. Usage text is generat
 single command table in `src/cli.ts` — the per-command syntax in this document and in
 `--help` come from the same source.
 
-| Command | Purpose | Mutates |
-|---|---|---|
-| [`init`](#init) | initialize the local vault, empty or from an existing remote | vault (create/clone/configure/fetch) |
-| [`publish`](#publish) | publish the vault to a new private GitHub remote | GitHub, vault remote refs |
-| [`status`](#status) | per-project worktree health | no |
-| [`sync`](#sync) | commit + push project worktrees | project worktrees, vault |
-| [`add`](#add) | bring a project's `.agents/` under marrow — adopts if one exists, creates fresh otherwise | project dir, vault |
-| [`doctor`](#doctor) | vault + worktree health checks | no |
-| [`grep`](#grep) | search across all project worktrees | no |
-| [`convention`](#convention) | print `CONVENTION.md` | no |
+| Command                     | Purpose                                                                                   | Mutates                              |
+| --------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------ |
+| [`init`](#init)             | initialize the local vault, empty or from an existing remote                              | vault (create/clone/configure/fetch) |
+| [`publish`](#publish)       | publish the vault to a new private GitHub remote                                          | GitHub, vault remote refs            |
+| [`status`](#status)         | per-project worktree health                                                               | no                                   |
+| [`sync`](#sync)             | commit + push project worktrees                                                           | project worktrees, vault             |
+| [`add`](#add)               | bring a project's `.agents/` under marrow — adopts if one exists, creates fresh otherwise | project dir, vault                   |
+| [`doctor`](#doctor)         | vault + worktree health checks                                                            | no                                   |
+| [`grep`](#grep)             | search across all project worktrees                                                       | no                                   |
+| [`convention`](#convention) | print `CONVENTION.md`                                                                     | no                                   |
 
 ## `init`
 
@@ -49,10 +49,10 @@ configures `origin`, fetches, pushes, or creates a remote.
 With `--from`, initializes this machine from an already-created private vault remote.
 `<vault-url>` is a generic Git URL. There are only two accepted local states:
 
-| Local state | Behavior |
-|---|---|
-| `<MARROW_HOME>/vault.git` does not exist | Bare-clone `<vault-url>` into that path, fetch remote refs, and verify reachability/private visibility |
-| `<MARROW_HOME>/vault.git` exists, has no local branches, has no project worktrees, and has no `origin` | Configure `origin`, fetch remote refs, and verify reachability/private visibility |
+| Local state                                                                                            | Behavior                                                                                               |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `<MARROW_HOME>/vault.git` does not exist                                                               | Bare-clone `<vault-url>` into that path, fetch remote refs, and verify reachability/private visibility |
+| `<MARROW_HOME>/vault.git` exists, has no local branches, has no project worktrees, and has no `origin` | Configure `origin`, fetch remote refs, and verify reachability/private visibility                      |
 
 Every other local state is refused before mutation: an existing `origin`, any local
 branch, any project worktree, or a non-bare/non-git file at the vault path. `init --from`
@@ -151,8 +151,7 @@ or a count of commits to push and/or pull. "Uncommitted changes" counts lines fr
 `HEAD` against the local `origin/<branch>` ref — it does not fetch first, so it can be
 stale relative to a remote no one has pulled recently. Ends with a grammatical summary of
 the project count, uncommitted projects, and sync work remaining. With zero project
-worktrees, prints `No projects attached on this machine. Run \`marrow add <project-path>\` to get started.`
-instead. Always exits `0`.
+worktrees, prints `No projects attached on this machine. Run \`marrow add <project-path>\` to get started.`instead. Always exits`0`.
 
 ## `sync`
 
@@ -231,15 +230,15 @@ on stderr and exit `1`, `--dry-run` included):
 4. `<project-path>` must be a git repository, and `.agents` must not be **tracked** by it (see
    the state table below).
 
-| Parent-repo state of `.agents` | Precondition result | What happens |
-|---|---|---|
-| ignored (matched by `.gitignore`) | pass | proceeds silently |
-| untracked, not ignored | pass | appends `.agents/` to `<project-path>/.gitignore` (creating the file if absent); prints a reminder that *the parent-repo commit of that `.gitignore` change is the user's to make* — `add` never commits in a repo it doesn't own |
-| tracked (in the parent repo's index) | **abort** | prints the exact untracking steps (`git rm -r --cached .agents`, add `.gitignore`, commit) and tells the user to re-run `add` after — this is a manual, attended step; see `safety.md` |
-| not a git repository | **abort** | reports that the parent directory isn't a git repo |
+| Parent-repo state of `.agents`       | Precondition result | What happens                                                                                                                                                                                                                      |
+| ------------------------------------ | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ignored (matched by `.gitignore`)    | pass                | proceeds silently                                                                                                                                                                                                                 |
+| untracked, not ignored               | pass                | appends `.agents/` to `<project-path>/.gitignore` (creating the file if absent); prints a reminder that _the parent-repo commit of that `.gitignore` change is the user's to make_ — `add` never commits in a repo it doesn't own |
+| tracked (in the parent repo's index) | **abort**           | prints the exact untracking steps (`git rm -r --cached .agents`, add `.gitignore`, commit) and tells the user to re-run `add` after — this is a manual, attended step; see `safety.md`                                            |
+| not a git repository                 | **abort**           | reports that the parent directory isn't a git repo                                                                                                                                                                                |
 
 **`--dry-run`**: runs preconditions and the `.gitignore`-state check (reporting what it
-*would* append, without writing), then prints the six numbered steps below with resolved
+_would_ append, without writing), then prints the six numbered steps below with resolved
 paths, and exits `0`. Nothing is written to disk in either the project directory or the
 vault — safe to run against a real project.
 
@@ -254,7 +253,7 @@ vault — safe to run against a real project.
 
 **Verification.** After the push (or the no-origin notice) succeeds, a recursive file-count/size snapshot of the new
 worktree (excluding `.git`) is compared against the snapshot taken before step 1. If the
-after-count or after-size is *smaller* than before, the commit (and push, if any) have already
+after-count or after-size is _smaller_ than before, the commit (and push, if any) have already
 happened, but the command prints a `WARNING possible content loss` naming the backup
 tarball and exits `1` — a human needs to look. Otherwise it prints the add result with
 before/after counts and sizes, the backup path, then `pushed: origin/<project>` or `not
@@ -295,18 +294,18 @@ for every attached project may be summarized as one `OK` line. Per-project `FAIL
 `WARN` lines stay explicit. Output ends with `doctor: OK`, `doctor: OK (<n> warnings)`, or
 `doctor: FAIL (<n> failures[, <n> warnings])`:
 
-| Check | Result on failure |
-|---|---|
-| Every locally registered worktree is named `.agents` | FAIL |
-| Every project worktree's parent repo ignores `.agents` (`git check-ignore -q -- .agents` in the parent dir). A parent directory that is not a git repository at all passes — there is nothing it could commit `.agents/` into | FAIL |
-| Every project worktree with a supported GitHub parent-repo `origin` uses the default repo-name identity; a non-default `--id` is surfaced here for review | WARN only |
-| `origin` remote is configured on `<MARROW_HOME>/vault.git` | WARN if absent |
-| `origin` is reachable (`git ls-remote --exit-code origin`) | FAIL if unreachable |
-| `origin` refs can be refreshed (`git fetch --prune origin`) | FAIL if fetch fails |
-| `origin` visibility is `PRIVATE`, checked via `gh repo view --json visibility` when `gh` is on `PATH` | FAIL if a successful `gh` call reports non-`PRIVATE`; WARN (not FAIL) if `gh` is absent or the call itself fails for any other reason (e.g. not a GitHub-hosted remote) |
-| Each project worktree isn't more than 20 commits ahead of `origin/<branch>`, and has an `origin/<branch>` to compare against at all | WARN only; missing refs may be aggregated with `marrow sync` as the remediation |
-| No tarball under `<MARROW_HOME>/backups/` is older than 30 days | WARN only |
-| `marrow` resolves on `PATH` (`Bun.which("marrow")`) | WARN only |
+| Check                                                                                                                                                                                                                         | Result on failure                                                                                                                                                       |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Every locally registered worktree is named `.agents`                                                                                                                                                                          | FAIL                                                                                                                                                                    |
+| Every project worktree's parent repo ignores `.agents` (`git check-ignore -q -- .agents` in the parent dir). A parent directory that is not a git repository at all passes — there is nothing it could commit `.agents/` into | FAIL                                                                                                                                                                    |
+| Every project worktree with a supported GitHub parent-repo `origin` uses the default repo-name identity; a non-default `--id` is surfaced here for review                                                                     | WARN only                                                                                                                                                               |
+| `origin` remote is configured on `<MARROW_HOME>/vault.git`                                                                                                                                                                    | WARN if absent                                                                                                                                                          |
+| `origin` is reachable (`git ls-remote --exit-code origin`)                                                                                                                                                                    | FAIL if unreachable                                                                                                                                                     |
+| `origin` refs can be refreshed (`git fetch --prune origin`)                                                                                                                                                                   | FAIL if fetch fails                                                                                                                                                     |
+| `origin` visibility is `PRIVATE`, checked via `gh repo view --json visibility` when `gh` is on `PATH`                                                                                                                         | FAIL if a successful `gh` call reports non-`PRIVATE`; WARN (not FAIL) if `gh` is absent or the call itself fails for any other reason (e.g. not a GitHub-hosted remote) |
+| Each project worktree isn't more than 20 commits ahead of `origin/<branch>`, and has an `origin/<branch>` to compare against at all                                                                                           | WARN only; missing refs may be aggregated with `marrow sync` as the remediation                                                                                         |
+| No tarball under `<MARROW_HOME>/backups/` is older than 30 days                                                                                                                                                               | WARN only                                                                                                                                                               |
+| `marrow` resolves on `PATH` (`Bun.which("marrow")`)                                                                                                                                                                           | WARN only                                                                                                                                                               |
 
 `doctor` checks the **vault's** origin only — the tool repo's own git hygiene (whether
 `~/dev/marrow` itself is clean, pushed, etc.) isn't marrow's concern, the same as it

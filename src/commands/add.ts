@@ -7,7 +7,24 @@ import { ensureIgnored, gitignoreState, trackedMessage, writeReadme, type Ignore
 
 export interface AddOptions { dryRun?: boolean; id?: string }
 class AddAbort extends Error {}
-interface Target { id: string; branch: string; name: string; projectDir: string; agentsPath: string; vault: string; marrowHome: string; toolRoot: string }
+interface Target { branch: string; name: string; projectDir: string; agentsPath: string; vault: string; marrowHome: string; toolRoot: string }
+interface Worktree { path: string; branch: string }
+type BranchState = "missing" | "local" | "remote";
+type AgentsState = "missing" | "directory" | "worktree" | "not-directory";
+interface AddInspection {
+  target: Target;
+  branchState: BranchState;
+  agentsState: AgentsState;
+  ignoreState: IgnoreState;
+  worktreeAtTarget?: Worktree;
+  worktreeForBranch?: Worktree;
+}
+type AddPlan =
+  | { kind: "already-attached"; target: Target }
+  | { kind: "adopt"; target: Target; ignoreState: IgnoreState }
+  | { kind: "create"; target: Target; ignoreState: IgnoreState }
+  | { kind: "attach"; target: Target; ignoreState: IgnoreState; localBranch: boolean }
+  | { kind: "error"; message: string };
 
 async function walk(dir: string, excludeGit = false): Promise<{ count: number; size: number }> {
   let count = 0, size = 0;
@@ -26,15 +43,15 @@ async function fetchVault(t: Target): Promise<void> {
   const res = await git(["fetch", "--prune", "origin"], t.vault);
   if (res.code !== 0) throw new AddAbort(`could not fetch vault origin: ${res.stderr}`);
 }
-async function branchState(t: Target): Promise<"missing" | "local" | "remote"> {
+async function branchState(t: Target): Promise<BranchState> {
   if ((await git(["show-ref", "--verify", "--quiet", `refs/heads/${t.branch}`], t.vault)).code === 0) return "local";
   if ((await git(["show-ref", "--verify", "--quiet", `refs/remotes/origin/${t.branch}`], t.vault)).code === 0) return "remote";
   return "missing";
 }
-async function parentState(t: Target): Promise<IgnoreState> {
-  const state = await gitignoreState(t.projectDir);
-  if (state === "tracked") throw new AddAbort(trackedMessage(t.projectDir));
-  return state;
+async function agentsState(agentsPath: string): Promise<AgentsState> {
+  if (!existsSync(agentsPath)) return "missing";
+  if (!(await stat(agentsPath)).isDirectory()) return "not-directory";
+  return existsSync(path.join(agentsPath, ".git")) ? "worktree" : "directory";
 }
 async function commitAndPush(t: Target, subject: string, localNote = ""): Promise<"pushed" | "not-pushed"> {
   await writeReadme(t.toolRoot, t.agentsPath, t.name, t.branch);
@@ -57,8 +74,54 @@ async function backup(t: Target): Promise<string> {
   return tarball;
 }
 
+async function inspectAdd(projectArg: string, opts: AddOptions, marrowHome: string, toolRoot: string): Promise<AddInspection> {
+  const identity = await resolveIdentity(projectArg, opts.id);
+  const target: Target = {
+    branch: identity.branch,
+    name: identity.name,
+    projectDir: identity.dir,
+    agentsPath: path.join(identity.dir, ".agents"),
+    vault: vaultDir(marrowHome),
+    marrowHome,
+    toolRoot,
+  };
+  await fetchVault(target);
+
+  const worktrees = await listProjectWorktrees(target.vault);
+  return {
+    target,
+    branchState: await branchState(target),
+    agentsState: await agentsState(target.agentsPath),
+    ignoreState: existsSync(target.projectDir) ? await gitignoreState(target.projectDir) : "no-repo",
+    worktreeAtTarget: worktrees.find((wt) => wt.path === target.agentsPath),
+    worktreeForBranch: worktrees.find((wt) => wt.branch === target.branch),
+  };
+}
+
+function planAdd(i: AddInspection): AddPlan {
+  const t = i.target;
+  if (i.worktreeAtTarget) {
+    return i.worktreeAtTarget.branch === t.branch
+      ? { kind: "already-attached", target: t }
+      : { kind: "error", message: `${t.agentsPath} is a worktree for '${i.worktreeAtTarget.branch}', not '${t.branch}'` };
+  }
+  if (i.worktreeForBranch) return { kind: "error", message: `${t.branch} is already attached at ${i.worktreeForBranch.path}` };
+  if (i.agentsState === "not-directory") return { kind: "error", message: `${t.agentsPath} exists but is not a directory` };
+  if (i.agentsState === "worktree") return { kind: "error", message: `${t.agentsPath} is already a git worktree` };
+  if (i.ignoreState === "tracked") return { kind: "error", message: trackedMessage(t.projectDir) };
+  if (i.agentsState === "directory") {
+    if (i.branchState !== "missing") {
+      return { kind: "error", message: `${t.agentsPath} has local content but ${t.branch} already exists; inspect both sources before continuing` };
+    }
+    if (i.ignoreState === "no-repo") return { kind: "error", message: `${t.projectDir} is not a git repository` };
+    return { kind: "adopt", target: t, ignoreState: i.ignoreState };
+  }
+  return i.branchState === "missing"
+    ? { kind: "create", target: t, ignoreState: i.ignoreState }
+    : { kind: "attach", target: t, ignoreState: i.ignoreState, localBranch: i.branchState === "local" };
+}
+
 async function adopt(t: Target, state: IgnoreState, dryRun: boolean): Promise<number> {
-  if (state === "no-repo") throw new AddAbort(`${t.projectDir} is not a git repository`);
   await ensureIgnored(t.projectDir, state, dryRun);
   if (dryRun) { console.log(`dry run for '${t.name}' (adopting existing .agents/ into ${t.branch}):`); return 0; }
   const before = await walk(t.agentsPath), tarball = await backup(t), moved = `${t.agentsPath}.pre-marrow`;
@@ -98,26 +161,26 @@ async function attach(t: Target, state: IgnoreState, local: boolean, dryRun: boo
   return 0;
 }
 
+async function executePlan(plan: AddPlan, dryRun: boolean): Promise<number> {
+  switch (plan.kind) {
+    case "already-attached":
+      console.log(`added '${plan.target.name}': already attached ${plan.target.branch}`);
+      return 0;
+    case "adopt":
+      return adopt(plan.target, plan.ignoreState, dryRun);
+    case "create":
+      return create(plan.target, plan.ignoreState, dryRun);
+    case "attach":
+      return attach(plan.target, plan.ignoreState, plan.localBranch, dryRun);
+    case "error":
+      throw new AddAbort(plan.message);
+  }
+}
+
 export async function addCommand(projectArg: string, opts: AddOptions, marrowHome: string, toolRoot: string): Promise<number> {
   try {
-    const identity = await resolveIdentity(projectArg, opts.id);
-    const t: Target = { ...identity, projectDir: identity.dir, agentsPath: path.join(identity.dir, ".agents"), vault: vaultDir(marrowHome), marrowHome, toolRoot };
-    await fetchVault(t);
-    const worktrees = await listProjectWorktrees(t.vault), atTarget = worktrees.find((wt) => wt.path === t.agentsPath);
-    if (atTarget) {
-      if (atTarget.branch === t.branch) { console.log(`added '${t.name}': already attached ${t.branch}`); return 0; }
-      throw new AddAbort(`${t.agentsPath} is a worktree for '${atTarget.branch}', not '${t.branch}'`);
-    }
-    const state = await branchState(t), other = worktrees.find((wt) => wt.branch === t.branch);
-    if (other) throw new AddAbort(`${t.branch} is already attached at ${other.path}`);
-    const hasAgents = existsSync(t.agentsPath);
-    if (hasAgents && !(await stat(t.agentsPath)).isDirectory()) throw new AddAbort(`${t.agentsPath} exists but is not a directory`);
-    if (hasAgents && existsSync(path.join(t.agentsPath, ".git"))) throw new AddAbort(`${t.agentsPath} is already a git worktree`);
-    const ignored = existsSync(t.projectDir) ? await parentState(t) : "no-repo";
-    if (hasAgents && state !== "missing") throw new AddAbort(`${t.agentsPath} has local content but ${t.branch} already exists; inspect both sources before continuing`);
-    if (hasAgents) return adopt(t, ignored, opts.dryRun === true);
-    if (state === "missing") return create(t, ignored, opts.dryRun === true);
-    return attach(t, ignored, state === "local", opts.dryRun === true);
+    const inspection = await inspectAdd(projectArg, opts, marrowHome, toolRoot);
+    return await executePlan(planAdd(inspection), opts.dryRun === true);
   } catch (err) {
     console.error(`marrow add: ${err instanceof Error ? err.message : String(err)}`);
     return 1;

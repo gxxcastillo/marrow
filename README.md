@@ -1,28 +1,13 @@
 # marrow
 
-Private git backing for the `.agents/` working-memory directories across `~/dev` projects.
+marrow privately versions and syncs per-project agent working memory without putting that
+memory in each project's own git history. Adopted projects get a vault-backed worktree
+for their local memory directory, one private branch per project.
 
-Each project's `.agents/` stays gitignored by its parent repo but becomes a git worktree of
-a separate private vault repo, on a stable branch named for the project. git history replaces
-the append-only narrative style the directories used before.
-
-marrow is two repos, not one — see `spec/architecture.md` → "Two repos: tool and vault"
-for the full rationale:
-
-- **This repo — the tool.** A small Bun/TypeScript CLI (`marrow`) that adds (creating,
-  adopting, or attaching), syncs, and checks the worktrees, plus `CONVENTION.md` (the single canonical
-  description of how `.agents/` directories are structured and maintained — per-project
-  READMEs point here instead of restating it) and this spec. An ordinary dev project,
-  lives at `~/dev/marrow` like everything else under `~/dev`. Design, CLI contract, and
-  safety guarantees: `spec/README.md`.
-- **The vault — a separate repo, outside `~/dev`.** Holds one orphan branch per adopted
-  project (`pho`, `ossa`, `sobremesa`, …), each checked out as a worktree at
-  `<project-path>/.agents`. A minimal `main` branch exists only as the GitHub default
-  branch. Project branches never merge with each other or with this repo's `main`. It is
-  not a coding project, which is exactly why it doesn't live alongside the ones that are.
-
-The vault must remain **private**: the project branches contain personal planning
-content, including for projects whose own repos are public.
+This repo is the CLI tool. The vault is a separate repo under `MARROW_HOME` (default
+`~/.marrow`) that holds the memory branches and must stay **private**. See
+`spec/architecture.md` → "Two repos: tool and vault" for the full design, including the
+`.agents/` directory convention.
 
 ## Install
 
@@ -30,59 +15,20 @@ content, including for projects whose own repos are public.
 bin/install
 ```
 
-To set up another machine from an existing vault:
-```
-bin/install
-marrow init --from git@github.com:gxxcastillo/marrow-vault.git --dry-run
-marrow init --from git@github.com:gxxcastillo/marrow-vault.git
-marrow add ~/dev-stuff-and-things/ossa
-```
+Symlinks `bin/marrow` onto `~/.local/bin` and creates the vault at `MARROW_HOME` (default
+`~/.marrow`). Safe to re-run.
 
-Symlinks `bin/marrow` onto `~/.local/bin`, then runs `marrow init` to create the vault as
-a bare repo at `MARROW_HOME` (default `~/.marrow`). Safe to re-run — both steps are no-ops
-if already done, and it refuses to overwrite a non-marrow file already at the symlink
-target. It never touches the vault's GitHub remote unless you explicitly pass
-`marrow init --from <vault-url>` to attach this machine to an existing private vault.
-Use `marrow publish <owner>/<repo>` to create a new private GitHub vault remote after
-explicit go-ahead. The remote contains the vault landing branch and project branches, not
-project repositories or backup tarballs.
-
-Equivalent by hand:
-```
-ln -s <this-checkout>/bin/marrow ~/.local/bin/marrow
-marrow init
-```
-
-`MARROW_HOME` (vault parent, default `~/.marrow`) is overridable — see
-`spec/architecture.md` → "Env overrides".
-
-## Status
-
-Phase 2.5 shipped: the code matches `spec/`'s two-repo design — this repo (the tool) stays
-at `~/dev/marrow`; the vault is a separate bare repo at `~/.marrow/vault.git`, with
-`~/.marrow/backups/` and `~/.marrow/logs/` alongside it. `templates/` and `CONVENTION.md`
-resolve from the tool's own install location, not from `MARROW_HOME`, so `marrow` works
-correctly regardless of where the vault lives.
-
-Phase 3's local, attended migration is complete. The initial inventory — `ossa`,
-`solid-forms`, `embracingroots`, `c8platform`, `ultra-sound-music`, `sobremesa`, `pho`,
-`eos`, and `event-link` — is attached to the local vault. Each adoption has its backup
-tarball under `~/.marrow/backups/`.
-
-The vault has no remote yet. Publishing it, or initializing a machine from an existing
-private remote, remains gated on Gabriel's explicit approval. Until then, branches are
-local-only and `marrow doctor` reports `WARN no 'origin' remote configured` by design.
-The one-time migration record and the remote-lifecycle plan live in `.agents/plans/`.
-
-### Everyday commands, once projects are adopted
+## Everyday commands
 
 ```
+marrow add /path/to/project            # adopt a project into the vault
 marrow status                          # what's dirty, what's unpushed
 marrow sync                            # commit + push everything dirty
-marrow sync ossa -m "weekly review"    # one project, a real message
 marrow grep "TODO" -C2                 # search across every adopted project
 marrow doctor                          # full health check
 marrow --help                          # command list; <command> --help for one
 ```
 
-Full command reference: `spec/cli.md`. Safety guarantees: `spec/safety.md`.
+Full command reference, including multi-machine and remote setup: `spec/cli.md`. Design:
+`spec/architecture.md`. Safety guarantees: `spec/safety.md`. Working-memory convention:
+`CONVENTION.md`.

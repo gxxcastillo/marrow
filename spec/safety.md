@@ -1,6 +1,6 @@
 # Safety
 
-Authoritative on anything safety-related. `architecture.md` and `cli.md` describe *what*
+Authoritative on anything safety-related. `architecture.md` and `cli.md` describe _what_
 marrow does; this file describes the guarantees that must keep holding regardless of what
 else changes.
 
@@ -99,9 +99,7 @@ does, the same as for any other project.
 invoking it unattended, in either mode. That gap is intentional but not free: the
 operating rule is that a human is present and approving each real (non-`--dry-run`) `add`
 that adopts an existing project, one project at a time. This is a human/agent discipline,
-not a code-enforced gate — see `../AGENTS.md` for the concrete rule, and
-`../.agents/plans/implementation-plan.md` (vault worktree) for the per-project migration
-order it governs.
+not a code-enforced gate — see `../AGENTS.md` for the concrete rule.
 `--dry-run` exists precisely so that rule can be honored without giving up a preview: it
 runs every precondition check and prints the full plan against a real project directory
 without writing anything, anywhere.
