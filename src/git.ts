@@ -59,6 +59,26 @@ export async function listProjectWorktrees(vaultPath: string): Promise<ProjectWo
   });
 }
 
+// Shared by `status`, `doctor`, and `grep`, each of which needs to skip the
+// filesystem-touching checks for a missing worktree while still reporting it.
+export function splitByMissing(worktrees: ProjectWorktree[]): { present: ProjectWorktree[]; missing: ProjectWorktree[] } {
+  return { present: worktrees.filter((wt) => !wt.missing), missing: worktrees.filter((wt) => wt.missing) };
+}
+
+// Shared by `sync` and `detach` (`cli.md` → `detach`: "resolved like a sync
+// target") — a name matches by exact branch or by the local checkout's
+// directory basename.
+export function matchWorktrees(worktrees: ProjectWorktree[], target: string): ProjectWorktree[] {
+  return worktrees.filter((w) => w.branch === target || path.basename(path.dirname(w.path)) === target);
+}
+
+// PATH passed explicitly (rather than bare `Bun.which(name)`) so this reads
+// the live environment on every call, not a value cached at process start —
+// load-bearing for tests that hide a command by mutating process.env.PATH.
+export function commandOnPath(name: string): boolean {
+  return Bun.which(name, { PATH: process.env.PATH ?? "" }) !== null;
+}
+
 export async function dirtyCount(cwd: string): Promise<number> {
   const res = await git(["status", "--porcelain"], cwd);
   if (res.code !== 0) throw new Error(`git status failed: ${res.stderr}`);

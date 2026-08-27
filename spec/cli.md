@@ -188,10 +188,14 @@ once, not twice.
 diverged worktree with remote changes is left untouched, and one error line prints the
 exact reconciliation steps (`project.ts`'s `trackedMessage` style — printed guidance,
 never run by marrow, which still never merges, rebases, or stashes on its own,
-`architecture.md` → Non-goals): dirty-and-behind names `git stash`, `git merge --ff-only
-origin/<branch>`, `git stash pop`; diverged (local and remote both hold commits the other
-lacks) names `git pull --no-rebase origin <branch>`, which resolves the divergence with an
-ordinary merge commit on the project's own branch. For each remaining dirty target,
+`architecture.md` → Non-goals). Dirty and diverged are independent and the steps cover
+whichever combination applies: dirty-and-behind (not diverged) names `git stash`,
+`git merge --ff-only origin/<branch>`, `git stash pop`; diverged (local and remote both
+hold commits the other lacks) names `git pull --no-rebase origin <branch>`, which resolves
+the divergence with an ordinary merge commit on the project's own branch; dirty *and*
+diverged at once names both, in order — stash, pull, pop — so the uncommitted changes
+survive the reconciliation rather than being silently at risk under a bare pull. For each
+remaining dirty target,
 `git add -A` then `git commit -m "<message>"`. Commit message is `<project>: <text>`, where
 `<text>` is the `-m` value if given, else `sync <ISO-8601 local timestamp, second
 precision>`. A clean project is skipped — its last commit is untouched. Bare `marrow sync
@@ -244,8 +248,12 @@ Before deciding, `add` fetches `origin` when the vault has one; a fetch failure 
 It then reconciles the local path and matching branch: an ordinary `.agents/` with no
 branch is adopted; no `.agents/` with no branch is created fresh; no `.agents/` with a
 branch attaches that branch. A matching worktree already at the path succeeds without
-changing it. An ordinary `.agents/` plus an existing branch, a different worktree at the
-path, or the same branch attached elsewhere on this machine aborts without mutation.
+changing it — unless its directory is missing (`architecture.md` → Design model): reporting
+success there would be a false one, since nothing would exist on disk despite the `0` exit,
+so this aborts instead and names `marrow detach <branch>` as the remediation. The same
+applies when the branch is already attached at a different path whose directory is missing.
+An ordinary `.agents/` plus an existing branch, a different worktree at the path, or the
+same branch attached (and present) elsewhere on this machine aborts without mutation.
 Attach never writes a README, commits, or pushes.
 
 **Parent-repo `.gitignore` (both paths).** `.agents/` must end up ignored by the project's

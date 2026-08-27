@@ -1,4 +1,5 @@
-import { git, run, vaultDir } from "../git";
+import { existsSync } from "node:fs";
+import { commandOnPath, git, run, vaultDir } from "../git";
 import { configureOriginFetch, originUrl, verifyOriginReachable, verifyPrivateVisibility } from "../remote";
 import { branchesForPublish, ensureVaultLandingBranch } from "../vault";
 
@@ -44,6 +45,12 @@ export async function publishCommand(slug: string, opts: PublishOptions, marrowH
   let pushed = false;
   try {
     validateSlug(slug);
+    // `cli.ts`'s needsVault gate gives the CLI path a clean message before
+    // this function is even called; this second check keeps that same clean
+    // failure for a direct caller (publishCommand is a public, independently
+    // tested function) instead of letting the first git call underneath
+    // throw a raw ENOENT.
+    if (!existsSync(vault)) throw new PublishAbort(`vault does not exist: ${vault}`);
     const existingOrigin = await originUrl(vault);
     if (existingOrigin) throw new PublishAbort(`vault already uses origin ${existingOrigin}`);
     const branches = await branchesForPublish(vault);
@@ -55,9 +62,7 @@ export async function publishCommand(slug: string, opts: PublishOptions, marrowH
       return 0;
     }
 
-    // PATH passed explicitly (rather than bare `Bun.which("gh")`) so this reads
-    // the live environment on every call, not a value cached at process start.
-    if (!Bun.which("gh", { PATH: process.env.PATH ?? "" })) throw new PublishAbort("gh is required for marrow publish");
+    if (!commandOnPath("gh")) throw new PublishAbort("gh is required for marrow publish");
     await ensureVaultLandingBranch(vault);
     console.log(`publishing vault to private GitHub repository ${slug}...`);
     const made = await run("gh", ["repo", "create", slug, "--private"], vault);

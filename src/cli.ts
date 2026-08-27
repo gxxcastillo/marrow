@@ -27,7 +27,11 @@ interface Command {
   options?: Record<string, { type: "string" | "boolean"; short?: string; default?: string | boolean; desc?: string }>;
   minArgs?: number; // required positionals; fewer prints usage and exits 2
   raw?: boolean; // skip parsing — args reach the command verbatim (grep -> rg)
-  needsVault?: boolean; // fails with a clean message, not a stack trace, if <MARROW_HOME>/vault.git doesn't exist yet
+  // Opt-out, not opt-in: every command needs the vault to exist except the
+  // two that set up don't. Defaulting to required is the fail-safe direction
+  // — a future command that forgets to opt out just gets the guard for free,
+  // instead of silently regressing to an uncaught stack trace.
+  skipVaultCheck?: boolean;
   help?: string; // optional paragraph appended to `<command> --help`, beyond options and the one-line summary
   run: (parsed: Parsed, ctx: Context) => Promise<number>;
 }
@@ -40,6 +44,7 @@ const COMMANDS: Record<string, Command> = {
       from: { type: "string", desc: "attach to an existing private vault remote instead of creating a local one" },
       "dry-run": { type: "boolean", default: false, desc: "preview without writing anything" },
     },
+    skipVaultCheck: true,
     run: ({ values }, ctx) =>
       initCommand(ctx.marrowHome, { from: values.from as string | undefined, dryRun: values["dry-run"] as boolean }),
   },
@@ -49,14 +54,12 @@ const COMMANDS: Record<string, Command> = {
     summary: "publish the vault to a new private GitHub remote",
     options: { "dry-run": { type: "boolean", default: false, desc: "preview without creating anything" } },
     minArgs: 1,
-    needsVault: true,
     run: ({ values, positionals }, ctx) => publishCommand(positionals[0], { dryRun: values["dry-run"] as boolean }, ctx.marrowHome),
   },
 
   status: {
     args: "",
     summary: "show project worktree status",
-    needsVault: true,
     run: (_parsed, ctx) => statusCommand(ctx.marrowHome),
   },
 
@@ -66,7 +69,6 @@ const COMMANDS: Record<string, Command> = {
     options: {
       message: { type: "string", short: "m", desc: "commit message text; prefixed with '<project>: ' on each dirty project" },
     },
-    needsVault: true,
     run: ({ values, positionals }, ctx) =>
       syncCommand(positionals, { message: values.message as string | undefined }, ctx.marrowHome),
   },
@@ -79,7 +81,6 @@ const COMMANDS: Record<string, Command> = {
       id: { type: "string", desc: "stable identity for a project with no supported GitHub origin, or to override the default" },
     },
     minArgs: 1,
-    needsVault: true,
     help:
       "Adopts <project-path>/.agents if it already has one, attaches its branch if one exists but the worktree\n" +
       "doesn't, or creates a fresh .agents otherwise. Run with --dry-run first — it previews every mode without\n" +
@@ -93,7 +94,6 @@ const COMMANDS: Record<string, Command> = {
     summary: "remove a project's worktree, keeping its branch in the vault",
     options: { "dry-run": { type: "boolean", default: false, desc: "preview without touching the worktree" } },
     minArgs: 1,
-    needsVault: true,
     run: ({ values, positionals }, ctx) =>
       detachCommand(positionals[0], { dryRun: values["dry-run"] as boolean }, ctx.marrowHome),
   },
@@ -101,7 +101,6 @@ const COMMANDS: Record<string, Command> = {
   doctor: {
     args: "",
     summary: "check vault + worktree health",
-    needsVault: true,
     run: (_parsed, ctx) => doctorCommand(ctx.marrowHome),
   },
 
@@ -110,13 +109,13 @@ const COMMANDS: Record<string, Command> = {
     summary: "search across all project worktrees",
     minArgs: 1,
     raw: true,
-    needsVault: true,
     run: ({ positionals }, ctx) => grepCommand(positionals[0], positionals.slice(1), ctx.marrowHome),
   },
 
   convention: {
     args: "",
     summary: "print CONVENTION.md",
+    skipVaultCheck: true,
     run: (_parsed, ctx) => conventionCommand(ctx.toolRoot),
   },
 };
@@ -191,7 +190,7 @@ export async function main(argv: string[], marrowHome: string, toolRoot: string)
     return 0;
   }
 
-  if (cmd.needsVault && !existsSync(vaultDir(marrowHome))) {
+  if (!cmd.skipVaultCheck && !existsSync(vaultDir(marrowHome))) {
     console.error(`no vault at ${vaultDir(marrowHome)} — run \`marrow init\``);
     return 1;
   }

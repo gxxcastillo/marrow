@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
-import { MIN_GIT_MAJOR, MIN_GIT_MINOR, aheadBehind, git, gitTooOld, gitVersion, listProjectWorktrees, vaultDir } from "../git";
+import { MIN_GIT_MAJOR, MIN_GIT_MINOR, aheadBehind, git, gitTooOld, gitVersion, listProjectWorktrees, splitByMissing, vaultDir } from "../git";
 import { countLabel } from "../format";
 import { originUrl, verifyOriginReachable, verifyPrivateVisibility } from "../remote";
 import { unattachedBranches } from "../vault";
@@ -61,7 +61,7 @@ export async function doctorCommand(marrowHome: string): Promise<number> {
   // (ignore state, identity, ahead/behind all shell out with its path as cwd,
   // which throws against a missing directory) — those checks run against this
   // subset instead. The registration itself is still reported, via the WARN below.
-  const presentWorktrees = worktrees.filter((wt) => !wt.missing);
+  const { present: presentWorktrees, missing: missingWorktrees } = splitByMissing(worktrees);
   // A vault clone contains every branch, but a machine may intentionally
   // attach only some of them. Worktrees are this machine's registry.
   const misplaced = worktrees.filter((wt) => path.basename(wt.path) !== ".agents");
@@ -72,8 +72,8 @@ export async function doctorCommand(marrowHome: string): Promise<number> {
     if (path.basename(wt.path) !== ".agents") fail(`branch '${wt.branch}' worktree at ${wt.path} is not named .agents`);
   }
 
-  for (const wt of worktrees) {
-    if (wt.missing) warn(`registered worktree missing at ${wt.path}; run \`marrow detach ${wt.branch}\` to clear the registration`);
+  for (const wt of missingWorktrees) {
+    warn(`registered worktree missing at ${wt.path}; run \`marrow detach ${wt.branch}\` to clear the registration`);
   }
 
   // Reported, never a WARN: attaching a subset is a deliberate choice, not

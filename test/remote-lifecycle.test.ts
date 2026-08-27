@@ -108,6 +108,15 @@ describe("remote lifecycle", () => {
     expect(await originUrl(vaultDir(fx.marrowHome))).toBe(null);
   });
 
+  test("publish fails with a clean message, not a raw crash, when called directly against a missing vault", async () => {
+    const noVaultHome = path.join(fx.root, "no-vault-home");
+    const { code, errLines } = await captureLogs(() =>
+      publishCommand("example-owner/marrow-vault", {}, noVaultHome),
+    );
+    expect(code).toBe(1);
+    expect(errLines.join("\n")).toContain("vault does not exist");
+  });
+
   test("publish pushes every local branch to a private GitHub remote", async () => {
     restoreEnv = await installGhStub(fx);
     await addProjectWorktree(fx, "alpha");

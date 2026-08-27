@@ -104,6 +104,19 @@ describe("grep", () => {
     expect(errLines.join("\n")).toContain("missing worktree directory");
   });
 
+  test("still names unattached branches when every attached worktree's directory is also missing", async () => {
+    const alphaPath = await addProjectWorktree(fx, "alpha");
+    await deleteWorktreeDir(alphaPath);
+    await addUnattachedBranch(fx, "gamma");
+
+    const { code, outLines, errLines } = await captureLogs(() => grepCommand("needle", [], fx.marrowHome));
+    expect(code).toBe(0);
+    expect(outLines).toEqual(["No project worktrees."]);
+    expect(errLines.join("\n")).toContain("missing worktree directory");
+    expect(errLines.join("\n")).toContain("no project branches are attached here");
+    expect(errLines.join("\n")).toContain("gamma");
+  });
+
   test("errors when rg is not on PATH, rather than falling back to grep", async () => {
     await addProjectWorktree(fx, "alpha");
     const restore = await hideRgButKeepGit(fx);

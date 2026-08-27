@@ -1,5 +1,5 @@
 import path from "node:path";
-import { aheadBehind, dirtyCount, git, hasOrigin, listProjectWorktrees, vaultDir, type ProjectWorktree } from "../git";
+import { aheadBehind, dirtyCount, git, hasOrigin, listProjectWorktrees, matchWorktrees, vaultDir, type ProjectWorktree } from "../git";
 
 export interface SyncOptions {
   message?: string;
@@ -19,30 +19,27 @@ function report(line: string, isError = false): void {
 // Printed for a manual-reconciliation refusal, in the same style as
 // `project.ts`'s `trackedMessage`: marrow itself never merges, rebases, or
 // stashes (`architecture.md` → Non-goals) — this is guidance for the human,
-// not a command marrow runs.
-function reconciliationMessage(name: string, agentsPath: string, branch: string, diverged: boolean): string {
-  if (diverged) {
-    return (
-      `${name} has diverged from origin/${branch} — both sides have commits the other lacks; reconcile manually:\n` +
-      `  cd ${agentsPath}\n` +
-      `  git pull --no-rebase origin ${branch}\n` +
-      `Then re-run: marrow sync ${name}`
-    );
-  }
-  return (
-    `${name} has local changes and origin/${branch} has moved; reconcile manually:\n` +
-    `  cd ${agentsPath}\n` +
-    `  git stash\n` +
-    `  git merge --ff-only origin/${branch}\n` +
-    `  git stash pop\n` +
-    `Then re-run: marrow sync ${name}`
-  );
+// not a command marrow runs. `dirty` and `diverged` are independent: a
+// worktree can hold uncommitted changes *and* have local commits diverged
+// from origin at the same time, and the steps must cover both or the human
+// following them loses the uncommitted changes.
+function reconciliationMessage(name: string, agentsPath: string, branch: string, dirty: boolean, diverged: boolean): string {
+  const reason = diverged
+    ? `has diverged from origin/${branch} — both sides have commits the other lacks`
+    : `has local changes and origin/${branch} has moved`;
+  const steps = [
+    `  cd ${agentsPath}`,
+    ...(dirty ? ["  git stash"] : []),
+    diverged ? `  git pull --no-rebase origin ${branch}` : `  git merge --ff-only origin/${branch}`,
+    ...(dirty ? ["  git stash pop"] : []),
+  ];
+  return `${name} ${reason}; reconcile manually:\n${steps.join("\n")}\nThen re-run: marrow sync ${name}`;
 }
 
 export async function syncCommand(targets: string[], opts: SyncOptions, marrowHome: string): Promise<number> {
   const vault = vaultDir(marrowHome);
   const all = await listProjectWorktrees(vault);
-  const matches = (target: string) => all.filter((w) => w.branch === target || path.basename(path.dirname(w.path)) === target);
+  const matches = (target: string) => matchWorktrees(all, target);
 
   let hadError = false;
   let worktrees = all;
@@ -102,7 +99,7 @@ export async function syncCommand(targets: string[], opts: SyncOptions, marrowHo
       if (syncState?.behind) {
         const dirtyBeforePull = await dirtyCount(wt.path);
         if (dirtyBeforePull > 0 || syncState.ahead > 0) {
-          throw new Error(reconciliationMessage(name, wt.path, wt.branch, syncState.ahead > 0));
+          throw new Error(reconciliationMessage(name, wt.path, wt.branch, dirtyBeforePull > 0, syncState.ahead > 0));
         }
         const fastForward = await git(["merge", "--ff-only", `origin/${wt.branch}`], wt.path);
         if (fastForward.code !== 0) throw new Error(`fast-forward failed: ${fastForward.stderr}`);

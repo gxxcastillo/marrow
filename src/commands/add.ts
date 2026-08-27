@@ -8,7 +8,7 @@ import { ensureIgnored, gitignoreState, trackedMessage, writeReadme, type Ignore
 export interface AddOptions { dryRun?: boolean; id?: string }
 class AddAbort extends Error {}
 interface Target { branch: string; name: string; projectDir: string; agentsPath: string; vault: string; marrowHome: string; toolRoot: string }
-interface Worktree { path: string; branch: string }
+interface Worktree { path: string; branch: string; missing: boolean }
 type BranchState = "missing" | "local" | "remote";
 type AgentsState = "missing" | "directory" | "worktree" | "not-directory";
 interface AddInspection {
@@ -101,11 +101,26 @@ async function inspectAdd(projectArg: string, opts: AddOptions, marrowHome: stri
 function planAdd(i: AddInspection): AddPlan {
   const t = i.target;
   if (i.worktreeAtTarget) {
-    return i.worktreeAtTarget.branch === t.branch
-      ? { kind: "already-attached", target: t }
-      : { kind: "error", message: `${t.agentsPath} is a worktree for '${i.worktreeAtTarget.branch}', not '${t.branch}'` };
+    if (i.worktreeAtTarget.branch !== t.branch) {
+      return { kind: "error", message: `${t.agentsPath} is a worktree for '${i.worktreeAtTarget.branch}', not '${t.branch}'` };
+    }
+    // The registration matches, but its directory is gone — reporting
+    // "already attached" here would be a false success: nothing would exist
+    // on disk despite the OK exit. detach already owns clearing this state.
+    if (i.worktreeAtTarget.missing) {
+      return {
+        kind: "error",
+        message: `${t.agentsPath} is registered for '${t.branch}' but its worktree directory is missing; run \`marrow detach ${t.branch}\` first, then re-run add`,
+      };
+    }
+    return { kind: "already-attached", target: t };
   }
-  if (i.worktreeForBranch) return { kind: "error", message: `${t.branch} is already attached at ${i.worktreeForBranch.path}` };
+  if (i.worktreeForBranch) {
+    const remediation = i.worktreeForBranch.missing
+      ? ` but its worktree directory is missing; run \`marrow detach ${t.branch}\` first, then re-run add`
+      : "";
+    return { kind: "error", message: `${t.branch} is already attached at ${i.worktreeForBranch.path}${remediation}` };
+  }
   if (i.agentsState === "not-directory") return { kind: "error", message: `${t.agentsPath} exists but is not a directory` };
   if (i.agentsState === "worktree") return { kind: "error", message: `${t.agentsPath} is already a git worktree` };
   if (i.ignoreState === "tracked") return { kind: "error", message: trackedMessage(t.projectDir) };

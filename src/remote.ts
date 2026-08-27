@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { git, listProjectWorktrees, run } from "./git";
+import { commandOnPath, git, listProjectWorktrees, run } from "./git";
 
 export type VisibilityResult =
   | { status: "ok"; message: string }
@@ -49,9 +49,7 @@ export async function validateRemoteUrl(url: string, cwd: string): Promise<void>
 }
 
 export async function verifyPrivateVisibility(vault: string, strict: boolean): Promise<VisibilityResult> {
-  // PATH passed explicitly (rather than bare `Bun.which("gh")`) so this reads
-  // the live environment on every call, not a value cached at process start.
-  if (!Bun.which("gh", { PATH: process.env.PATH ?? "" })) {
+  if (!commandOnPath("gh")) {
     const message = "gh not available; skipped origin visibility check";
     return strict ? { status: "fail", message } : { status: "warn", message };
   }

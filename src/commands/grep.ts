@@ -1,4 +1,4 @@
-import { listProjectWorktrees, vaultDir } from "../git";
+import { commandOnPath, listProjectWorktrees, splitByMissing, vaultDir } from "../git";
 import { countLabel } from "../format";
 import { unattachedBranches } from "../vault";
 
@@ -29,8 +29,7 @@ export async function grepCommand(pattern: string, extraArgs: string[], marrowHo
 
   // A registered worktree whose directory is gone can't be searched; report
   // it rather than pass a nonexistent path to rg/grep.
-  const missing = worktrees.filter((w) => w.missing);
-  const present = worktrees.filter((w) => !w.missing);
+  const { present, missing } = splitByMissing(worktrees);
   if (missing.length > 0) {
     console.error(
       `marrow grep: skipping ${countLabel(missing.length, "branch", "branches")} with a missing worktree directory ` +
@@ -39,11 +38,10 @@ export async function grepCommand(pattern: string, extraArgs: string[], marrowHo
   }
   if (present.length === 0) {
     console.log("No project worktrees.");
+    reportPartial(0, unattached);
     return 0;
   }
-  // PATH passed explicitly (rather than bare `Bun.which("rg")`) so this reads
-  // the live environment on every call, not a value cached at process start.
-  if (!Bun.which("rg", { PATH: process.env.PATH ?? "" })) {
+  if (!commandOnPath("rg")) {
     console.error("rg is required for marrow grep");
     return 1;
   }

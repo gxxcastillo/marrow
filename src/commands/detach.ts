@@ -1,12 +1,8 @@
 import path from "node:path";
-import { aheadBehind, dirtyCount, git, listProjectWorktrees, vaultDir, type ProjectWorktree } from "../git";
+import { aheadBehind, dirtyCount, git, listProjectWorktrees, matchWorktrees, vaultDir } from "../git";
 
 export interface DetachOptions {
   dryRun?: boolean;
-}
-
-function matches(worktrees: ProjectWorktree[], target: string): ProjectWorktree[] {
-  return worktrees.filter((w) => w.branch === target || path.basename(path.dirname(w.path)) === target);
 }
 
 // Resolved like `sync` targets, but exactly one match is required — detach
@@ -16,7 +12,7 @@ function matches(worktrees: ProjectWorktree[], target: string): ProjectWorktree[
 export async function detachCommand(target: string, opts: DetachOptions, marrowHome: string): Promise<number> {
   const vault = vaultDir(marrowHome);
   const worktrees = await listProjectWorktrees(vault);
-  const found = matches(worktrees, target);
+  const found = matchWorktrees(worktrees, target);
 
   if (found.length === 0) {
     console.error(`marrow detach: unknown project: ${target}`);

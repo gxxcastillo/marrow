@@ -184,6 +184,27 @@ describe("sync", () => {
     expect(message).not.toContain("git stash");
   });
 
+  test("names both the stash and the pull steps for a worktree that is dirty and diverged at once", async () => {
+    const agentsPath = await addProjectWorktree(fx, "alpha");
+    await advanceOrigin(fx, "alpha");
+    await git(["commit", "--allow-empty", "-q", "-m", "local only"], agentsPath);
+    await Bun.write(path.join(agentsPath, "local-change.md"), "local\n");
+
+    const { code, errLines } = await captureLogs(() => syncCommand([], {}, fx.marrowHome));
+    expect(code).toBe(1);
+    const message = errLines.find((l) => l.includes("has diverged from origin/alpha"));
+    expect(message).toBeDefined();
+    // Order matters: stash before the pull, pop after, so the uncommitted
+    // changes aren't dropped by the reconciliation itself.
+    const stashIndex = message!.indexOf("git stash\n");
+    const pullIndex = message!.indexOf("git pull --no-rebase origin alpha");
+    const popIndex = message!.indexOf("git stash pop");
+    expect(stashIndex).toBeGreaterThan(-1);
+    expect(pullIndex).toBeGreaterThan(stashIndex);
+    expect(popIndex).toBeGreaterThan(pullIndex);
+    expect(await dirtyCount(agentsPath)).toBe(1); // untouched: nothing was stashed or merged
+  });
+
   test("notes when -m fans out to more than one dirty project", async () => {
     const alphaPath = await addProjectWorktree(fx, "alpha");
     const betaPath = await addProjectWorktree(fx, "beta");

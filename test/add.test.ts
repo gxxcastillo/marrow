@@ -229,6 +229,43 @@ describe("add", () => {
       expect(code).toBe(1);
       expect(errLines.join("\n")).toContain("already attached");
     });
+
+    test("names the missing worktree's directory and points at detach, rather than reporting a false success", async () => {
+      const otherAgents = path.join(fx.projectsRoot, "other-missing", ".agents");
+      await git(["worktree", "add", "--orphan", "-b", "local/dupbranch-missing", otherAgents], vaultDir(fx.marrowHome));
+      await git(["commit", "--allow-empty", "-q", "-m", "seed"], otherAgents);
+      await rm(otherAgents, { recursive: true, force: true });
+
+      const { code, errLines } = await captureLogs(() =>
+        addCommand(path.join(fx.projectsRoot, "dupbranch-missing"), { id: "local/dupbranch-missing" }, fx.marrowHome, fx.toolRoot),
+      );
+      expect(code).toBe(1);
+      expect(errLines.join("\n")).toContain("already attached");
+      expect(errLines.join("\n")).toContain("marrow detach local/dupbranch-missing");
+    });
+  });
+
+  test("re-running add on an unchanged, present worktree succeeds without changing it", async () => {
+    const projectDir = await makeProjectRepo(fx, "steady", "ignored");
+    const first = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+    expect(first.code).toBe(0);
+
+    const { code, outLines } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+    expect(code).toBe(0);
+    expect(outLines.join("\n")).toContain("already attached steady");
+  });
+
+  test("refuses to report false success when the worktree at the target path is missing", async () => {
+    const projectDir = await makeProjectRepo(fx, "vanished", "ignored");
+    const first = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+    expect(first.code).toBe(0);
+    await rm(path.join(projectDir, ".agents"), { recursive: true, force: true });
+
+    const { code, errLines } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+    expect(code).toBe(1);
+    expect(errLines.join("\n")).toContain("worktree directory is missing");
+    expect(errLines.join("\n")).toContain("marrow detach vanished");
+    expect(existsSync(path.join(projectDir, ".agents"))).toBe(false);
   });
 
   test("dispatches to adopt when .agents already exists, and to fresh-create otherwise", async () => {
