@@ -52,8 +52,10 @@ been moved into the new worktree.
 
 **Backups are never auto-deleted.** They accumulate under `<MARROW_HOME>/backups/` — a
 plain directory outside any git working tree, so there's no `.gitignore` entry needed to
-keep them out of a repo — until a human removes them. `doctor` warns — never fails — on a
-tarball older than 30 days, as a nudge, not a cleanup mechanism.
+keep them out of a repo — until a human removes them. `doctor` warns — never fails — when
+any tarball is older than 30 days, aggregated to one line naming the count (a line per
+tarball would be a permanent, ever-growing noise source, precisely because backups are
+never auto-deleted), as a nudge, not a cleanup mechanism.
 
 ## Rollback on partial failure
 

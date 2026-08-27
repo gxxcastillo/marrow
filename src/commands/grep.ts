@@ -1,9 +1,6 @@
 import { listProjectWorktrees, vaultDir } from "../git";
+import { countLabel } from "../format";
 import { unattachedBranches } from "../vault";
-
-function countLabel(count: number, noun: string, plural = `${noun}es`): string {
-  return `${count} ${count === 1 ? noun : plural}`;
-}
 
 // Unattached branches go to stderr, never stdout: stdout belongs to rg's match
 // stream, which callers pipe. A partial search reported as a complete one is
@@ -44,13 +41,18 @@ export async function grepCommand(pattern: string, extraArgs: string[], marrowHo
     console.log("No project worktrees.");
     return 0;
   }
+  // PATH passed explicitly (rather than bare `Bun.which("rg")`) so this reads
+  // the live environment on every call, not a value cached at process start.
+  if (!Bun.which("rg", { PATH: process.env.PATH ?? "" })) {
+    console.error("rg is required for marrow grep");
+    return 1;
+  }
   const paths = present.map((w) => w.path);
   reportPartial(present.length, unattached);
 
-  const cmd = Bun.which("rg")
-    ? ["rg", "--hidden", "--no-ignore", "-g", "!.git", pattern, ...extraArgs, ...paths]
-    : ["grep", "-rn", "--exclude-dir=.git", pattern, ...paths, ...extraArgs];
-
-  const proc = Bun.spawn(cmd, { stdout: "inherit", stderr: "inherit" });
+  const proc = Bun.spawn(["rg", "--hidden", "--no-ignore", "-g", "!.git", pattern, ...extraArgs, ...paths], {
+    stdout: "inherit",
+    stderr: "inherit",
+  });
   return proc.exited;
 }

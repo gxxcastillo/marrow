@@ -3,7 +3,7 @@ import { realpathSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { git } from "../src/git";
-import { branchFor, githubId, githubProjectId, resolveIdentity } from "../src/identity";
+import { githubId, githubProjectId, resolveIdentity } from "../src/identity";
 import { makeFixture, type Fixture } from "./fixtures";
 
 describe("identity: GitHub origin parsing", () => {
@@ -66,12 +66,6 @@ describe("identity: GitHub origin parsing", () => {
     expect(githubProjectId("git@github.com:bob/notes.git")).toBe("notes");
   });
 
-  test.each([["alpha"], ["github.com/example-owner/alpha"], ["a/b/c"]])(
-    "branchFor(%s) uses the id verbatim as the branch name",
-    (id) => {
-      expect(branchFor(id)).toBe(id);
-    },
-  );
 });
 
 describe("identity: resolveIdentity", () => {
@@ -98,7 +92,6 @@ describe("identity: resolveIdentity", () => {
     const identity = await resolveIdentity(dir);
     expect(identity).toEqual({
       id: "alpha",
-      branch: "alpha",
       dir: realpathSync(dir),
       name: "alpha",
     });
@@ -115,27 +108,39 @@ describe("identity: resolveIdentity", () => {
     expect(identity.name).toBe("gamma");
   });
 
-  test("an explicit id skips git entirely, so a plain directory works", async () => {
+  test("an explicit id tolerates a plain, existing non-repo directory", async () => {
     const dir = path.join(fx.root, "identity", "not-a-repo");
     await mkdir(dir, { recursive: true });
 
     const identity = await resolveIdentity(dir, "local-notes");
     expect(identity).toEqual({
       id: "local-notes",
-      branch: "local-notes",
       dir: path.resolve(dir),
       name: "not-a-repo",
     });
   });
 
-  test("an explicit id keeps the given directory rather than walking up to the repo root", async () => {
+  test("an explicit id on a path that doesn't exist yet keeps the literal path (fresh create)", async () => {
+    const dir = path.join(fx.root, "identity", "brand-new", "nested");
+    // Deliberately not created: this is the `marrow add <new-path> --id <id>`
+    // fresh-create case, where spawning git against a nonexistent cwd must
+    // not crash.
+    const identity = await resolveIdentity(dir, "local-fresh");
+    expect(identity).toEqual({
+      id: "local-fresh",
+      dir: path.resolve(dir),
+      name: "nested",
+    });
+  });
+
+  test("an explicit id still resolves to the repo root from a subdirectory", async () => {
     const dir = await makeRepo("tracked-project", "git@github.com:example-owner/tracked-project.git");
     const nested = path.join(dir, "sub");
     await mkdir(nested, { recursive: true });
 
     const identity = await resolveIdentity(nested, "tracked-project-sub");
-    expect(identity.dir).toBe(path.resolve(nested));
-    expect(identity.name).toBe("sub");
+    expect(identity.dir).toBe(realpathSync(dir));
+    expect(identity.name).toBe(path.basename(dir));
   });
 
   test("rejects a directory that is not a git repository", async () => {
@@ -183,7 +188,6 @@ describe("identity: resolveIdentity", () => {
       await mkdir(dir, { recursive: true });
       const identity = await resolveIdentity(dir, id);
       expect(identity.id).toBe(id);
-      expect(identity.branch).toBe(id);
     },
   );
 });

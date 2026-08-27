@@ -77,7 +77,7 @@ async function backup(t: Target): Promise<string> {
 async function inspectAdd(projectArg: string, opts: AddOptions, marrowHome: string, toolRoot: string): Promise<AddInspection> {
   const identity = await resolveIdentity(projectArg, opts.id);
   const target: Target = {
-    branch: identity.branch,
+    branch: identity.id,
     name: identity.name,
     projectDir: identity.dir,
     agentsPath: path.join(identity.dir, ".agents"),

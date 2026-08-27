@@ -4,7 +4,6 @@ import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { addCommand } from "../src/commands/add";
 import { git, listProjectWorktrees, vaultDir } from "../src/git";
-import { branchFor } from "../src/identity";
 import { addProjectWorktree, makeFixture, makeProjectRepo, type Fixture } from "./fixtures";
 import { captureLogs, listFilesRecursive } from "./helpers";
 
@@ -139,6 +138,17 @@ describe("add", () => {
       const worktrees = await listProjectWorktrees(vaultDir(fx.marrowHome));
       expect(worktrees.map((w) => w.branch)).toContain(branch("alpha"));
     });
+
+    test("--id from a subdirectory still lands .agents/ at the repo root, not the subdirectory", async () => {
+      const projectDir = await makeProjectRepo(fx, "nested-repo", "ignored", path.join(fx.root, "elsewhere"));
+      const nested = path.join(projectDir, "packages", "sub");
+      await mkdir(nested, { recursive: true });
+
+      const { code } = await captureLogs(() => addCommand(nested, { id: "custom/nested-repo" }, fx.marrowHome, fx.toolRoot));
+      expect(code).toBe(0);
+      expect(existsSync(path.join(projectDir, ".agents", ".git"))).toBe(true);
+      expect(existsSync(path.join(nested, ".agents"))).toBe(false);
+    });
   });
 
   describe("creating a fresh .agents/", () => {
@@ -155,10 +165,10 @@ describe("add", () => {
       expect(readme).toContain("## Persistence");
 
       const worktrees = await listProjectWorktrees(vaultDir(fx.marrowHome));
-      expect(worktrees.map((w) => w.branch)).toContain(branchFor("local/freshproj"));
+      expect(worktrees.map((w) => w.branch)).toContain("local/freshproj");
 
       const rev = await git(["rev-parse", "HEAD"], agentsPath);
-      const remoteRev = await git(["rev-parse", `origin/${branchFor("local/freshproj")}`], agentsPath);
+      const remoteRev = await git(["rev-parse", "origin/local/freshproj"], agentsPath);
       expect(remoteRev.stdout).toBe(rev.stdout);
     });
 
@@ -209,7 +219,7 @@ describe("add", () => {
 
     test("fails if a branch of that name already exists in marrow", async () => {
       const otherAgents = path.join(fx.projectsRoot, "other", ".agents");
-      await git(["worktree", "add", "--orphan", "-b", branchFor("local/dupbranch"), otherAgents], vaultDir(fx.marrowHome));
+      await git(["worktree", "add", "--orphan", "-b", "local/dupbranch", otherAgents], vaultDir(fx.marrowHome));
       // An orphan branch has no ref until its first commit ("unborn branch").
       await git(["commit", "--allow-empty", "-q", "-m", "seed"], otherAgents);
 
@@ -259,7 +269,7 @@ describe("add", () => {
       {
         name: "attach",
         setup: async () => {
-          const seededAgents = await addProjectWorktree(fx, "seeded", branchFor("local/table-attach"));
+          const seededAgents = await addProjectWorktree(fx, "seeded", "local/table-attach");
           await git(["worktree", "remove", seededAgents], vaultDir(fx.marrowHome));
           const projectDir = path.join(fx.projectsRoot, "table-attach");
           await mkdir(projectDir, { recursive: true });
@@ -291,7 +301,7 @@ describe("add", () => {
           const projectDir = await makeProjectRepo(fx, "wrong-target", "ignored");
           const agentsPath = path.join(projectDir, ".agents");
           await rm(agentsPath, { recursive: true, force: true });
-          await git(["worktree", "add", "--orphan", "-b", branchFor("local/other"), agentsPath], vaultDir(fx.marrowHome));
+          await git(["worktree", "add", "--orphan", "-b", "local/other", agentsPath], vaultDir(fx.marrowHome));
           return { projectDir, unchangedPath: agentsPath };
         },
         expected: "is a worktree for 'local/other'",

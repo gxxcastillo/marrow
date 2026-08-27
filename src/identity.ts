@@ -1,18 +1,17 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { git } from "./git";
 
+// The vault branch is exactly the project id — there is no separate mapping,
+// so a `ProjectIdentity` carries only `id` (`architecture.md` → Design model:
+// "its vault branch is exactly that identity").
 export interface ProjectIdentity {
   id: string;
-  branch: string;
   dir: string;
   name: string;
 }
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9._/-]*$/;
-
-export function branchFor(id: string): string {
-  return id;
-}
 
 function validId(id: string): boolean {
   return ID_PATTERN.test(id) && !id.includes("..") && !id.includes("//") && !id.endsWith(".") && !id.endsWith("/");
@@ -38,12 +37,16 @@ export async function resolveIdentity(projectArg: string, explicitId?: string): 
   // `undefined` means no --id was given; an empty --id is a bad value, not an
   // absent one, and must fail validation rather than silently deriving an id.
   let dir = path.resolve(projectArg);
-  if (explicitId === undefined) {
-    const root = await git(["rev-parse", "--show-toplevel"], dir);
-    if (root.code !== 0) {
-      throw new Error(`${dir} is not a git repository; pass --id <stable-id> for a project without origin`);
-    }
+  // Toplevel resolution runs whenever the path is inside a git repo, --id or
+  // not — `cli.md` says the path always resolves to the parent repo's root.
+  // `existsSync` guards the fresh-create case (`marrow add <new-path> --id
+  // <id>`): the directory may not exist on disk yet, and spawning git against
+  // a nonexistent cwd throws instead of failing gracefully.
+  const root = existsSync(dir) ? await git(["rev-parse", "--show-toplevel"], dir) : { code: 1, stdout: "" };
+  if (root.code === 0) {
     dir = root.stdout;
+  } else if (explicitId === undefined) {
+    throw new Error(`${dir} is not a git repository; pass --id <stable-id> for a project without origin`);
   }
 
   let id = explicitId;
@@ -59,5 +62,5 @@ export async function resolveIdentity(projectArg: string, explicitId?: string): 
   if (!validId(id)) {
     throw new Error(`invalid project id '${id}'; use lowercase letters, numbers, '.', '_', '-', and '/'`);
   }
-  return { id, branch: branchFor(id), dir, name: path.basename(dir) };
+  return { id, dir, name: path.basename(dir) };
 }

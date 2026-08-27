@@ -1,5 +1,5 @@
 import { git, run, vaultDir } from "../git";
-import { commandOnPath, configureOriginFetch, originUrl, verifyOriginReachable, verifyPrivateVisibility } from "../remote";
+import { configureOriginFetch, originUrl, verifyOriginReachable, verifyPrivateVisibility } from "../remote";
 import { branchesForPublish, ensureVaultLandingBranch } from "../vault";
 
 export interface PublishOptions { dryRun?: boolean }
@@ -55,7 +55,9 @@ export async function publishCommand(slug: string, opts: PublishOptions, marrowH
       return 0;
     }
 
-    if (!commandOnPath("gh")) throw new PublishAbort("gh is required for marrow publish");
+    // PATH passed explicitly (rather than bare `Bun.which("gh")`) so this reads
+    // the live environment on every call, not a value cached at process start.
+    if (!Bun.which("gh", { PATH: process.env.PATH ?? "" })) throw new PublishAbort("gh is required for marrow publish");
     await ensureVaultLandingBranch(vault);
     console.log(`publishing vault to private GitHub repository ${slug}...`);
     const made = await run("gh", ["repo", "create", slug, "--private"], vault);

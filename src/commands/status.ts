@@ -1,11 +1,8 @@
 import os from "node:os";
 import path from "node:path";
 import { aheadBehind, dirtyCount, lastCommit, listProjectWorktrees, vaultDir } from "../git";
+import { countLabel } from "../format";
 import { unattachedBranches } from "../vault";
-
-function countLabel(count: number, noun: string, plural = `${noun}s`): string {
-  return `${count} ${count === 1 ? noun : plural}`;
-}
 
 function syncLabel(aheadBehind: { ahead: number; behind: number } | null): string {
   if (!aheadBehind) return "not pushed";

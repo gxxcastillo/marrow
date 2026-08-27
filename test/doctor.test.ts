@@ -27,7 +27,6 @@ describe("doctor", () => {
 
     const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
     expect(outLines.some((l) => l.startsWith("FAIL"))).toBe(false);
-    expect(outLines.some((l) => l.includes("marrow identity"))).toBe(false);
     expect(code).toBe(0);
   });
 
@@ -140,48 +139,23 @@ describe("doctor", () => {
     expect(outLines.some((l) => l.includes("no upstream"))).toBe(false);
   });
 
-  test("warns when a local-id project now has a GitHub origin", async () => {
-    const projectDir = await makeProjectRepo(fx, "future", "ignored");
-    const { code: addCode } = await captureLogs(() =>
-      addCommand(projectDir, { id: "local/future" }, fx.marrowHome, fx.toolRoot),
-    );
-    expect(addCode).toBe(0);
-
-    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
-    expect(code).toBe(0);
-    expect(outLines.some((l) =>
-      l.startsWith("WARN") &&
-      l.includes("future has GitHub origin github.com/test/future") &&
-      l.includes("marrow identity is local/future"),
-    )).toBe(true);
-  });
-
-  test("warns when a GitHub-id project origin differs from its marrow identity", async () => {
-    const projectDir = await makeProjectRepo(fx, "renamed", "ignored");
-    const { code: addCode } = await captureLogs(() =>
-      addCommand(projectDir, { id: "github.com/test/old-name" }, fx.marrowHome, fx.toolRoot),
-    );
-    expect(addCode).toBe(0);
-
-    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
-    expect(code).toBe(0);
-    expect(outLines.some((l) =>
-      l.startsWith("WARN") &&
-      l.includes("renamed has GitHub origin github.com/test/renamed") &&
-      l.includes("marrow identity is github.com/test/old-name"),
-    )).toBe(true);
-  });
-
-  test("warns about backup tarballs older than 30 days", async () => {
+  test("aggregates stale backup tarballs into one warning line", async () => {
     const backupsDir = path.join(fx.marrowHome, "backups");
     await mkdir(backupsDir, { recursive: true });
-    const tarballPath = path.join(backupsDir, "old-project-2020-01-01.tar.gz");
-    await Bun.write(tarballPath, "fake");
     const old = (Date.now() - 40 * 24 * 60 * 60 * 1000) / 1000;
-    await utimes(tarballPath, old, old);
+    for (const name of ["old-project-2020-01-01.tar.gz", "another-project-2020-01-02.tar.gz"]) {
+      const tarballPath = path.join(backupsDir, name);
+      await Bun.write(tarballPath, "fake");
+      await utimes(tarballPath, old, old);
+    }
+    // A recent one must not count toward the aggregate.
+    await Bun.write(path.join(backupsDir, "fresh-project-today.tar.gz"), "fake");
 
     const { outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
-    expect(outLines.some((l) => l.startsWith("WARN") && l.includes("old-project") && l.includes("day"))).toBe(true);
+    const warnings = outLines.filter((l) => l.startsWith("WARN") && l.includes("older than 30 days"));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("2 backups older than 30 days");
+    expect(warnings[0]).toContain(backupsDir);
   });
 
   test("reports unattached vault branches as OK, not as a warning", async () => {

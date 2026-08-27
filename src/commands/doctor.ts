@@ -2,17 +2,13 @@ import { existsSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { MIN_GIT_MAJOR, MIN_GIT_MINOR, aheadBehind, git, gitTooOld, gitVersion, listProjectWorktrees, vaultDir } from "../git";
-import { githubId, githubProjectId } from "../identity";
+import { countLabel } from "../format";
 import { originUrl, verifyOriginReachable, verifyPrivateVisibility } from "../remote";
 import { unattachedBranches } from "../vault";
 
 const UNPUSHED_WARN_THRESHOLD = 20;
 const STALE_BACKUP_DAYS = 30;
 const PROGRESS_LINE = "checking vault and project worktree health...";
-
-function countLabel(count: number, noun: string, plural = `${noun}s`): string {
-  return `${count} ${count === 1 ? noun : plural}`;
-}
 
 function branchList(branches: string[]): string {
   return branches.sort().join(", ");
@@ -108,21 +104,6 @@ export async function doctorCommand(marrowHome: string): Promise<number> {
     ok(`.agents ignored for ${countLabel(presentWorktrees.length, "project parent")}`);
   }
 
-  let checkedIdentities = 0;
-  for (const wt of presentWorktrees) {
-    const projectDir = path.dirname(wt.path);
-    const origin = await git(["remote", "get-url", "origin"], projectDir);
-    const originId = origin.code === 0 ? githubId(origin.stdout) : null;
-    const defaultId = origin.code === 0 ? githubProjectId(origin.stdout) : null;
-    if (!originId || !defaultId) continue;
-    checkedIdentities++;
-    const branchId = wt.branch;
-    if (branchId !== defaultId) {
-      warn(`${projectDir} has GitHub origin ${originId}, but marrow identity is ${branchId}; default is ${defaultId}`);
-    }
-  }
-  if (checkedIdentities > 0 && warnings === 0) ok(`GitHub project identities match defaults for ${countLabel(checkedIdentities, "project")}`);
-
   const url = await originUrl(vault);
   let originRefsCurrent = false;
   if (!url) {
@@ -169,12 +150,14 @@ export async function doctorCommand(marrowHome: string): Promise<number> {
   const backupsDir = path.join(marrowHome, "backups");
   if (existsSync(backupsDir)) {
     const now = Date.now();
+    let stale = 0;
     for (const entry of await readdir(backupsDir)) {
       const ageDays = (now - (await stat(path.join(backupsDir, entry))).mtimeMs) / (1000 * 60 * 60 * 24);
-      if (ageDays > STALE_BACKUP_DAYS) {
-        warn(`backup ${entry} is ${Math.floor(ageDays)} day(s) old`);
-      }
+      if (ageDays > STALE_BACKUP_DAYS) stale++;
     }
+    // One aggregate line, not one per tarball: backups are never auto-deleted,
+    // so a per-tarball warning would be a permanent, ever-growing noise source.
+    if (stale > 0) warn(`${countLabel(stale, "backup")} older than ${STALE_BACKUP_DAYS} days under ${backupsDir}`);
   }
 
   const marrowOnPath = Bun.which("marrow");

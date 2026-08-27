@@ -227,7 +227,13 @@ manual reconciliation, a target's `git add`/`git commit` failed, or the push fai
 marrow add <project-path> [--id <stable-id>] [--dry-run]
 ```
 
-`<project-path>` resolves to its parent Git repository's top-level directory. Its default
+`<project-path>` resolves to its parent Git repository's top-level directory, `--id` or
+not — a subdirectory of a repo always lands `.agents/` at the repo root, not the
+subdirectory. The one exception is a `<project-path>` that isn't inside a git repository
+at all (including one that doesn't exist yet): with `--id` given, that path is kept
+literally, since this is the fresh-create case (`marrow add /path/to/new-project --id
+local/new-project`) and there's no repo root to resolve to. Without `--id`, that same case
+still aborts — deriving an identity requires an existing repo's `origin`. Its default
 identity is the normalized repository name from the GitHub `origin`, and its branch is
 exactly that identity (`notes`, `docs`, `marrow`). SSH and HTTPS forms produce the same
 identity. `--id` supplies a stable identity for a project without a supported origin, or
@@ -370,21 +376,20 @@ for every attached project may be summarized as one `OK` line. Per-project `FAIL
 | Every registered worktree's directory still exists on disk                                                                                                                                                                    | WARN per missing worktree, naming the path and `marrow detach <branch>` as the remediation |
 | Project branches in the vault with no worktree on this machine are listed by name                                                                                                                                            | Never fails — reported as an `OK` line. Attaching a subset is a deliberate choice, not drift; it is surfaced only because it bounds what `grep` and `status` can see    |
 | Every project worktree's parent repo ignores `.agents` (`git check-ignore -q -- .agents` in the parent dir). A parent directory that is not a git repository at all passes — there is nothing it could commit `.agents/` into | FAIL                                                                                                                                                                    |
-| Every project worktree with a supported GitHub parent-repo `origin` uses the default repo-name identity; a non-default `--id` is surfaced here for review                                                                     | WARN only                                                                                                                                                               |
 | `origin` remote is configured on `<MARROW_HOME>/vault.git`                                                                                                                                                                    | WARN if absent                                                                                                                                                          |
 | `origin` is reachable (`git ls-remote --exit-code origin`)                                                                                                                                                                    | FAIL if unreachable                                                                                                                                                     |
 | `origin` refs can be refreshed (`git fetch --prune origin`)                                                                                                                                                                   | FAIL if fetch fails                                                                                                                                                     |
 | `origin` visibility is `PRIVATE`, checked via `gh repo view --json visibility` when `gh` is on `PATH`                                                                                                                         | FAIL if a successful `gh` call reports non-`PRIVATE`; WARN (not FAIL) if `gh` is absent or the call itself fails for any other reason (e.g. not a GitHub-hosted remote) |
 | Each project worktree isn't more than 20 commits ahead of `origin/<branch>`, and has an `origin/<branch>` to compare against at all                                                                                           | WARN only; missing refs may be aggregated with `marrow sync` as the remediation                                                                                         |
-| No tarball under `<MARROW_HOME>/backups/` is older than 30 days                                                                                                                                                               | WARN only                                                                                                                                                               |
+| No tarball under `<MARROW_HOME>/backups/` is older than 30 days                                                                                                                                                               | WARN only, aggregated to one line naming the count and the directory (never one line per tarball — backups are never auto-deleted, so that would only grow)            |
 | `marrow` resolves on `PATH` (`Bun.which("marrow")`)                                                                                                                                                                           | WARN only                                                                                                                                                               |
 
 `doctor` checks the **vault's** origin only — the tool repo's own git hygiene is not
 marrow's concern, the same as it is not marrow's job to audit adopted parent repos.
 
 A worktree reported missing is excluded from every other per-project check that needs its
-directory (`.agents`-ignored, GitHub identity, ahead/behind) — there is nothing on disk to
-check — so those checks' `OK` summaries count only present worktrees.
+directory (`.agents`-ignored, ahead/behind) — there is nothing on disk to check — so those
+checks' `OK` summaries count only present worktrees.
 
 The vault's worktree registry is the source of each path; marrow does not require a common
 projects root. Exit `1` if any check produced a `FAIL` line, `0` otherwise — `WARN` never
@@ -397,17 +402,18 @@ marrow grep <pattern> [rg-args...]
 ```
 
 Runs across every project worktree path (not the tool repo's own files, not anything
-under `MARROW_HOME` directly). Prefers
-`rg --hidden --no-ignore -g '!.git' <pattern> [rg-args...] <worktree paths...>`;
-falls back to `grep -rn --exclude-dir=.git <pattern> <worktree paths...> [rg-args...]` if
-`rg` isn't on `PATH`. The `-g '!.git'` exclusion is deliberate and load-bearing:
-`rg --hidden --no-ignore` on its own still descends into `.git` directories (verified
-empirically — `--no-ignore` only disables `.gitignore`-based filtering, it does not by
-itself keep `rg` out of VCS internals the way plain `--hidden` alone would). `rg-args` are
-passed through verbatim after the pattern, before the worktree paths, so ordinary `rg`
-flags (`-i`, `-C3`, …) work as expected. marrow does not parse them at all — that
-includes `-h`/`--help`, which `rg` receives rather than marrow (see "Global flags"
-above).
+under `MARROW_HOME` directly), via
+`rg --hidden --no-ignore -g '!.git' <pattern> [rg-args...] <worktree paths...>`. `rg` is a
+hard requirement: without it on `PATH`, `marrow grep` prints `rg is required for marrow
+grep` and exits `1` rather than falling back to a different search — a prior BSD `grep`
+fallback changed match semantics silently and was removed. The `-g '!.git'` exclusion is
+deliberate and load-bearing: `rg --hidden --no-ignore` on its own still descends into
+`.git` directories (verified empirically — `--no-ignore` only disables `.gitignore`-based
+filtering, it does not by itself keep `rg` out of VCS internals the way plain `--hidden`
+alone would). `rg-args` are passed through verbatim after the pattern, before the worktree
+paths, so ordinary `rg` flags (`-i`, `-C3`, …) work as expected. marrow does not parse them
+at all — that includes `-h`/`--help`, which `rg` receives rather than marrow (see "Global
+flags" above).
 
 When the vault holds project branches that have no worktree on this machine, `grep`
 writes one caveat line to **stderr** before running the search, naming the count and the
@@ -433,9 +439,11 @@ the stderr notice) and exits `0`, the same as the zero-worktree case.
 
 Output streams directly to the terminal (not buffered/parsed by marrow). With zero
 project worktrees, prints `No project worktrees.` to stdout and exits `0` without
-invoking `rg`/`grep` at all. Otherwise the exit code is whatever the underlying `rg`/`grep` process
-returns — conventionally `0` (match found), `1` (no match), `2` (usage/other error). `2`
-also results from `marrow`'s own dispatch if `<pattern>` is omitted entirely.
+invoking `rg` at all (this also means `rg`'s absence is never reported in that case).
+Otherwise, once `rg` is confirmed on `PATH`, the exit code is whatever the `rg` process
+returns — conventionally `0` (match found), `1` (no match), `2` (usage/other error). `1`
+also results if `rg` isn't on `PATH`; `2` also results from `marrow`'s own dispatch if
+`<pattern>` is omitted entirely.
 
 ## `convention`
 

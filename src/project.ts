@@ -3,12 +3,6 @@ import { appendFile, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { git } from "./git";
 
-// Lifecycle commands take an explicit project path. Relative paths resolve from cwd.
-export function resolveProject(projectArg: string): { name: string; dir: string } {
-  const dir = path.resolve(projectArg);
-  return { name: path.basename(dir), dir };
-}
-
 // Creates README.md from the seed template if absent, then appends the
 // persistence block (both templates substituted with the project name).
 // `toolRoot` is the running tool's own install location, resolved

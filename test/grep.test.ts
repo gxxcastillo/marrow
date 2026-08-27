@@ -1,8 +1,24 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdir, symlink } from "node:fs/promises";
 import path from "node:path";
 import { grepCommand } from "../src/commands/grep";
 import { addProjectWorktree, addUnattachedBranch, deleteWorktreeDir, makeFixture, type Fixture } from "./fixtures";
 import { captureLogs } from "./helpers";
+
+// grep must shell out to the real rg; git also has to stay reachable, since
+// listing worktrees goes through it first.
+async function hideRgButKeepGit(fx: Fixture): Promise<() => void> {
+  const gitPath = Bun.which("git");
+  if (!gitPath) throw new Error("git missing from PATH");
+  const dir = path.join(fx.root, `path-without-rg-${Math.random().toString(16).slice(2)}`);
+  await mkdir(dir, { recursive: true });
+  await symlink(gitPath, path.join(dir, "git"));
+  const oldPath = process.env.PATH;
+  process.env.PATH = dir;
+  return () => {
+    process.env.PATH = oldPath;
+  };
+}
 
 describe("grep", () => {
   let fx: Fixture;
@@ -86,5 +102,28 @@ describe("grep", () => {
     expect(code).toBe(0);
     expect(outLines).toEqual(["No project worktrees."]);
     expect(errLines.join("\n")).toContain("missing worktree directory");
+  });
+
+  test("errors when rg is not on PATH, rather than falling back to grep", async () => {
+    await addProjectWorktree(fx, "alpha");
+    const restore = await hideRgButKeepGit(fx);
+    try {
+      const { code, errLines } = await captureLogs(() => grepCommand("needle", [], fx.marrowHome));
+      expect(code).toBe(1);
+      expect(errLines).toEqual(["rg is required for marrow grep"]);
+    } finally {
+      restore();
+    }
+  });
+
+  test("a fresh vault still reports No project worktrees. without checking for rg", async () => {
+    const restore = await hideRgButKeepGit(fx);
+    try {
+      const { code, outLines } = await captureLogs(() => grepCommand("needle", [], fx.marrowHome));
+      expect(code).toBe(0);
+      expect(outLines).toEqual(["No project worktrees."]);
+    } finally {
+      restore();
+    }
   });
 });
