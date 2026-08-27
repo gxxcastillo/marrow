@@ -56,7 +56,7 @@ Every `.agents/README.md` ends with this block, substituting the project name:
 ```markdown
 ## Persistence
 
-This directory is a git worktree of the private `marrow` repo (branch: `<project>`).
+This directory is a git worktree of the private marrow vault (branch: `<project>`).
 It is never committed to the parent repo. Convention: `marrow convention`.
 
 - After substantive changes that should survive handoff or project switching:
