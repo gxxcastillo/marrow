@@ -1,5 +1,5 @@
 import path from "node:path";
-import { aheadBehind, dirtyCount, git, hasOrigin, listProjectWorktrees, vaultDir } from "../git";
+import { aheadBehind, dirtyCount, git, hasOrigin, listProjectWorktrees, vaultDir, type ProjectWorktree } from "../git";
 
 export interface SyncOptions {
   message?: string;
@@ -16,19 +16,60 @@ function report(line: string, isError = false): void {
   else console.log(line);
 }
 
+// Printed for a manual-reconciliation refusal, in the same style as
+// `project.ts`'s `trackedMessage`: marrow itself never merges, rebases, or
+// stashes (`architecture.md` → Non-goals) — this is guidance for the human,
+// not a command marrow runs.
+function reconciliationMessage(name: string, agentsPath: string, branch: string, diverged: boolean): string {
+  if (diverged) {
+    return (
+      `${name} has diverged from origin/${branch} — both sides have commits the other lacks; reconcile manually:\n` +
+      `  cd ${agentsPath}\n` +
+      `  git pull --no-rebase origin ${branch}\n` +
+      `Then re-run: marrow sync ${name}`
+    );
+  }
+  return (
+    `${name} has local changes and origin/${branch} has moved; reconcile manually:\n` +
+    `  cd ${agentsPath}\n` +
+    `  git stash\n` +
+    `  git merge --ff-only origin/${branch}\n` +
+    `  git stash pop\n` +
+    `Then re-run: marrow sync ${name}`
+  );
+}
+
 export async function syncCommand(targets: string[], opts: SyncOptions, marrowHome: string): Promise<number> {
   const vault = vaultDir(marrowHome);
   const all = await listProjectWorktrees(vault);
   const matches = (target: string) => all.filter((w) => w.branch === target || path.basename(path.dirname(w.path)) === target);
-  const worktrees = targets.length > 0 ? targets.flatMap(matches) : all;
 
   let hadError = false;
+  let worktrees = all;
 
   if (targets.length > 0) {
-    const missing = targets.filter((t) => matches(t).length !== 1);
-    if (missing.length > 0) {
-      hadError = true;
-      report(`unknown project(s): ${missing.join(", ")}`, true);
+    // Each target resolves to exactly one worktree or is excluded with an
+    // accurate reason — a prior version reported an ambiguous target as
+    // "unknown" yet still synced every one of its matches.
+    const resolved = new Map<string, ProjectWorktree>();
+    for (const target of targets) {
+      const found = matches(target);
+      if (found.length === 0) {
+        hadError = true;
+        report(`unknown project: ${target}`, true);
+      } else if (found.length > 1) {
+        hadError = true;
+        report(`ambiguous name ${target} matches: ${found.map((w) => w.path).join(", ")}`, true);
+      } else {
+        resolved.set(found[0].path, found[0]); // keyed by path: dedupes when two targets name the same worktree
+      }
+    }
+    worktrees = [...resolved.values()];
+  } else if (opts.message) {
+    const dirtyFlags = await Promise.all(all.filter((wt) => !wt.missing).map((wt) => dirtyCount(wt.path)));
+    const dirtyProjects = dirtyFlags.filter((count) => count > 0).length;
+    if (dirtyProjects > 1) {
+      report(`note: -m applies the same message to all ${dirtyProjects} dirty projects`, true);
     }
   }
 
@@ -61,7 +102,7 @@ export async function syncCommand(targets: string[], opts: SyncOptions, marrowHo
       if (syncState?.behind) {
         const dirtyBeforePull = await dirtyCount(wt.path);
         if (dirtyBeforePull > 0 || syncState.ahead > 0) {
-          throw new Error("remote changes require manual reconciliation");
+          throw new Error(reconciliationMessage(name, wt.path, wt.branch, syncState.ahead > 0));
         }
         const fastForward = await git(["merge", "--ff-only", `origin/${wt.branch}`], wt.path);
         if (fastForward.code !== 0) throw new Error(`fast-forward failed: ${fastForward.stderr}`);

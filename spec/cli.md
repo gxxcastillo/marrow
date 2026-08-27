@@ -174,15 +174,25 @@ marrow sync [project...] [-m <message>]
 ```
 
 Targets: the named local project directory basenames (or exact branch names), or every
-attached project worktree if none are named. An ambiguous or unknown name is reported and
-does not stop remaining targets.
+attached project worktree if none are named. Each target resolves independently to exactly
+one worktree; a target matching none prints `unknown project: <target>`, one matching more
+than one prints `ambiguous name <target> matches: <path1>, <path2>`, and either way the
+remaining targets still proceed. Two targets that resolve to the same worktree sync it
+once, not twice.
 
 `sync` fetches first. A clean worktree behind its upstream fast-forwards. A dirty or
-diverged worktree with remote changes is left untouched and reported for manual
-reconciliation. For each remaining dirty target, `git add -A` then
-`git commit -m "<message>"`. Commit message is `<project>: <text>`, where `<text>` is the
-`-m` value if given, else `sync <ISO-8601 local timestamp, second precision>`. A clean
-project is skipped — its last commit is untouched.
+diverged worktree with remote changes is left untouched, and one error line prints the
+exact reconciliation steps (`project.ts`'s `trackedMessage` style — printed guidance,
+never run by marrow, which still never merges, rebases, or stashes on its own,
+`architecture.md` → Non-goals): dirty-and-behind names `git stash`, `git merge --ff-only
+origin/<branch>`, `git stash pop`; diverged (local and remote both hold commits the other
+lacks) names `git pull --no-rebase origin <branch>`, which resolves the divergence with an
+ordinary merge commit on the project's own branch. For each remaining dirty target,
+`git add -A` then `git commit -m "<message>"`. Commit message is `<project>: <text>`, where
+`<text>` is the `-m` value if given, else `sync <ISO-8601 local timestamp, second
+precision>`. A clean project is skipped — its last commit is untouched. Bare `marrow sync
+-m "<message>"` (no targets, more than one project dirty) prints one notice line first,
+since the same message is about to land on every dirty project's commit.
 
 After every target has been processed (regardless of per-project failures), `sync` pushes
 every project branch attached on this machine — `git push origin <branch>...` over the
@@ -203,9 +213,9 @@ given is a warning. Either way the printed line names the path and
 `marrow detach <branch>` as the remediation. It is still included in the final push, since
 pushing only touches the branch ref, not the worktree directory.
 
-**Exit codes.** `0`: nothing failed. `1`: an unknown project name was given, an explicitly
-named target's worktree directory was missing, a target's `git add`/`git commit` failed, or
-the push failed.
+**Exit codes.** `0`: nothing failed. `1`: an unknown or ambiguous project name was given, an
+explicitly named target's worktree directory was missing, the fetch failed, a target needed
+manual reconciliation, a target's `git add`/`git commit` failed, or the push failed.
 
 ## `add`
 
