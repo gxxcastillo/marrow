@@ -40,13 +40,19 @@ Do not use harness-provided per-user memory for project memory except as a point
 
 ## Maintenance
 
+- Update on events, not at session end. When work lands, a decision is made, or a plan
+  changes status, update `current-state.md` (and the affected plan) in the same working
+  step, then sync: `marrow sync <project> -m "<one-line summary>"`. The task is not done
+  until memory agrees with reality. Sessions end without warning — never defer memory
+  updates to a wrap-up pass.
+- Stamp freshness. `current-state.md` opens with
+  `As of YYYY-MM-DD (<parent repo> @<short-sha>)`, refreshed with every content update.
+- Repair on read. At session start, check the stamp against `git log` (parent repo and
+  `.agents/`) before trusting `current-state.md`; if reality has moved past it, reconcile
+  before building on it. A clean branch can still be stale, and `current-state.md`,
+  active plans, and `deferred-items.md` must agree with the latest user decision.
 - Edit in place. Git history replaces inline correction ledgers.
 - Collapse progress logs when work lands. Keep final state, not round-by-round history.
-- Sync substantive changes that should survive handoff or project switching:
-  `marrow sync <project> -m "<one-line summary>"`.
-- Check freshness semantically. `current-state.md`, active plans, and
-  `deferred-items.md` must agree with the latest user decision. A clean branch can still
-  be stale.
 - Do not leave `.agents/` as the sole copy of a durable rule.
 
 ## Persistence block
@@ -59,8 +65,11 @@ Every `.agents/README.md` ends with this block, substituting the project name:
 This directory is a git worktree of the private marrow vault (branch: `<project>`).
 It is never committed to the parent repo. Convention: `marrow convention`.
 
-- After substantive changes that should survive handoff or project switching:
-  `marrow sync <project> -m "<one-line summary of what changed>"`.
+- Updating this directory is part of finishing work, not a wrap-up chore: when work
+  lands, a decision is made, or a plan changes status, update `current-state.md` in the
+  same step, then `marrow sync <project> -m "<one-line summary of what changed>"`.
+- On session start, check `current-state.md`'s `As of` stamp against `git log`;
+  reconcile before building on stale state.
 - Edit files in place; git history replaces inline correction narrative.
 - `marrow status` shows unsynced changes; `marrow doctor` checks the setup.
 ```
