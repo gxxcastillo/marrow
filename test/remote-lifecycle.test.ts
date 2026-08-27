@@ -92,16 +92,16 @@ describe("remote lifecycle", () => {
   });
 
   test("publish dry-run lists the intended private repo and branches without adding origin", async () => {
-    await addProjectWorktree(fx, "ossa");
+    await addProjectWorktree(fx, "alpha");
     await removeVaultOrigin(fx);
 
     const { code, outLines } = await captureLogs(() =>
-      publishCommand("gxxcastillo/marrow-vault", { dryRun: true }, fx.marrowHome),
+      publishCommand("example-owner/marrow-vault", { dryRun: true }, fx.marrowHome),
     );
 
     expect(code).toBe(0);
-    expect(outLines).toContain("dry run: would publish vault to private GitHub repository gxxcastillo/marrow-vault");
-    expect(outLines).toContain("origin: git@github.com:gxxcastillo/marrow-vault.git");
+    expect(outLines).toContain("dry run: would publish vault to private GitHub repository example-owner/marrow-vault");
+    expect(outLines).toContain("origin: git@github.com:example-owner/marrow-vault.git");
     expect(outLines).toContain("branches: 2");
     expect(outLines).toContain("  main");
     expect((await git(["rev-parse", "--verify", "--quiet", "main"], vaultDir(fx.marrowHome))).code).toBe(1);
@@ -110,28 +110,28 @@ describe("remote lifecycle", () => {
 
   test("publish pushes every local branch to a private GitHub remote", async () => {
     restoreEnv = await installGhStub(fx);
-    await addProjectWorktree(fx, "ossa");
+    await addProjectWorktree(fx, "alpha");
     await removeVaultOrigin(fx);
 
     const { code, outLines } = await captureLogs(() =>
-      publishCommand("gxxcastillo/marrow-vault", {}, fx.marrowHome),
+      publishCommand("example-owner/marrow-vault", {}, fx.marrowHome),
     );
 
     expect(code).toBe(0);
-    expect(outLines[0]).toBe("publishing vault to private GitHub repository gxxcastillo/marrow-vault...");
+    expect(outLines[0]).toBe("publishing vault to private GitHub repository example-owner/marrow-vault...");
     expect(outLines).toContain(`origin: ${fx.bareOrigin}`);
     expect(outLines).toContain("pushed branches: 2");
     expect(outLines).toContain("origin is PRIVATE");
     expect(await originUrl(vaultDir(fx.marrowHome))).toBe(fx.bareOrigin);
-    expect((await git(["rev-parse", "origin/ossa"], vaultDir(fx.marrowHome))).code).toBe(0);
+    expect((await git(["rev-parse", "origin/alpha"], vaultDir(fx.marrowHome))).code).toBe(0);
     const readme = await git(["show", "origin/main:README.md"], vaultDir(fx.marrowHome));
     expect(readme.stdout).toBe(VAULT_README.trim());
-    expect(readme.stdout).toContain("[marrow](https://github.com/gxxcastillo/marrow)");
+    expect(readme.stdout).toContain("Private data vault for marrow.");
   });
 
   test("publish refuses an existing origin", async () => {
     const { code, errLines } = await captureLogs(() =>
-      publishCommand("gxxcastillo/marrow-vault", {}, fx.marrowHome),
+      publishCommand("example-owner/marrow-vault", {}, fx.marrowHome),
     );
     expect(code).toBe(1);
     expect(errLines.join("\n")).toContain("vault already uses origin");
@@ -142,7 +142,7 @@ describe("remote lifecycle", () => {
     await removeVaultOrigin(fx);
 
     const { code, errLines } = await captureLogs(() =>
-      publishCommand("gxxcastillo/marrow-vault", {}, fx.marrowHome),
+      publishCommand("example-owner/marrow-vault", {}, fx.marrowHome),
     );
 
     expect(code).toBe(1);
@@ -151,16 +151,16 @@ describe("remote lifecycle", () => {
 
   test("publish reports partial state when privacy verification fails", async () => {
     restoreEnv = await installGhStub(fx, { visibility: "PUBLIC" });
-    await addProjectWorktree(fx, "ossa");
+    await addProjectWorktree(fx, "alpha");
     await removeVaultOrigin(fx);
 
     const { code, errLines } = await captureLogs(() =>
-      publishCommand("gxxcastillo/marrow-vault", {}, fx.marrowHome),
+      publishCommand("example-owner/marrow-vault", {}, fx.marrowHome),
     );
 
     expect(code).toBe(1);
     expect(errLines.join("\n")).toContain("origin visibility is PUBLIC, expected PRIVATE");
-    expect(errLines.join("\n")).toContain("created repository: gxxcastillo/marrow-vault");
+    expect(errLines.join("\n")).toContain("created repository: example-owner/marrow-vault");
     expect(errLines.join("\n")).toContain("safe next command:");
   });
 
@@ -213,7 +213,7 @@ describe("remote lifecycle", () => {
     expect(res.code).toBe(1);
     expect(res.errLines.join("\n")).toContain("vault already uses origin");
 
-    await addProjectWorktree(fx, "ossa");
+    await addProjectWorktree(fx, "alpha");
     await removeVaultOrigin(fx);
     res = await captureLogs(() => initCommand(fx.marrowHome, { from: fx.bareOrigin }));
     expect(res.code).toBe(1);

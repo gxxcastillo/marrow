@@ -181,7 +181,7 @@ stdout/stderr instead appends to `<MARROW_HOME>/logs/sync.log` (created if absen
 line per action, each prefixed with an ISO-8601-local timestamp. A push failure (offline,
 unreachable remote) is logged as a warning, never raised as a failure. `--auto` always
 exits `0`, even when a target project failed to commit or the push failed — it is a
-backstop and must never break a hook chain or a launchd job.
+backstop and must never break a hook chain or scheduled job.
 
 **Exit codes.** `0`: nothing failed (or `--auto`, unconditionally). `1` (non-`--auto`
 only): an unknown project name was given, a target's `git add`/`git commit` failed, or the
@@ -195,7 +195,7 @@ marrow add <project-path> [--id <stable-id>] [--dry-run]
 
 `<project-path>` resolves to its parent Git repository's top-level directory. Its default
 identity is the normalized repository name from the GitHub `origin`, and its branch is
-exactly that identity (`ossa`, `pho`, `marrow`). SSH and HTTPS forms produce the same
+exactly that identity (`notes`, `docs`, `marrow`). SSH and HTTPS forms produce the same
 identity. `--id` supplies a stable identity for a project without a supported origin, or
 for a GitHub project that needs a non-default name. The path basename is a display name
 only.
@@ -307,9 +307,8 @@ for every attached project may be summarized as one `OK` line. Per-project `FAIL
 | No tarball under `<MARROW_HOME>/backups/` is older than 30 days                                                                                                                                                               | WARN only                                                                                                                                                               |
 | `marrow` resolves on `PATH` (`Bun.which("marrow")`)                                                                                                                                                                           | WARN only                                                                                                                                                               |
 
-`doctor` checks the **vault's** origin only — the tool repo's own git hygiene (whether
-`~/dev/marrow` itself is clean, pushed, etc.) isn't marrow's concern, the same as it
-isn't marrow's job to audit `pho`'s or `ossa`'s own repos.
+`doctor` checks the **vault's** origin only — the tool repo's own git hygiene is not
+marrow's concern, the same as it is not marrow's job to audit adopted parent repos.
 
 The vault's worktree registry is the source of each path; marrow does not require a common
 projects root. Exit `1` if any check produced a `FAIL` line, `0` otherwise — `WARN` never
@@ -354,14 +353,14 @@ if the file is missing.
 
 ```bash
 marrow init                            # one-time: create the vault's bare repo
-marrow init --from git@github.com:gxxcastillo/marrow-vault.git --dry-run # preview existing remote setup
-marrow publish gxxcastillo/marrow-vault --dry-run # preview private remote creation
+marrow init --from git@github.com:example-owner/marrow-vault.git --dry-run # preview existing remote setup
+marrow publish example-owner/marrow-vault --dry-run # preview private remote creation
 marrow status                          # what's dirty, what's unpushed
 marrow sync                            # commit + push everything dirty
-marrow sync ossa -m "weekly review"    # one project, a real message
-marrow add ~/dev/sobremesa --dry-run   # preview before touching a real project
-marrow add ~/dev/sobremesa             # for real, attended (see ../AGENTS.md)
-marrow add ~/dev/some-brand-new-project # no prior .agents/ — created fresh instead
+marrow sync notes -m "weekly review"   # one project, a real message
+marrow add /path/to/project --dry-run   # preview before touching a real project
+marrow add /path/to/project             # for real; attended when adopting existing memory
+marrow add /path/to/new-project --id local/new-project # no prior .agents/ — created fresh instead
 marrow doctor                          # health check after any of the above
 marrow grep "TODO" -C2                 # cross-project search, rg flags pass through
 marrow convention                      # what should be inside .agents/

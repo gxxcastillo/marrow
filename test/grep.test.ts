@@ -22,7 +22,7 @@ describe("grep", () => {
   });
 
   test("finds a pattern across project worktrees and exits 0", async () => {
-    const agentsPath = await addProjectWorktree(fx, "ossa");
+    const agentsPath = await addProjectWorktree(fx, "alpha");
     await Bun.write(path.join(agentsPath, "note.md"), "findme-marker\n");
 
     const code = await grepCommand("findme-marker", [], fx.marrowHome);
@@ -30,7 +30,7 @@ describe("grep", () => {
   });
 
   test("exits non-zero when nothing matches", async () => {
-    await addProjectWorktree(fx, "ossa");
+    await addProjectWorktree(fx, "alpha");
     const code = await grepCommand("no-such-pattern-anywhere", [], fx.marrowHome);
     expect(code).not.toBe(0);
   });

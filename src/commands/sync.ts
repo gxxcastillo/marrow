@@ -14,7 +14,7 @@ function isoLocal(): string {
 }
 
 // --auto redirects every line to <MARROW_HOME>/logs/sync.log instead of the
-// terminal, so a hook or launchd job leaves a record without writing to stdout.
+// terminal, so a hook or scheduled job leaves a record without writing to stdout.
 async function report(marrowHome: string, auto: boolean | undefined, line: string, isError = false): Promise<void> {
   if (!auto) {
     if (isError) console.error(line);

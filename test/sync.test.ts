@@ -17,7 +17,7 @@ describe("sync", () => {
   });
 
   test("commits dirty projects with a default timestamped message and pushes", async () => {
-    const agentsPath = await addProjectWorktree(fx, "ossa");
+    const agentsPath = await addProjectWorktree(fx, "alpha");
     await Bun.write(path.join(agentsPath, "note.md"), "note\n");
 
     const code = await syncCommand([], {}, fx.marrowHome);
@@ -25,24 +25,24 @@ describe("sync", () => {
     expect(await dirtyCount(agentsPath)).toBe(0);
 
     const commit = await lastCommit(agentsPath);
-    expect(commit?.subject).toMatch(/^ossa: sync \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
+    expect(commit?.subject).toMatch(/^alpha: sync \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
 
     const rev = await git(["rev-parse", "HEAD"], agentsPath);
-    const remoteRev = await git(["rev-parse", "origin/ossa"], agentsPath);
+    const remoteRev = await git(["rev-parse", "origin/alpha"], agentsPath);
     expect(remoteRev.stdout).toBe(rev.stdout);
   });
 
   test("uses a custom message prefixed with the project name", async () => {
-    const agentsPath = await addProjectWorktree(fx, "ossa");
+    const agentsPath = await addProjectWorktree(fx, "alpha");
     await Bun.write(path.join(agentsPath, "note.md"), "note\n");
 
     await syncCommand([], { message: "did a thing" }, fx.marrowHome);
     const commit = await lastCommit(agentsPath);
-    expect(commit?.subject).toBe("ossa: did a thing");
+    expect(commit?.subject).toBe("alpha: did a thing");
   });
 
   test("skips clean projects", async () => {
-    const agentsPath = await addProjectWorktree(fx, "ossa");
+    const agentsPath = await addProjectWorktree(fx, "alpha");
     const before = await lastCommit(agentsPath);
 
     await syncCommand([], {}, fx.marrowHome);
@@ -51,15 +51,15 @@ describe("sync", () => {
   });
 
   test("only syncs the named project when targets are given", async () => {
-    const ossaPath = await addProjectWorktree(fx, "ossa");
-    const sobremesaPath = await addProjectWorktree(fx, "sobremesa");
-    await Bun.write(path.join(ossaPath, "note.md"), "note\n");
-    await Bun.write(path.join(sobremesaPath, "note.md"), "note\n");
+    const alphaPath = await addProjectWorktree(fx, "alpha");
+    const betaPath = await addProjectWorktree(fx, "beta");
+    await Bun.write(path.join(alphaPath, "note.md"), "note\n");
+    await Bun.write(path.join(betaPath, "note.md"), "note\n");
 
-    const code = await syncCommand(["ossa"], {}, fx.marrowHome);
+    const code = await syncCommand(["alpha"], {}, fx.marrowHome);
     expect(code).toBe(0);
-    expect(await dirtyCount(ossaPath)).toBe(0);
-    expect(await dirtyCount(sobremesaPath)).toBe(1);
+    expect(await dirtyCount(alphaPath)).toBe(0);
+    expect(await dirtyCount(betaPath)).toBe(1);
   });
 
   test("returns exit 1 for an unknown project target", async () => {
@@ -68,7 +68,7 @@ describe("sync", () => {
   });
 
   test("tolerates an unreachable origin in --auto mode and still exits 0", async () => {
-    const agentsPath = await addProjectWorktree(fx, "ossa");
+    const agentsPath = await addProjectWorktree(fx, "alpha");
     await Bun.write(path.join(agentsPath, "note.md"), "note\n");
     await git(["remote", "set-url", "origin", path.join(fx.root, "does-not-exist.git")], vaultDir(fx.marrowHome));
 
@@ -81,7 +81,7 @@ describe("sync", () => {
   });
 
   test("surfaces a push failure as a non-zero exit outside --auto", async () => {
-    const agentsPath = await addProjectWorktree(fx, "ossa");
+    const agentsPath = await addProjectWorktree(fx, "alpha");
     await Bun.write(path.join(agentsPath, "note.md"), "note\n");
     await git(["remote", "set-url", "origin", path.join(fx.root, "does-not-exist.git")], vaultDir(fx.marrowHome));
 
@@ -90,7 +90,7 @@ describe("sync", () => {
   });
 
   test("skips push with a warning (not an error) when there is no origin", async () => {
-    const agentsPath = await addProjectWorktree(fx, "ossa");
+    const agentsPath = await addProjectWorktree(fx, "alpha");
     await git(["remote", "remove", "origin"], vaultDir(fx.marrowHome));
     await Bun.write(path.join(agentsPath, "note.md"), "note\n");
 

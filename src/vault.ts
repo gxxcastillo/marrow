@@ -7,7 +7,7 @@ import { localBranches } from "./remote";
 export const VAULT_LANDING_BRANCH = "main";
 export const VAULT_README = `# marrow-vault
 
-Private data vault for [marrow](https://github.com/gxxcastillo/marrow).
+Private data vault for marrow.
 
 Project memory lives on independent project branches and is checked out as
 \`.agents/\` worktrees inside each project. This branch is only the GitHub

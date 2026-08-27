@@ -19,7 +19,7 @@ describe("doctor", () => {
   });
 
   test("passes for a properly adopted project (ignored parent, pushed)", async () => {
-    const projectDir = await makeProjectRepo(fx, "ossa", "ignored");
+    const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
     const { code: adoptCode } = await captureLogs(() =>
       addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
     );
@@ -32,7 +32,7 @@ describe("doctor", () => {
   });
 
   test("shows transient progress without keeping it in final output", async () => {
-    await addProjectWorktree(fx, "ossa");
+    await addProjectWorktree(fx, "alpha");
 
     const writes: string[] = [];
     const originalWrite = process.stdout.write;
@@ -59,8 +59,8 @@ describe("doctor", () => {
   });
 
   test("summarizes healthy per-project checks", async () => {
-    await addProjectWorktree(fx, "ossa");
-    await addProjectWorktree(fx, "sobremesa");
+    await addProjectWorktree(fx, "alpha");
+    await addProjectWorktree(fx, "beta");
 
     const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
 
@@ -68,7 +68,7 @@ describe("doctor", () => {
     expect(outLines).toContain("OK    2 project worktrees named .agents");
     expect(outLines).toContain("OK    .agents ignored for 2 project parents");
     expect(outLines).toContain("OK    push state within threshold for 2 project branches");
-    expect(outLines.some((l) => l.includes("branch 'ossa' worktree at"))).toBe(false);
+    expect(outLines.some((l) => l.includes("branch 'alpha' worktree at"))).toBe(false);
   });
 
   test("fails when a worktree is not named .agents", async () => {
@@ -84,7 +84,7 @@ describe("doctor", () => {
   test("does not fail a project whose parent directory is not a git repo", async () => {
     const projectDir = path.join(fx.root, "elsewhere", "plaindir");
     const { code: addCode } = await captureLogs(() =>
-      addCommand(projectDir, { id: "personal/plaindir" }, fx.marrowHome, fx.toolRoot),
+      addCommand(projectDir, { id: "local/plaindir" }, fx.marrowHome, fx.toolRoot),
     );
     expect(addCode).toBe(0);
 
@@ -113,7 +113,7 @@ describe("doctor", () => {
   });
 
   test("warns when there is no origin remote", async () => {
-    await addProjectWorktree(fx, "ossa");
+    await addProjectWorktree(fx, "alpha");
     await git(["remote", "remove", "origin"], vaultDir(fx.marrowHome));
 
     const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
@@ -122,11 +122,11 @@ describe("doctor", () => {
   });
 
   test("aggregates missing origin refs with a remediation", async () => {
-    const ossaAgents = await addProjectWorktree(fx, "ossa");
-    const sobremesaAgents = await addProjectWorktree(fx, "sobremesa");
-    await git(["push", "-q", "origin", "HEAD:refs/heads/landing"], ossaAgents);
-    await git(["push", "-q", "origin", ":ossa"], ossaAgents);
-    await git(["push", "-q", "origin", ":sobremesa"], sobremesaAgents);
+    const alphaAgents = await addProjectWorktree(fx, "alpha");
+    const betaAgents = await addProjectWorktree(fx, "beta");
+    await git(["push", "-q", "origin", "HEAD:refs/heads/landing"], alphaAgents);
+    await git(["push", "-q", "origin", ":alpha"], alphaAgents);
+    await git(["push", "-q", "origin", ":beta"], betaAgents);
 
     const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
     const warnings = outLines.filter((l) => l.startsWith("WARN") && l.includes("missing origin refs"));
@@ -135,8 +135,8 @@ describe("doctor", () => {
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain("2 branches missing origin refs");
     expect(warnings[0]).toContain("run `marrow sync`");
-    expect(warnings[0]).toContain("ossa");
-    expect(warnings[0]).toContain("sobremesa");
+    expect(warnings[0]).toContain("alpha");
+    expect(warnings[0]).toContain("beta");
     expect(outLines.some((l) => l.includes("no upstream"))).toBe(false);
   });
 

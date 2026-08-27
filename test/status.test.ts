@@ -24,30 +24,30 @@ describe("status", () => {
   });
 
   test("lists clean pushed projects and summarizes", async () => {
-    await addProjectWorktree(fx, "ossa");
+    await addProjectWorktree(fx, "alpha");
     const { code, outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
     expect(code).toBe(0);
     expect(outLines[0]).toContain("PROJECT");
     expect(outLines[0]).toContain("CHANGES");
     expect(outLines[0]).toContain("SYNC");
-    expect(outLines[2]).toContain("ossa");
+    expect(outLines[2]).toContain("alpha");
     expect(outLines[2]).toContain("clean");
     expect(outLines[2]).toContain("synced");
     expect(outLines.at(-1)).toBe("1 project: all clean, all synced");
   });
 
   test("shows the branch key without rewriting it", async () => {
-    await addProjectWorktree(fx, "ossa", "ossa");
+    await addProjectWorktree(fx, "alpha", "alpha");
 
     const { outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
     expect(outLines[0]).toContain("KEY");
-    expect(outLines[2]).toStartWith(path.join(await realpath(fx.projectsRoot), "ossa"));
-    expect(outLines[2]).toContain("ossa");
+    expect(outLines[2]).toStartWith(path.join(await realpath(fx.projectsRoot), "alpha"));
+    expect(outLines[2]).toContain("alpha");
     expect(outLines[2]).not.toContain("projects/");
   });
 
   test("flags dirty projects and counts them in the summary", async () => {
-    const agentsPath = await addProjectWorktree(fx, "ossa");
+    const agentsPath = await addProjectWorktree(fx, "alpha");
     await Bun.write(path.join(agentsPath, "note.md"), "note\n");
 
     const { outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
@@ -56,8 +56,8 @@ describe("status", () => {
   });
 
   test("makes a project without an upstream explicit", async () => {
-    const agentsPath = await addProjectWorktree(fx, "ossa");
-    await git(["branch", "-D", "-r", "origin/ossa"], agentsPath);
+    const agentsPath = await addProjectWorktree(fx, "alpha");
+    await git(["branch", "-D", "-r", "origin/alpha"], agentsPath);
 
     const { outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
     expect(outLines[2]).toContain("not pushed");
@@ -65,8 +65,8 @@ describe("status", () => {
   });
 
   test("summarizes commits waiting to push", async () => {
-    const agentsPath = await addProjectWorktree(fx, "ossa");
-    await git(["commit", "--allow-empty", "-m", "ossa: pending"], agentsPath);
+    const agentsPath = await addProjectWorktree(fx, "alpha");
+    await git(["commit", "--allow-empty", "-m", "alpha: pending"], agentsPath);
 
     const { outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
     expect(outLines[2]).toContain("1 commit to push");
@@ -74,8 +74,8 @@ describe("status", () => {
   });
 
   test("lists multiple projects, one per line", async () => {
-    await addProjectWorktree(fx, "ossa");
-    await addProjectWorktree(fx, "sobremesa");
+    await addProjectWorktree(fx, "alpha");
+    await addProjectWorktree(fx, "beta");
 
     const { outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
     expect(outLines).toHaveLength(5); // header + divider + 2 projects + summary

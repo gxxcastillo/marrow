@@ -23,33 +23,33 @@ describe("add", () => {
 
   describe("adopting an existing .agents/", () => {
     test("happy path: adopts an ignored .agents dir, preserving content including dotfiles", async () => {
-      const projectDir = await makeProjectRepo(fx, "ossa", "ignored");
+      const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
       const agentsPath = path.join(projectDir, ".agents");
       const before = await listFilesRecursive(agentsPath);
       expect(before).toContain(".hidden");
 
       const { code, outLines } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
       expect(code).toBe(0);
-      expect(outLines.at(-1)).toBe(`pushed: origin/${branch("ossa")}`);
+      expect(outLines.at(-1)).toBe(`pushed: origin/${branch("alpha")}`);
 
       expect(existsSync(path.join(agentsPath, ".git"))).toBe(true);
       const after = await listFilesRecursive(agentsPath);
       for (const f of before) expect(after).toContain(f);
 
       const worktrees = await listProjectWorktrees(vaultDir(fx.marrowHome));
-      expect(worktrees.map((w) => w.branch)).toContain(branch("ossa"));
+      expect(worktrees.map((w) => w.branch)).toContain(branch("alpha"));
 
       const readme = await readFile(path.join(agentsPath, "README.md"), "utf8");
       expect(readme).toContain("## Persistence");
-      expect(readme).toContain(`branch: \`${branch("ossa")}\``);
+      expect(readme).toContain(`branch: \`${branch("alpha")}\``);
 
       const rev = await git(["rev-parse", "HEAD"], agentsPath);
-      const remoteRev = await git(["rev-parse", `origin/${branch("ossa")}`], agentsPath);
+      const remoteRev = await git(["rev-parse", `origin/${branch("alpha")}`], agentsPath);
       expect(remoteRev.stdout).toBe(rev.stdout);
     });
 
     test("backup tarball is created and non-empty", async () => {
-      const projectDir = await makeProjectRepo(fx, "ossa", "ignored");
+      const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
       await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
 
       const backupsDir = path.join(fx.marrowHome, "backups");
@@ -59,18 +59,18 @@ describe("add", () => {
     });
 
     test("reports a local-only add after the result when the vault has no origin", async () => {
-      const projectDir = await makeProjectRepo(fx, "ossa", "ignored");
+      const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
       await git(["remote", "remove", "origin"], vaultDir(fx.marrowHome));
 
       const { code, outLines } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
       expect(code).toBe(0);
-      expect(outLines[0]).toContain("added 'ossa': adopted existing .agents");
+      expect(outLines[0]).toContain("added 'alpha': adopted existing .agents");
       expect(outLines[1]).toContain("backup:");
       expect(outLines[2]).toBe("not pushed: vault has no origin");
     });
 
     test("appends .agents/ to parent .gitignore when untracked-not-ignored", async () => {
-      const projectDir = await makeProjectRepo(fx, "sobremesa", "untracked");
+      const projectDir = await makeProjectRepo(fx, "beta", "untracked");
       const { code } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
       expect(code).toBe(0);
       const gitignore = await readFile(path.join(projectDir, ".gitignore"), "utf8");
@@ -78,7 +78,7 @@ describe("add", () => {
     });
 
     test("aborts when .agents is tracked by the parent repo, without touching it", async () => {
-      const projectDir = await makeProjectRepo(fx, "eos", "tracked");
+      const projectDir = await makeProjectRepo(fx, "tracked-project", "tracked");
       const { code, errLines } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
       expect(code).toBe(1);
       expect(errLines.join("\n")).toContain("tracked");
@@ -86,9 +86,9 @@ describe("add", () => {
     });
 
     test("aborts when a branch of the same name already exists in marrow", async () => {
-      const projectDir = await makeProjectRepo(fx, "ossa", "ignored");
-      const otherAgents = path.join(fx.projectsRoot, "ossa2", ".agents");
-      await git(["worktree", "add", "--orphan", "-b", branch("ossa"), otherAgents], vaultDir(fx.marrowHome));
+      const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
+      const otherAgents = path.join(fx.projectsRoot, "alpha-other", ".agents");
+      await git(["worktree", "add", "--orphan", "-b", branch("alpha"), otherAgents], vaultDir(fx.marrowHome));
       // An orphan branch has no ref until its first commit ("unborn branch").
       await git(["commit", "--allow-empty", "-q", "-m", "seed"], otherAgents);
 
@@ -98,7 +98,7 @@ describe("add", () => {
     });
 
     test("aborts when .agents is already a worktree", async () => {
-      const projectDir = await makeProjectRepo(fx, "ossa", "ignored");
+      const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
       const agentsPath = path.join(projectDir, ".agents");
       await rm(agentsPath, { recursive: true, force: true });
       await mkdir(agentsPath, { recursive: true });
@@ -110,7 +110,7 @@ describe("add", () => {
     });
 
     test("--dry-run makes no changes to the project or the vault", async () => {
-      const projectDir = await makeProjectRepo(fx, "ossa", "ignored");
+      const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
       const agentsPath = path.join(projectDir, ".agents");
       const before = await listFilesRecursive(agentsPath);
 
@@ -123,7 +123,7 @@ describe("add", () => {
     });
 
     test("--dry-run against an untracked project reports the .gitignore step without writing it", async () => {
-      const projectDir = await makeProjectRepo(fx, "sobremesa", "untracked");
+      const projectDir = await makeProjectRepo(fx, "beta", "untracked");
       const { code, outLines } = await captureLogs(() =>
         addCommand(projectDir, { dryRun: true }, fx.marrowHome, fx.toolRoot),
       );
@@ -133,18 +133,18 @@ describe("add", () => {
     });
 
     test("adopts a project at an explicit path", async () => {
-      const projectDir = await makeProjectRepo(fx, "ossa", "ignored", path.join(fx.root, "elsewhere"));
+      const projectDir = await makeProjectRepo(fx, "alpha", "ignored", path.join(fx.root, "elsewhere"));
       const { code } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
       expect(code).toBe(0);
       const worktrees = await listProjectWorktrees(vaultDir(fx.marrowHome));
-      expect(worktrees.map((w) => w.branch)).toContain(branch("ossa"));
+      expect(worktrees.map((w) => w.branch)).toContain(branch("alpha"));
     });
   });
 
   describe("creating a fresh .agents/", () => {
     test("creates a fresh .agents worktree seeded from the README template", async () => {
       const projectDir = path.join(fx.root, "elsewhere", "freshproj");
-      const { code } = await captureLogs(() => addCommand(projectDir, { id: "personal/freshproj" }, fx.marrowHome, fx.toolRoot));
+      const { code } = await captureLogs(() => addCommand(projectDir, { id: "local/freshproj" }, fx.marrowHome, fx.toolRoot));
       expect(code).toBe(0);
 
       const agentsPath = path.join(projectDir, ".agents");
@@ -155,17 +155,17 @@ describe("add", () => {
       expect(readme).toContain("## Persistence");
 
       const worktrees = await listProjectWorktrees(vaultDir(fx.marrowHome));
-      expect(worktrees.map((w) => w.branch)).toContain(branchFor("personal/freshproj"));
+      expect(worktrees.map((w) => w.branch)).toContain(branchFor("local/freshproj"));
 
       const rev = await git(["rev-parse", "HEAD"], agentsPath);
-      const remoteRev = await git(["rev-parse", `origin/${branchFor("personal/freshproj")}`], agentsPath);
+      const remoteRev = await git(["rev-parse", `origin/${branchFor("local/freshproj")}`], agentsPath);
       expect(remoteRev.stdout).toBe(rev.stdout);
     });
 
     test("--dry-run makes no changes when there is nothing to adopt", async () => {
       const projectDir = path.join(fx.root, "elsewhere", "freshproj");
       const { code, outLines } = await captureLogs(() =>
-        addCommand(projectDir, { dryRun: true, id: "personal/freshproj" }, fx.marrowHome, fx.toolRoot),
+        addCommand(projectDir, { dryRun: true, id: "local/freshproj" }, fx.marrowHome, fx.toolRoot),
       );
       expect(code).toBe(0);
       expect(outLines.join("\n")).toContain("fresh .agents/");
@@ -189,7 +189,7 @@ describe("add", () => {
       // Nothing to ignore into today, but a later `git init` here must not pick
       // .agents/ up.
       const projectDir = path.join(fx.root, "elsewhere", "notarepo");
-      const { code } = await captureLogs(() => addCommand(projectDir, { id: "personal/notarepo" }, fx.marrowHome, fx.toolRoot));
+      const { code } = await captureLogs(() => addCommand(projectDir, { id: "local/notarepo" }, fx.marrowHome, fx.toolRoot));
       expect(code).toBe(0);
       expect(await readFile(path.join(projectDir, ".gitignore"), "utf8")).toContain(".agents/");
     });
@@ -200,7 +200,7 @@ describe("add", () => {
       await git(["init", "-q", "-b", "main"], projectDir);
 
       const { code, outLines } = await captureLogs(() =>
-        addCommand(projectDir, { dryRun: true, id: "personal/freshdry" }, fx.marrowHome, fx.toolRoot),
+        addCommand(projectDir, { dryRun: true, id: "local/freshdry" }, fx.marrowHome, fx.toolRoot),
       );
       expect(code).toBe(0);
       expect(outLines.join("\n")).toContain("would append");
@@ -209,12 +209,12 @@ describe("add", () => {
 
     test("fails if a branch of that name already exists in marrow", async () => {
       const otherAgents = path.join(fx.projectsRoot, "other", ".agents");
-      await git(["worktree", "add", "--orphan", "-b", branchFor("personal/dupbranch"), otherAgents], vaultDir(fx.marrowHome));
+      await git(["worktree", "add", "--orphan", "-b", branchFor("local/dupbranch"), otherAgents], vaultDir(fx.marrowHome));
       // An orphan branch has no ref until its first commit ("unborn branch").
       await git(["commit", "--allow-empty", "-q", "-m", "seed"], otherAgents);
 
       const { code, errLines } = await captureLogs(() =>
-        addCommand(path.join(fx.projectsRoot, "dupbranch"), { id: "personal/dupbranch" }, fx.marrowHome, fx.toolRoot),
+        addCommand(path.join(fx.projectsRoot, "dupbranch"), { id: "local/dupbranch" }, fx.marrowHome, fx.toolRoot),
       );
       expect(code).toBe(1);
       expect(errLines.join("\n")).toContain("already attached");
@@ -222,16 +222,16 @@ describe("add", () => {
   });
 
   test("dispatches to adopt when .agents already exists, and to fresh-create otherwise", async () => {
-    const existing = await makeProjectRepo(fx, "ossa", "ignored");
+    const existing = await makeProjectRepo(fx, "alpha", "ignored");
     const { code: adoptCode, outLines: adoptOut } = await captureLogs(() =>
       addCommand(existing, {}, fx.marrowHome, fx.toolRoot),
     );
     expect(adoptCode).toBe(0);
-    expect(adoptOut.join("\n")).toContain("added 'ossa': adopted existing .agents");
+    expect(adoptOut.join("\n")).toContain("added 'alpha': adopted existing .agents");
 
     const fresh = path.join(fx.projectsRoot, "brandnew");
     const { code: freshCode, outLines: freshOut } = await captureLogs(() =>
-      addCommand(fresh, { id: "personal/brandnew" }, fx.marrowHome, fx.toolRoot),
+      addCommand(fresh, { id: "local/brandnew" }, fx.marrowHome, fx.toolRoot),
     );
     expect(freshCode).toBe(0);
     expect(freshOut.join("\n")).toContain("added 'brandnew': created .agents");
@@ -252,20 +252,20 @@ describe("add", () => {
         name: "create",
         setup: async () => ({
           projectDir: path.join(fx.projectsRoot, "table-create"),
-          opts: { id: "personal/table-create" },
+          opts: { id: "local/table-create" },
         }),
         expected: "created .agents",
       },
       {
         name: "attach",
         setup: async () => {
-          const seededAgents = await addProjectWorktree(fx, "seeded", branchFor("personal/table-attach"));
+          const seededAgents = await addProjectWorktree(fx, "seeded", branchFor("local/table-attach"));
           await git(["worktree", "remove", seededAgents], vaultDir(fx.marrowHome));
           const projectDir = path.join(fx.projectsRoot, "table-attach");
           await mkdir(projectDir, { recursive: true });
-          return { projectDir, opts: { id: "personal/table-attach" } };
+          return { projectDir, opts: { id: "local/table-attach" } };
         },
-        expected: "attached personal/table-attach",
+        expected: "attached local/table-attach",
       },
     ];
 
@@ -291,10 +291,10 @@ describe("add", () => {
           const projectDir = await makeProjectRepo(fx, "wrong-target", "ignored");
           const agentsPath = path.join(projectDir, ".agents");
           await rm(agentsPath, { recursive: true, force: true });
-          await git(["worktree", "add", "--orphan", "-b", branchFor("personal/other"), agentsPath], vaultDir(fx.marrowHome));
+          await git(["worktree", "add", "--orphan", "-b", branchFor("local/other"), agentsPath], vaultDir(fx.marrowHome));
           return { projectDir, unchangedPath: agentsPath };
         },
-        expected: "is a worktree for 'personal/other'",
+        expected: "is a worktree for 'local/other'",
       },
       {
         name: "same branch attached elsewhere",

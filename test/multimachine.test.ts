@@ -7,7 +7,7 @@ import { git, listProjectWorktrees, vaultDir } from "../src/git";
 import { makeFixture, makeProjectRepo, type Fixture } from "./fixtures";
 import { captureLogs } from "./helpers";
 
-const BRANCH = "ossa";
+const BRANCH = "alpha";
 
 async function secondProject(fx: Fixture, name: string): Promise<string> {
   const dir = path.join(fx.root, "machine-b", "elsewhere", name);
@@ -39,11 +39,11 @@ describe("multi-machine attachment", () => {
   afterEach(async () => { await fx.cleanup(); });
 
   test("add attaches an existing branch at a different checkout path", async () => {
-    const machineA = await makeProjectRepo(fx, "ossa", "ignored");
+    const machineA = await makeProjectRepo(fx, "alpha", "ignored");
     expect(await addCommand(machineA, {}, fx.marrowHome, fx.toolRoot)).toBe(0);
 
     const machineBHome = await cloneVaultForSecondMachine(fx);
-    const machineB = await secondProject(fx, "ossa");
+    const machineB = await secondProject(fx, "alpha");
     const { code, outLines } = await captureLogs(() => addCommand(machineB, {}, machineBHome, fx.toolRoot));
     expect(code).toBe(0);
     expect(outLines.join("\n")).toContain(`attached ${BRANCH}`);
@@ -52,7 +52,7 @@ describe("multi-machine attachment", () => {
   });
 
   test("doctor permits remote branches that this machine has not attached", async () => {
-    const machineA = await makeProjectRepo(fx, "ossa", "ignored");
+    const machineA = await makeProjectRepo(fx, "alpha", "ignored");
     expect(await addCommand(machineA, {}, fx.marrowHome, fx.toolRoot)).toBe(0);
     const machineBHome = await cloneVaultForSecondMachine(fx);
     const { code, outLines } = await captureLogs(() => doctorCommand(machineBHome));

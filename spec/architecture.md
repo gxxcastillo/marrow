@@ -5,35 +5,30 @@ exit codes; `safety.md` wins on anything safety-related.
 
 ## Intent
 
-Nine-plus projects under `~/dev` each keep a `.agents/` working-memory directory —
-resumption context, plans, deferred work, research records (format: `../CONVENTION.md`).
-Left alone, these directories are gitignored and exist only on one machine, with no
-history and no backup. marrow fixes that by giving each project's `.agents/` a private
-git backing, without merging that content into the project's own repo or into marrow's
-own tool history.
+Projects can keep a `.agents/` working-memory directory: resumption context, plans,
+deferred work, and research records (format: `../CONVENTION.md`). Left alone, these
+directories are often gitignored and live on one machine, with no history and no backup.
+marrow fixes that by giving each project's `.agents/` a private git backing, without
+merging that content into the project's own repo or into marrow's own tool history.
 
 ## Two repos: tool and vault
 
 marrow is deliberately two separate git repos, not one:
 
 - **The tool repo** (`marrow`) — the CLI, this spec, `CONVENTION.md`, and the templates.
-  It's an ordinary coding project: it lives at `~/dev/marrow`, alongside every other
-  project under `~/dev`, has one branch (`main`), and its own git hygiene is the same as
-  any other repo there.
+  It is an ordinary coding project with its own git history and hygiene.
 - **The vault** — the git backing for every project's `.agents/` data: one orphan branch
   per adopted project, checked out as a worktree at `<project-path>/.agents`
   inside that project's own directory. The vault is not a coding project — it holds no
   code of its own, only per-project data plus a minimal GitHub landing README on `main`
-  — so it does not live under `~/dev`. It is a **bare** git repository at
+  — so it lives outside normal project checkouts. It is a **bare** git repository at
   `~/.marrow/vault.git` by default, with `~/.marrow/backups/` and `~/.marrow/logs/`
   alongside it as ordinary (non-git-tracked) sibling directories.
 
-Splitting these apart resolves a real structural problem: the tool repo and the vault
-used to be the same repository, which meant marrow could never adopt its own `.agents/`
-without nesting a worktree inside its own main checkout. With the split, marrow's own
-`.agents/` is an ordinary `marrow add .` from the tool checkout — a vault worktree at
-`~/dev/marrow/.agents`, right next to the tool's own source, no different from any other
-adopted project. That is the whole of the rationale.
+Splitting these apart resolves a structural problem: if the tool repo and the vault are
+the same repository, the tool cannot adopt its own `.agents/` without nesting a worktree
+inside its own main checkout. With the split, a tool checkout can be adopted the same way
+as any other project. That is the whole of the rationale.
 
 ## Design model
 
@@ -45,10 +40,10 @@ branch without a local worktree is normal, not a health failure.
 
 **Project identity is independent of checkout path.** A GitHub project's default identity
 is its normalized repository name from the parent-repo `origin`; SSH and HTTPS forms
-resolve to the same repo name. Its vault branch is exactly that identity (`ossa`, `pho`,
-`marrow`). `add --id <id>` supplies the identity for a project without a supported origin,
+resolve to the same repo name. Its vault branch is exactly that identity (`notes`,
+`docs`, `marrow`). `add --id <id>` supplies the identity for a project without a supported origin,
 or for a GitHub project that needs a non-default name. A directory basename is a local
-display label only. This lets `~/dev/ossa` and `~/dev-stuff/ossa` attach the same branch.
+display label only. This lets `/work/notes` and `/other/notes` attach the same branch.
 
 **Branches never merge.** No shared history between any two project branches — each is
 an independent orphan history, and none of them share history with the tool repo's
@@ -79,20 +74,19 @@ one fewer thing to configure, not a gap: the tool's own location is never ambigu
 code that's already running from it. There is no projects-root setting either: `add`
 takes a project path, and registered worktree paths come from the vault.
 
-`MARROW_HOME` exists primarily so `bun test` can point at a throwaway vault instead of
-real data. Test project paths are ordinary explicit temp-directory paths — see
-`../AGENTS.md` for the test-isolation discipline and guard.
+`MARROW_HOME` exists primarily so `bun test` can point at a throwaway vault. Test project
+paths are ordinary explicit temp-directory paths — see `../AGENTS.md` for the
+test-isolation discipline and guard.
 
 ## Repo layout
 
-**Tool repo** (`~/dev/marrow`, `main` branch):
+**Tool repo**:
 
 ```
 marrow/
 ├── README.md
 ├── AGENTS.md
 ├── CONVENTION.md            # canonical .agents/ content convention
-├── .agents/                 # vault worktree (branch `marrow`) — working memory; gitignored
 ├── spec/                    # this directory
 ├── templates/
 │   ├── readme-seed.md       # seeds a fresh `marrow add`; {{project}} substituted
@@ -108,21 +102,14 @@ marrow/
 │   ├── marrow                # `#!/usr/bin/env bun` shim; exports run() from cli.ts
 │   └── install               # one-time setup: symlinks bin/marrow onto PATH, inits the vault
 ├── package.json               # name, bin entry; no runtime dependencies
-└── .gitignore                 # node_modules/, .agents/ (the vault worktree)
+└── .gitignore                 # node_modules/, .agents/
 ```
-
-marrow has adopted itself: the `.agents/` entry above is an ordinary vault worktree on the
-`marrow` branch, checked out right here, no different from any other adopted project's.
-marrow's own working memory — the build plan included — lives there rather than in this
-tree; this spec's `README.md` → "What lives outside this spec" says what moved and why a
-checkout without the vault is still complete.
 
 Install: `bin/install` symlinks `bin/marrow` onto `PATH`, then runs `marrow init` (see
 `cli.md` → `init`) to create the local vault's bare repo; both steps are idempotent and
 neither touches the vault's GitHub remote. Remote lifecycle is explicit: `marrow
 publish <owner>/<repo>` creates a new private GitHub vault remote, while `marrow init
---from <vault-url>` attaches a machine to an existing private vault remote. Currently
-`~/.local/bin/marrow -> ~/dev/marrow/bin/marrow`.
+--from <vault-url>` attaches a machine to an existing private vault remote.
 
 **Vault** (`~/.marrow` by default, project branches plus a minimal `main` landing branch):
 
@@ -156,12 +143,5 @@ is nothing to gitignore, since there's no enclosing repo to accidentally track t
   never merges, rebases, or rewrites history for them.
 - **No daemon beyond a plain scheduler.** Automation is a session-end hook plus a periodic
   timer (`sync --auto`), not a long-running process.
-- **No wrapping of other tools, no beads/ossa integration beyond the documented seam.**
-  `sync`'s algorithm has a deliberate extension point — if `<worktree>/.beads/` exists,
-  a beads JSONL flush would run before committing — but that seam is unbuilt until beads
-  is piloted inside one real `.agents/` directory. Nothing should be built against it yet.
-- **No public tool repo yet.** The tool/vault split is motivated by the vault not being a
-  coding project, not by an intent to open-source the tool — that remains a separate,
-  still-open, still-deferred question with no action attached. The split does happen to
-  leave that door open without further rework, since the tool repo is already clean of
-  private data.
+- **No wrapping of other tools.** marrow backs project memory with git; it does not
+  orchestrate editor, agent, issue-tracker, or task-runner workflows.

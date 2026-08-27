@@ -29,13 +29,13 @@ describe("init", () => {
   });
 
   test("is idempotent: reports already-existing and does not touch it", async () => {
-    await addProjectWorktree(fx, "ossa");
+    await addProjectWorktree(fx, "alpha");
 
     const { code, outLines } = await captureLogs(() => initCommand(fx.marrowHome));
     expect(code).toBe(0);
     expect(outLines.join("\n")).toContain("already exists");
 
     const worktrees = await listProjectWorktrees(vaultDir(fx.marrowHome));
-    expect(worktrees.map((w) => w.branch)).toEqual(["ossa"]);
+    expect(worktrees.map((w) => w.branch)).toEqual(["alpha"]);
   });
 });

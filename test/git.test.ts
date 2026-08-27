@@ -15,12 +15,12 @@ describe("git.ts", () => {
   });
 
   test("listProjectWorktrees lists every orphan project branch (bare vault has no main checkout)", async () => {
-    await addProjectWorktree(fx, "ossa");
-    await addProjectWorktree(fx, "sobremesa");
+    await addProjectWorktree(fx, "alpha");
+    await addProjectWorktree(fx, "beta");
 
     const worktrees = await listProjectWorktrees(vaultDir(fx.marrowHome));
     const branches = worktrees.map((w) => w.branch).sort();
-    expect(branches).toEqual(["ossa", "sobremesa"]);
+    expect(branches).toEqual(["alpha", "beta"]);
     expect(worktrees.every((w) => w.branch !== "main")).toBe(true);
   });
 
@@ -30,13 +30,13 @@ describe("git.ts", () => {
   });
 
   test("dirtyCount is 0 right after a clean seed commit", async () => {
-    const agentsPath = await addProjectWorktree(fx, "ossa");
+    const agentsPath = await addProjectWorktree(fx, "alpha");
     expect(await dirtyCount(agentsPath)).toBe(0);
   });
 
   test("dirtyCount counts modified and untracked files", async () => {
-    const agentsPath = await addProjectWorktree(fx, "ossa");
-    await Bun.write(path.join(agentsPath, "README.md"), "# ossa\nchanged\n");
+    const agentsPath = await addProjectWorktree(fx, "alpha");
+    await Bun.write(path.join(agentsPath, "README.md"), "# alpha\nchanged\n");
     await Bun.write(path.join(agentsPath, "new-file.md"), "new\n");
     expect(await dirtyCount(agentsPath)).toBe(2);
   });
@@ -53,19 +53,19 @@ describe("git.ts", () => {
   });
 
   test("aheadBehind reports ahead after a local commit not yet pushed", async () => {
-    const agentsPath = await addProjectWorktree(fx, "ossa");
+    const agentsPath = await addProjectWorktree(fx, "alpha");
     await Bun.write(path.join(agentsPath, "extra.md"), "extra\n");
     await git(["add", "-A"], agentsPath);
     await git(["commit", "-q", "-m", "local only"], agentsPath);
 
-    const ab = await aheadBehind(agentsPath, "ossa");
+    const ab = await aheadBehind(agentsPath, "alpha");
     expect(ab).toEqual({ ahead: 1, behind: 0 });
   });
 
   test("lastCommit returns the most recent commit's date and subject", async () => {
-    const agentsPath = await addProjectWorktree(fx, "ossa");
+    const agentsPath = await addProjectWorktree(fx, "alpha");
     const commit = await lastCommit(agentsPath);
-    expect(commit?.subject).toBe("ossa: seed");
+    expect(commit?.subject).toBe("alpha: seed");
     expect(commit?.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 

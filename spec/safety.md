@@ -11,13 +11,10 @@ silently lossy.
 
 ## Private-only vault
 
-The vault's (`<MARROW_HOME>/vault.git`) `origin` must be a **private** remote
-(`gxxcastillo/marrow-vault`). The project branches carry personal planning content —
-including, for `sobremesa`, `solid-forms`, `ultra-sound-music`, `embracingroots`, and
-`event-link`, content about projects whose own repos are public. This is a stricter bar
-than the tool repo (`gxxcastillo/marrow`) needs, which is exactly why they're separate
-repos: the tool repo could in principle go public later (open, deferred question — see
-`architecture.md` → Non-goals) without ever putting the vault at risk.
+The vault's (`<MARROW_HOME>/vault.git`) `origin` must be a **private** remote. The project
+branches may carry private planning content, including content about projects whose own
+repos are public. This is a stricter bar than the tool repo needs, which is why they're
+separate repos.
 
 Creating the vault's remote is handled only by `marrow publish <owner>/<repo>`, which is
 GitHub-specific and always creates a private repository. Running that live command is the
@@ -36,13 +33,9 @@ ordinary dev-project concern, not a marrow safety property.
 ## No destructive git operations, ever
 
 Never force-push. Never rewrite history — on any vault project branch, the vault's
-minimal `main` landing branch, or the tool repo's own `main`. This applies even to
-`event-link`, whose parent repo is public and once tracked `.agents/` directly in its
-history: the fix there is to untrack going forward, not to scrub the past. That was
-decided deliberately, not left undecided — the content stays in that repo's public
-history and marrow does not touch it. A branch that needs correcting gets a new commit,
-the same as any other git history — never `reset --hard` + force-push, never
-`filter-repo`.
+minimal `main` landing branch, or the tool repo's own `main`. A branch that needs
+correcting gets a new commit, the same as any other git history — never `reset --hard` +
+force-push, never `filter-repo`.
 
 ## Backup before mutate
 
@@ -76,22 +69,19 @@ destination worktree (excluding `.git`) after the commit and push have already l
 the after-snapshot is smaller in either dimension, `add` still reports success up through
 the push — the commit is real and already on the branch — but exits `1` with an explicit
 `WARNING possible content loss` naming the backup tarball, so a human is never left
-assuming the migration was silently lossy. Test coverage enforces the same invariant
+assuming the adoption was silently lossy. Test coverage enforces the same invariant
 directly: a test must fail if `add` ever loses a file while adopting, verified by
 comparing recursive directory listings (including dotfiles) before and after, independent
 of the count/size heuristic.
 
 ## Tracked-parent-repo refusal
 
-If a project's parent repo already tracks `.agents/` in its index (`eos`, and — until its
-own untracking — `event-link`), `add` refuses outright rather than attempting to
-`git rm --cached` on a repo it doesn't own. It prints the exact untracking commands and
-stops; the human runs them, commits in the parent repo themselves, and re-invokes `add`.
-marrow never commits inside a project's own repository — the only repo it ever commits
-into is the vault, via its worktrees. This holds even when the "project" being adopted is
-marrow's own tool repo (Phase 5, self-adoption): `add` may append `.agents/` to that
-repo's `.gitignore` on disk, but it still never commits that change itself — the human
-does, the same as for any other project.
+If a project's parent repo already tracks `.agents/` in its index, `add` refuses outright
+rather than attempting to `git rm --cached` on a repo it doesn't own. It prints the exact
+untracking commands and stops; the human runs them, commits in the parent repo themselves,
+and re-invokes `add`. marrow never commits inside a project's own repository — the only
+repo it ever commits into is the vault, via its worktrees. `add` may append `.agents/` to a
+parent repo's `.gitignore` on disk, but it still never commits that change itself.
 
 ## Attended operation
 
@@ -113,7 +103,7 @@ without writing anything, anywhere.
   defended against.
 - **No credential handling.** marrow stores and moves plain files; it has no concept of
   secrets, and `.agents/` content is expected to follow the same "no credentials" norm as
-  the rest of the personal-planning convention (`../CONVENTION.md`). marrow does not
+  the rest of the working-memory convention (`../CONVENTION.md`). marrow does not
   scan for or redact anything.
 
 ## Test isolation

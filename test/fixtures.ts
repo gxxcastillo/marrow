@@ -27,7 +27,7 @@ function guardNotReal(candidate: string, real: string, label: string): void {
 // Builds throwaway stand-ins for both repos in the two-repo design: a fake
 // tool root (for templates/CONVENTION.md resolution) and a fake bare vault
 // (MARROW_HOME) with its own file://-backed bare origin, plus explicit project
-// paths. Tests never touch real repos under ~/dev or the real ~/.marrow vault.
+// paths. Tests never touch real project repos or the configured default vault.
 export async function makeFixture(): Promise<Fixture> {
   const root = await mkdtemp(path.join(tmpdir(), "marrow-test-"));
   const toolRoot = path.join(root, "tool");

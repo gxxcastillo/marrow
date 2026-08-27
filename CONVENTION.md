@@ -1,7 +1,7 @@
 # The .agents/ convention
 
 Canonical description of how `.agents/` directories are structured and maintained across
-`~/dev` projects. Per-project `.agents/README.md` files route within their own directory
+projects. Per-project `.agents/README.md` files route within their own directory
 and point here; they do not restate this document. When this convention and a project
 README disagree, this document wins — fix the README.
 
@@ -58,6 +58,10 @@ offers one, it may hold only a pointer to `.agents/`.
 - **Sync deliberately.** Commit with a real one-line summary via `marrow sync` at session
   end (see Persistence). Automation backstops forgotten syncs with timestamp messages;
   it is the floor, not the norm.
+- **Freshness is semantic, not only git state.** When asked whether `.agents/` is up to
+  date, check that `current-state.md`, active plans, and `deferred-items.md` agree with
+  the latest user decision. A clean, synced branch can still be stale if it tells the
+  next agent to do superseded work.
 - **Nothing here is the sole copy of a *rule*.** Plans, state, and research records live
   here; design rules and build discipline do not.
 
