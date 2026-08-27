@@ -24,7 +24,7 @@ export async function git(args: string[], cwd: string): Promise<SpawnResult> {
 
 // <MARROW_HOME>/vault.git is the bare repo every git-invoking command
 // actually targets; MARROW_HOME itself is just its parent (also holding
-// backups/ and logs/ as plain sibling directories).
+// backups/ as a plain sibling directory).
 export function vaultDir(marrowHome: string): string {
   return path.join(marrowHome, "vault.git");
 }

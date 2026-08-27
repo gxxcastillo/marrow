@@ -52,18 +52,13 @@ const COMMANDS: Record<string, Command> = {
   },
 
   sync: {
-    args: "[project...] [-m <msg>] [--auto]",
+    args: "[project...] [-m <msg>]",
     summary: "commit and push project worktrees",
     options: {
       message: { type: "string", short: "m" },
-      auto: { type: "boolean", default: false },
     },
     run: ({ values, positionals }, ctx) =>
-      syncCommand(
-        positionals,
-        { message: values.message as string | undefined, auto: values.auto as boolean },
-        ctx.marrowHome,
-      ),
+      syncCommand(positionals, { message: values.message as string | undefined }, ctx.marrowHome),
   },
 
   add: {

@@ -29,7 +29,7 @@ describe("cli dispatch", () => {
   test("usage lines come from the command table", async () => {
     const { outLines } = await call(["--help"]);
     expect(outLines.join("\n")).toContain("init");
-    expect(outLines.join("\n")).toContain("sync [project...] [-m <msg>] [--auto]");
+    expect(outLines.join("\n")).toContain("sync [project...] [-m <msg>]");
   });
 
   test.each(["create", "connect"])("%s is not a remote lifecycle command", async (command) => {

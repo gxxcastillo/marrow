@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { syncCommand } from "../src/commands/sync";
 import { dirtyCount, git, lastCommit, vaultDir } from "../src/git";
@@ -68,20 +67,7 @@ describe("sync", () => {
     expect(code).toBe(1);
   });
 
-  test("tolerates an unreachable origin in --auto mode and still exits 0", async () => {
-    const agentsPath = await addProjectWorktree(fx, "alpha");
-    await Bun.write(path.join(agentsPath, "note.md"), "note\n");
-    await git(["remote", "set-url", "origin", path.join(fx.root, "does-not-exist.git")], vaultDir(fx.marrowHome));
-
-    const code = await syncCommand([], { auto: true }, fx.marrowHome);
-    expect(code).toBe(0);
-    expect(await dirtyCount(agentsPath)).toBe(0); // commit happened locally despite push failure
-
-    const log = await readFile(path.join(fx.marrowHome, "logs", "sync.log"), "utf8");
-    expect(log).toContain("push: ERROR");
-  });
-
-  test("surfaces a push failure as a non-zero exit outside --auto", async () => {
+  test("surfaces a push failure as a non-zero exit", async () => {
     const agentsPath = await addProjectWorktree(fx, "alpha");
     await Bun.write(path.join(agentsPath, "note.md"), "note\n");
     await git(["remote", "set-url", "origin", path.join(fx.root, "does-not-exist.git")], vaultDir(fx.marrowHome));

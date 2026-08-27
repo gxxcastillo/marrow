@@ -22,8 +22,8 @@ marrow is deliberately two separate git repos, not one:
   inside that project's own directory. The vault is not a coding project — it holds no
   code of its own, only per-project data plus a minimal GitHub landing README on `main`
   — so it lives outside normal project checkouts. It is a **bare** git repository at
-  `~/.marrow/vault.git` by default, with `~/.marrow/backups/` and `~/.marrow/logs/`
-  alongside it as ordinary (non-git-tracked) sibling directories.
+  `~/.marrow/vault.git` by default, with `~/.marrow/backups/` alongside it as an ordinary
+  (non-git-tracked) sibling directory.
 
 Splitting these apart resolves a structural problem: if the tool repo and the vault are
 the same repository, the tool cannot adopt its own `.agents/` without nesting a worktree
@@ -66,17 +66,16 @@ log` or `git merge`. This makes push races between projects structurally impossi
 (disjoint branches); a concurrent sync of the _same_ project serializes on git's own lock
 and should be treated as a retryable warning, not an error.
 
-**Deliberate syncs are primary; automation is the floor.** The expected rhythm is an
-agent running `marrow sync <project> -m "<summary>"` at the end of a working session (per
-the Persistence block appended to every adopted `.agents/README.md`). Scheduled/hook-driven
-`marrow sync --auto` is a backstop for forgotten syncs, not the primary mechanism —
-see `cli.md` → `sync`.
+**Deliberate syncs are the mechanism.** The expected rhythm is an agent running
+`marrow sync <project> -m "<summary>"` at the end of a working session (per the
+Persistence block appended to every adopted `.agents/README.md`). Automation
+(scheduled/hook-driven syncing) is deliberately not built — see Non-goals below.
 
 ## Env overrides
 
-| Var           | Purpose                                                                                                              | Default     |
-| ------------- | -------------------------------------------------------------------------------------------------------------------- | ----------- |
-| `MARROW_HOME` | vault parent directory — contains `vault.git/` (the bare repo git commands actually target), `backups/`, and `logs/` | `~/.marrow` |
+| Var           | Purpose                                                                                       | Default     |
+| ------------- | ----------------------------------------------------------------------------------------------- | ----------- |
+| `MARROW_HOME` | vault parent directory — contains `vault.git/` (the bare repo git commands actually target) and `backups/` | `~/.marrow` |
 
 There is no env var for the tool's own location. `templates/` and `CONVENTION.md` are
 resolved relative to wherever the running `marrow` install actually lives on disk —
@@ -135,12 +134,11 @@ publish <owner>/<repo>` creates a new private GitHub vault remote, while `marrow
 ```
 .marrow/
 ├── vault.git/                 # bare repo; project branches plus GitHub landing main
-├── backups/                   # tarballs made by `add` when adopting — never auto-deleted
-└── logs/                      # `sync --auto` log
+└── backups/                   # tarballs made by `add` when adopting — never auto-deleted
 ```
 
-`backups/` and `logs/` sit outside `vault.git/` and outside any git working tree — there
-is nothing to gitignore, since there's no enclosing repo to accidentally track them into.
+`backups/` sits outside `vault.git/` and outside any git working tree — there is nothing
+to gitignore, since there's no enclosing repo to accidentally track it into.
 
 ## Non-goals
 
@@ -160,7 +158,9 @@ is nothing to gitignore, since there's no enclosing repo to accidentally track t
 - **No automatic cross-machine conflict resolution.** `sync` fetches and fast-forwards a
   clean behind worktree. Dirty or diverged worktrees require manual reconciliation; marrow
   never merges, rebases, or rewrites history for them.
-- **No daemon beyond a plain scheduler.** Automation is a session-end hook plus a periodic
-  timer (`sync --auto`), not a long-running process.
+- **No daemon, no scheduled automation.** `sync` had a `--auto` mode for a session-end hook
+  or periodic timer; it was removed with nothing yet invoking it (see `git log` for the
+  working implementation if the hook/launchd decision is later made the other way).
+  Automation, if built, stays a plain scheduler — never a long-running process.
 - **No wrapping of other tools.** marrow backs project memory with git; it does not
   orchestrate editor, agent, issue-tracker, or task-runner workflows.

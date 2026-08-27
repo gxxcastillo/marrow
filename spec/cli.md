@@ -170,7 +170,7 @@ its remediation: `1 project missing its worktree directory; run \`marrow detach
 ## `sync`
 
 ```
-marrow sync [project...] [-m <message>] [--auto]
+marrow sync [project...] [-m <message>]
 ```
 
 Targets: the named local project directory basenames (or exact branch names), or every
@@ -203,16 +203,9 @@ given is a warning. Either way the printed line names the path and
 `marrow detach <branch>` as the remediation. It is still included in the final push, since
 pushing only touches the branch ref, not the worktree directory.
 
-`--auto`: for a session-end hook or a periodic timer. Every line normally printed to
-stdout/stderr instead appends to `<MARROW_HOME>/logs/sync.log` (created if absent), one
-line per action, each prefixed with an ISO-8601-local timestamp. A push failure (offline,
-unreachable remote) is logged as a warning, never raised as a failure. `--auto` always
-exits `0`, even when a target project failed to commit or the push failed — it is a
-backstop and must never break a hook chain or scheduled job.
-
-**Exit codes.** `0`: nothing failed (or `--auto`, unconditionally). `1` (non-`--auto`
-only): an unknown project name was given, an explicitly named target's worktree directory
-was missing, a target's `git add`/`git commit` failed, or the push failed.
+**Exit codes.** `0`: nothing failed. `1`: an unknown project name was given, an explicitly
+named target's worktree directory was missing, a target's `git add`/`git commit` failed, or
+the push failed.
 
 ## `add`
 

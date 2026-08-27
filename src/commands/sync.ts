@@ -1,10 +1,8 @@
-import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { aheadBehind, dirtyCount, git, hasOrigin, listProjectWorktrees, vaultDir } from "../git";
 
 export interface SyncOptions {
   message?: string;
-  auto?: boolean;
 }
 
 function isoLocal(): string {
@@ -13,17 +11,9 @@ function isoLocal(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-// --auto redirects every line to <MARROW_HOME>/logs/sync.log instead of the
-// terminal, so a hook or scheduled job leaves a record without writing to stdout.
-async function report(marrowHome: string, auto: boolean | undefined, line: string, isError = false): Promise<void> {
-  if (!auto) {
-    if (isError) console.error(line);
-    else console.log(line);
-    return;
-  }
-  const logsDir = path.join(marrowHome, "logs");
-  await mkdir(logsDir, { recursive: true });
-  await appendFile(path.join(logsDir, "sync.log"), `${isoLocal()} ${line}\n`);
+function report(line: string, isError = false): void {
+  if (isError) console.error(line);
+  else console.log(line);
 }
 
 export async function syncCommand(targets: string[], opts: SyncOptions, marrowHome: string): Promise<number> {
@@ -38,15 +28,15 @@ export async function syncCommand(targets: string[], opts: SyncOptions, marrowHo
     const missing = targets.filter((t) => matches(t).length !== 1);
     if (missing.length > 0) {
       hadError = true;
-      await report(marrowHome, opts.auto, `unknown project(s): ${missing.join(", ")}`, true);
+      report(`unknown project(s): ${missing.join(", ")}`, true);
     }
   }
 
   if (await hasOrigin(vault)) {
     const fetchRes = await git(["fetch", "--prune", "origin"], vault);
     if (fetchRes.code !== 0) {
-      if (!opts.auto) hadError = true;
-      await report(marrowHome, opts.auto, `fetch: WARN ${fetchRes.stderr}`, true);
+      hadError = true;
+      report(`fetch: WARN ${fetchRes.stderr}`, true);
     }
   }
 
@@ -60,9 +50,9 @@ export async function syncCommand(targets: string[], opts: SyncOptions, marrowHo
       const remediation = `worktree directory missing at ${wt.path}; run \`marrow detach ${wt.branch}\` to clear the registration`;
       if (targets.length > 0) {
         hadError = true;
-        await report(marrowHome, opts.auto, `${name}: ERROR ${remediation}`, true);
+        report(`${name}: ERROR ${remediation}`, true);
       } else {
-        await report(marrowHome, opts.auto, `${name}: WARN ${remediation}`, true);
+        report(`${name}: WARN ${remediation}`, true);
       }
       continue;
     }
@@ -75,7 +65,7 @@ export async function syncCommand(targets: string[], opts: SyncOptions, marrowHo
         }
         const fastForward = await git(["merge", "--ff-only", `origin/${wt.branch}`], wt.path);
         if (fastForward.code !== 0) throw new Error(`fast-forward failed: ${fastForward.stderr}`);
-        await report(marrowHome, opts.auto, `${name}: fast-forwarded`);
+        report(`${name}: fast-forwarded`);
       }
       const dirty = await dirtyCount(wt.path);
       if (dirty === 0) continue;
@@ -87,10 +77,10 @@ export async function syncCommand(targets: string[], opts: SyncOptions, marrowHo
       const commitRes = await git(["commit", "-m", message], wt.path);
       if (commitRes.code !== 0) throw new Error(commitRes.stderr);
 
-      await report(marrowHome, opts.auto, `${name}: committed (${dirty} change(s))`);
+      report(`${name}: committed (${dirty} change(s))`);
     } catch (err) {
       hadError = true;
-      await report(marrowHome, opts.auto, `${wt.branch}: ERROR ${(err as Error).message}`, true);
+      report(`${wt.branch}: ERROR ${(err as Error).message}`, true);
     }
   }
 
@@ -101,21 +91,19 @@ export async function syncCommand(targets: string[], opts: SyncOptions, marrowHo
     // non-fast-forward the moment another machine advances them.
     const pushBranches = all.map((wt) => wt.branch);
     if (pushBranches.length === 0) {
-      await report(marrowHome, opts.auto, "push: skipped (no project worktrees)");
+      report("push: skipped (no project worktrees)");
     } else {
       const pushRes = await git(["push", "origin", ...pushBranches], vault);
       if (pushRes.code !== 0) {
-        // Offline / unreachable push is tolerated in --auto mode; still surfaced as an error otherwise.
-        if (!opts.auto) hadError = true;
-        await report(marrowHome, opts.auto, `push: ERROR ${pushRes.stderr}`, true);
+        hadError = true;
+        report(`push: ERROR ${pushRes.stderr}`, true);
       } else {
-        await report(marrowHome, opts.auto, "push: ok");
+        report("push: ok");
       }
     }
   } else {
-    await report(marrowHome, opts.auto, "push: skipped (no origin)", true);
+    report("push: skipped (no origin)", true);
   }
 
-  if (opts.auto) return 0;
   return hadError ? 1 : 0;
 }
