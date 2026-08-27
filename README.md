@@ -20,9 +20,13 @@ This repo holds three things:
 This repo must remain **private**: the project branches contain personal planning content,
 including for projects whose own repos are public.
 
+## Install
+
+`bin/marrow` is symlinked onto `PATH`: `ln -s ~/dev/marrow/bin/marrow ~/.local/bin/marrow`.
+
 ## Status
 
-Phase 1 done: `git.ts` wrapper, `status`, `sync`, and the `marrow` CLI entry point are
-built and tested (`bun test`, 21 tests). No project has been adopted yet — Phase 2
-(`adopt`, `new`, `doctor`, `grep`, `convention`) is next. Start with `AGENTS.md`, then
-`plans/implementation-plan.md`.
+Phase 2 done: `status`, `sync`, `adopt`, `new`, `doctor`, `grep`, and `convention` are
+built and tested (`bun test`, 43 tests). No project has been adopted for real yet —
+Phase 3 (attended migration of the nine real projects) is next. Start with `AGENTS.md`,
+then `plans/implementation-plan.md`.

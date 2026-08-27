@@ -6,14 +6,18 @@ export interface SpawnResult {
   stderr: string;
 }
 
-export async function git(args: string[], cwd: string): Promise<SpawnResult> {
-  const proc = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" });
+export async function run(cmd: string, args: string[], cwd: string): Promise<SpawnResult> {
+  const proc = Bun.spawn([cmd, ...args], { cwd, stdout: "pipe", stderr: "pipe" });
   const [stdout, stderr, code] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
     proc.exited,
   ]);
   return { code, stdout: stdout.trim(), stderr: stderr.trim() };
+}
+
+export async function git(args: string[], cwd: string): Promise<SpawnResult> {
+  return run("git", args, cwd);
 }
 
 export interface Worktree {
