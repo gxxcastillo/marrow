@@ -9,7 +9,7 @@ git history replaces the append-only narrative style the directories used before
 This repo holds three things:
 
 - **The tool** — a small Bun/TypeScript CLI (`marrow`) that adopts, syncs, and checks the
-  worktrees. See `plans/implementation-plan.md`.
+  worktrees. Design, CLI contract, and safety guarantees: `spec/README.md`.
 - **The convention** — `CONVENTION.md`, the single canonical description of how `.agents/`
   directories are structured and maintained. Per-project READMEs point here instead of
   restating it.
@@ -29,4 +29,5 @@ including for projects whose own repos are public.
 Phase 2 done: `status`, `sync`, `adopt`, `new`, `doctor`, `grep`, and `convention` are
 built and tested (`bun test`, 43 tests). No project has been adopted for real yet —
 Phase 3 (attended migration of the nine real projects) is next. Start with `AGENTS.md`,
-then `plans/implementation-plan.md`.
+then `spec/README.md` for how marrow works, then `plans/implementation-plan.md` for the
+build/migration sequencing.
