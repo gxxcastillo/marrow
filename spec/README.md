@@ -18,7 +18,7 @@ maintenance discipline, promotion rules — is `../CONVENTION.md`'s job, not thi
 |---|---|
 | [architecture.md](./architecture.md) | design model — tool/vault repo split, worktree-as-registry, branch model, repo layout, env overrides, non-goals |
 | [cli.md](./cli.md) | every command: arguments, options, behavior, output shape, exit codes |
-| [safety.md](./safety.md) | the hard guarantees — private-remote requirement, no history rewrites, adopt's backup/rollback/verification contract, attended operation, known gaps |
+| [safety.md](./safety.md) | the hard guarantees — private-remote requirement, no history rewrites, `add`'s backup/rollback/verification contract when adopting, attended operation, known gaps |
 
 If the spec files disagree with each other: `safety.md` wins on anything
 safety-related, `cli.md` wins on command syntax and exit codes, `architecture.md` wins on
@@ -36,24 +36,25 @@ change, or fix the code if the spec was the intended design.
 - CLI command: `marrow`
 - Vault parent directory (`MARROW_HOME`): `~/.marrow` by default, overridable — contains
   `vault.git/` (the bare repo), `backups/`, and `logs/`
-- Projects root (`MARROW_DEV_ROOT`): `~/dev` by default, overridable
-- Per-project worktree path: `<MARROW_DEV_ROOT>/<project>/.agents`
+- Per-project worktree path: `<project-path>/.agents`
 - No config file — the registry is `git worktree list` against `<MARROW_HOME>/vault.git`
 
 ```bash
 marrow status
 marrow sync ossa -m "weekly review"
-marrow adopt sobremesa --dry-run
+marrow add ~/dev/sobremesa --dry-run
 marrow doctor
 marrow grep "TODO"
 ```
 
 ## What lives outside this spec
 
-- **`../plans/implementation-plan.md`** — the phased build plan and the one-time
+- **`../.agents/plans/implementation-plan.md`** — the phased build plan and the one-time
   migration sequencing/inventory for the nine real `~/dev` projects. Point-in-time
   planning content, not durable design; superseded by this spec wherever the two would
-  otherwise overlap.
+  otherwise overlap. It lives in marrow's own `.agents/` vault worktree, so a tool-repo
+  checkout without the vault will not have it — nothing in this spec depends on reading
+  it.
 - **`../AGENTS.md`** — build discipline for agents working on marrow's own code (Bun/
   TypeScript conventions, test rules) and the operating discipline for running marrow
   against real projects (attended migration, per-project order). Points here for the

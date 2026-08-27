@@ -21,7 +21,7 @@ marrow is deliberately two separate git repos, not one:
   project under `~/dev`, has one branch (`main`), and its own git hygiene is the same as
   any other repo there.
 - **The vault** — the git backing for every project's `.agents/` data: one orphan branch
-  per adopted project, checked out as a worktree at `<MARROW_DEV_ROOT>/<project>/.agents`
+  per adopted project, checked out as a worktree at `<project-path>/.agents`
   inside that project's own directory. The vault is not a coding project — it holds no
   code of its own, only per-project data — so it does not live under `~/dev`. It is a
   **bare** git repository at `~/.marrow/vault.git` by default, with `~/.marrow/backups/`
@@ -30,20 +30,25 @@ marrow is deliberately two separate git repos, not one:
 Splitting these apart resolves a real structural problem: the tool repo and the vault
 used to be the same repository, which meant marrow could never adopt its own `.agents/`
 without nesting a worktree inside its own main checkout. With the split, marrow's own
-`.agents/` is an ordinary `marrow adopt marrow` — a vault worktree at
+`.agents/` is an ordinary `marrow add .` from the tool checkout — a vault worktree at
 `~/dev/marrow/.agents`, right next to the tool's own source, no different from any other
-adopted project. See `../plans/implementation-plan.md` §7 Decisions #3 for the full
-rationale and the migration this required.
+adopted project. That is the whole of the rationale; the retrofit it required is recorded
+as Phase 2.5 of the build plan (`../.agents/plans/implementation-plan.md`, in the vault
+worktree).
 
 ## Design model
 
-**Zero config; worktrees are the registry.** There is no config file listing adopted
-projects. `status`, `sync`, `doctor`, and `grep` all discover projects the same way:
-`git worktree list --porcelain` run against the vault, parsed into `{path, branch}`
-pairs. Because the vault is bare, it has no default working-tree checkout of its own —
-every entry `git worktree list` reports is a real project by construction, with nothing
-to filter out. Adopting or dropping a project is a `git worktree` operation, nothing
-more — there is no separate registry to fall out of sync with reality.
+**Zero config; worktrees are this machine's registry.** There is no config file listing
+projects. `status`, `sync`, `doctor`, and `grep` discover the projects attached on the
+current machine from `git worktree list --porcelain` against the vault. A vault clone
+contains every project branch but may attach only the projects checked out locally. A
+branch without a local worktree is normal, not a health failure.
+
+**Project identity is independent of checkout path.** A GitHub project's identity is its
+normalized parent-repo `origin`, `github.com/<owner>/<repo>`; SSH and HTTPS forms resolve
+to the same identity. Its vault branch is `projects/<identity>`. `add --id <id>` supplies
+the identity for a project without a supported origin. A directory basename is a local
+display label only. This lets `~/dev/ossa` and `~/dev-stuff/ossa` attach the same branch.
 
 **Branches never merge.** No shared history between any two project branches — each is
 an independent orphan history, and none of them share history with the tool repo's
@@ -64,18 +69,18 @@ see `cli.md` → `sync`.
 | Var | Purpose | Default |
 |---|---|---|
 | `MARROW_HOME` | vault parent directory — contains `vault.git/` (the bare repo git commands actually target), `backups/`, and `logs/` | `~/.marrow` |
-| `MARROW_DEV_ROOT` | projects root; worktrees are expected at `<MARROW_DEV_ROOT>/<project>/.agents` | `~/dev` |
 
 There is no env var for the tool's own location. `templates/` and `CONVENTION.md` are
 resolved relative to wherever the running `marrow` install actually lives on disk —
 independent of `MARROW_HOME` — so `marrow convention` and the README-seeding step of
-`adopt`/`new` work correctly regardless of where the vault is configured to be. This is
+`add` work correctly regardless of where the vault is configured to be. This is
 one fewer thing to configure, not a gap: the tool's own location is never ambiguous to
-code that's already running from it.
+code that's already running from it. There is no projects-root setting either: `add`
+takes a project path, and registered worktree paths come from the vault.
 
-`MARROW_HOME`/`MARROW_DEV_ROOT` exist primarily so `bun test` can point both at throwaway
-temp directories instead of real data — see `../AGENTS.md` for the test-isolation
-discipline and guard.
+`MARROW_HOME` exists primarily so `bun test` can point at a throwaway vault instead of
+real data. Test project paths are ordinary explicit temp-directory paths — see
+`../AGENTS.md` for the test-isolation discipline and guard.
 
 ## Repo layout
 
@@ -86,36 +91,41 @@ marrow/
 ├── README.md
 ├── AGENTS.md
 ├── CONVENTION.md            # canonical .agents/ content convention
-├── plans/implementation-plan.md
+├── .agents/                 # vault worktree (branch `marrow`) — working memory; gitignored
 ├── spec/                    # this directory
 ├── templates/
-│   ├── readme-seed.md       # seeds `marrow new`; {{project}} substituted
-│   └── persistence-block.md # appended to every adopted/new README.md
+│   ├── readme-seed.md       # seeds a fresh `marrow add`; {{project}} substituted
+│   └── persistence-block.md # appended to every adopted/created README.md
 ├── src/
 │   ├── cli.ts                # entry, arg parsing (node:util parseArgs), dispatch
 │   ├── git.ts                 # Bun.spawn git wrapper; worktree discovery; status helpers
 │   ├── project.ts             # project-arg resolution; README templating
 │   └── commands/
-│       ├── status.ts, sync.ts, adopt.ts, new.ts, doctor.ts, grep.ts, convention.ts
+│       ├── status.ts, sync.ts, add.ts, doctor.ts, grep.ts, convention.ts
 ├── test/                     # bun test; fixtures build a throwaway tool root + vault
-├── bin/marrow                # `#!/usr/bin/env bun` shim; exports run() from cli.ts
+├── bin/
+│   ├── marrow                # `#!/usr/bin/env bun` shim; exports run() from cli.ts
+│   └── install               # one-time setup: symlinks bin/marrow onto PATH, inits the vault
 ├── package.json               # name, bin entry; no runtime dependencies
-└── .gitignore                 # node_modules/ (no backups/logs — those moved to the vault)
+└── .gitignore                 # node_modules/, .agents/ (the vault worktree)
 ```
 
-Once marrow adopts itself (Phase 5, deliberately deferred, not yet done — see
-`../plans/implementation-plan.md`), this tree gains a `.agents/` entry: an ordinary vault
-worktree, checked out right here, no different from any other adopted project's.
+marrow has adopted itself: the `.agents/` entry above is an ordinary vault worktree on the
+`marrow` branch, checked out right here, no different from any other adopted project's.
+marrow's own working memory — the build plan included — lives there rather than in this
+tree; this spec's `README.md` → "What lives outside this spec" says what moved and why a
+checkout without the vault is still complete.
 
-Install: `bin/marrow` symlinked onto `PATH` — currently `~/.local/bin/marrow ->
-~/dev/marrow/bin/marrow`.
+Install: `bin/install` symlinks `bin/marrow` onto `PATH`, then runs `marrow init` (see
+`cli.md` → `init`) to create the vault's bare repo; both steps are idempotent and neither
+touches the vault's GitHub remote. Currently `~/.local/bin/marrow -> ~/dev/marrow/bin/marrow`.
 
 **Vault** (`~/.marrow` by default, no `main`/tool content, ever):
 
 ```
 .marrow/
 ├── vault.git/                 # bare repo; one orphan branch per adopted project
-├── backups/                   # tarballs made by `adopt` — never auto-deleted
+├── backups/                   # tarballs made by `add` when adopting — never auto-deleted
 └── logs/                      # `sync --auto` log
 ```
 
@@ -128,11 +138,18 @@ is nothing to gitignore, since there's no enclosing repo to accidentally track t
   file names, when to promote content upward, maintenance discipline — is
   `../CONVENTION.md`'s job. marrow only backs the directory with git; it has no opinion
   on what's written there.
+- **No CLI framework, no runtime dependencies.** Argument handling is a command table in
+  `src/cli.ts` over `node:util`'s `parseArgs`. Seven commands and three flags do not earn
+  commander or yargs, and a runtime dependency would cost the install story: `bin/install`
+  is a symlink onto `PATH` plus `marrow init`, with no `bun install` step at the
+  install location. `grep`'s verbatim `rg` pass-through is also easier with no parser in
+  the way: its arguments are never parsed by marrow at all.
 - **No merge, no cross-project history.** Project branches are permanently disjoint from
   each other and from the tool repo's `main`. There is no planned "combine everything"
   view beyond `marrow grep`.
-- **No multi-machine sync beyond `git clone` + re-running worktree setup.** A `marrow
-  restore` command for a second machine is unspecked; not needed until one materializes.
+- **No automatic cross-machine conflict resolution.** `sync` fetches and fast-forwards a
+  clean behind worktree. Dirty or diverged worktrees require manual reconciliation; marrow
+  never merges, rebases, or rewrites history for them.
 - **No daemon beyond a plain scheduler.** Automation is a session-end hook plus a periodic
   timer (`sync --auto`), not a long-running process.
 - **No wrapping of other tools, no beads/ossa integration beyond the documented seam.**

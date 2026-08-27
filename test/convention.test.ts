@@ -16,10 +16,10 @@ describe("convention", () => {
     await fx.cleanup();
   });
 
-  test("prints CONVENTION.md from the vault root", async () => {
-    await writeFile(path.join(fx.marrowHome, "CONVENTION.md"), "# The convention\nrule one\n");
+  test("prints CONVENTION.md from the tool's own install location", async () => {
+    await writeFile(path.join(fx.toolRoot, "CONVENTION.md"), "# The convention\nrule one\n");
 
-    const { code, outLines } = await captureLogs(() => conventionCommand(fx.marrowHome));
+    const { code, outLines } = await captureLogs(() => conventionCommand(fx.toolRoot));
     expect(code).toBe(0);
     expect(outLines.join("\n")).toContain("rule one");
   });

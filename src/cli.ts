@@ -1,91 +1,170 @@
 import { parseArgs } from "node:util";
-import { adoptCommand } from "./commands/adopt";
+import path from "node:path";
+import { addCommand } from "./commands/add";
 import { conventionCommand } from "./commands/convention";
 import { doctorCommand } from "./commands/doctor";
 import { grepCommand } from "./commands/grep";
-import { newCommand } from "./commands/new";
+import { initCommand } from "./commands/init";
 import { statusCommand } from "./commands/status";
 import { syncCommand } from "./commands/sync";
 
-const USAGE = `usage: marrow <command> [args]
+interface Context {
+  marrowHome: string;
+  toolRoot: string;
+}
 
-Commands:
-  status                                   show project worktree status
-  sync [project...] [-m <msg>] [--auto]    commit and push project worktrees
-  adopt <project> [--dry-run]              bring an existing .agents/ under marrow
-  new <project>                            create a fresh .agents/ worktree
-  doctor                                   check vault + worktree health
-  grep <pattern> [rg-args...]              search across all project worktrees
-  convention                               print CONVENTION.md
-`;
+interface Parsed {
+  values: Record<string, string | boolean | undefined>;
+  positionals: string[];
+}
+interface Command {
+  args: string; // argument syntax after the command name; the only copy of it
+  summary: string;
+  options?: Record<string, { type: "string" | "boolean"; short?: string; default?: string | boolean }>;
+  minArgs?: number; // required positionals; fewer prints usage and exits 2
+  raw?: boolean; // skip parsing — args reach the command verbatim (grep -> rg)
+  run: (parsed: Parsed, ctx: Context) => Promise<number>;
+}
 
-export async function main(argv: string[], marrowHome: string, devRoot: string): Promise<number> {
-  const [command, ...rest] = argv;
+const COMMANDS: Record<string, Command> = {
+  init: {
+    args: "[--from <vault-url>]",
+    summary: "create or hydrate the vault's bare repo at MARROW_HOME",
+    options: { from: { type: "string" } },
+    run: ({ values }, ctx) => initCommand(ctx.marrowHome, values.from as string | undefined),
+  },
 
-  switch (command) {
-    case "status":
-      return statusCommand(marrowHome);
+  status: {
+    args: "",
+    summary: "show project worktree status",
+    run: (_parsed, ctx) => statusCommand(ctx.marrowHome),
+  },
 
-    case "sync": {
-      const { values, positionals } = parseArgs({
-        args: rest,
-        options: {
-          message: { type: "string", short: "m" },
-          auto: { type: "boolean", default: false },
-        },
-        allowPositionals: true,
-      });
-      return syncCommand(positionals, { message: values.message, auto: values.auto }, marrowHome);
-    }
+  sync: {
+    args: "[project...] [-m <msg>] [--auto]",
+    summary: "commit and push project worktrees",
+    options: {
+      message: { type: "string", short: "m" },
+      auto: { type: "boolean", default: false },
+    },
+    run: ({ values, positionals }, ctx) =>
+      syncCommand(
+        positionals,
+        { message: values.message as string | undefined, auto: values.auto as boolean },
+        ctx.marrowHome,
+      ),
+  },
 
-    case "adopt": {
-      const { values, positionals } = parseArgs({
-        args: rest,
-        options: { "dry-run": { type: "boolean", default: false } },
-        allowPositionals: true,
-      });
-      const project = positionals[0];
-      if (!project) {
-        console.error("usage: marrow adopt <project> [--dry-run]");
-        return 2;
-      }
-      return adoptCommand(project, { dryRun: values["dry-run"] }, marrowHome, devRoot);
-    }
+  add: {
+    args: "<project-path> [--id <stable-id>] [--dry-run]",
+    summary: "make a project's .agents/ available under marrow",
+    options: { "dry-run": { type: "boolean", default: false }, id: { type: "string" } },
+    minArgs: 1,
+    run: ({ values, positionals }, ctx) =>
+      addCommand(positionals[0], { dryRun: values["dry-run"] as boolean, id: values.id as string | undefined }, ctx.marrowHome, ctx.toolRoot),
+  },
 
-    case "new": {
-      const project = rest[0];
-      if (!project) {
-        console.error("usage: marrow new <project>");
-        return 2;
-      }
-      return newCommand(project, marrowHome, devRoot);
-    }
+  doctor: {
+    args: "",
+    summary: "check vault + worktree health",
+    run: (_parsed, ctx) => doctorCommand(ctx.marrowHome),
+  },
 
-    case "doctor":
-      return doctorCommand(marrowHome, devRoot);
+  grep: {
+    args: "<pattern> [rg-args...]",
+    summary: "search across all project worktrees",
+    minArgs: 1,
+    raw: true,
+    run: ({ positionals }, ctx) => grepCommand(positionals[0], positionals.slice(1), ctx.marrowHome),
+  },
 
-    case "grep": {
-      const [pattern, ...extraArgs] = rest;
-      if (!pattern) {
-        console.error("usage: marrow grep <pattern> [rg-args...]");
-        return 2;
-      }
-      return grepCommand(pattern, extraArgs, marrowHome);
-    }
+  convention: {
+    args: "",
+    summary: "print CONVENTION.md",
+    run: (_parsed, ctx) => conventionCommand(ctx.toolRoot),
+  },
+};
 
-    case "convention":
-      return conventionCommand(marrowHome);
+function invocation(name: string): string {
+  const { args } = COMMANDS[name];
+  return args ? `${name} ${args}` : name;
+}
 
-    default:
-      console.error(USAGE);
-      return 2;
+function usageText(): string {
+  const width = Math.max(...Object.keys(COMMANDS).map((name) => invocation(name).length));
+  const commands = Object.entries(COMMANDS).map(
+    ([name, cmd]) => `  ${invocation(name).padEnd(width)}  ${cmd.summary}`,
+  );
+  return [
+    "usage: marrow <command> [args]",
+    "",
+    "Commands:",
+    ...commands,
+    "",
+    "Flags:",
+    `  ${"-h, --help".padEnd(width)}  print this message`,
+    `  ${"-v, --version".padEnd(width)}  print the tool version`,
+  ].join("\n");
+}
+
+// The version comes from the tool's own package.json, resolved from the install
+// location like templates/ and CONVENTION.md — never from MARROW_HOME.
+async function toolVersion(toolRoot: string): Promise<string> {
+  const pkg = (await Bun.file(path.join(toolRoot, "package.json")).json()) as { version?: string };
+  return `marrow ${pkg.version ?? "unknown"}`;
+}
+
+export async function main(argv: string[], marrowHome: string, toolRoot: string): Promise<number> {
+  const [name, ...rest] = argv;
+
+  if (name === "-h" || name === "--help") {
+    console.log(usageText());
+    return 0;
   }
+  if (name === "-v" || name === "--version") {
+    console.log(await toolVersion(toolRoot));
+    return 0;
+  }
+
+  const cmd = COMMANDS[name];
+  if (!cmd) {
+    console.error(usageText());
+    return 2;
+  }
+
+  if (!cmd.raw && (rest.includes("-h") || rest.includes("--help"))) {
+    console.log(`usage: marrow ${invocation(name)}\n${cmd.summary}`);
+    return 0;
+  }
+
+  let parsed: Parsed;
+  if (cmd.raw) {
+    parsed = { values: {}, positionals: rest };
+  } else {
+    try {
+      parsed = parseArgs({ args: rest, options: cmd.options ?? {}, allowPositionals: true }) as Parsed;
+    } catch (err) {
+      console.error(`marrow ${name}: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(`usage: marrow ${invocation(name)}`);
+      return 2;
+    }
+  }
+
+  if (parsed.positionals.length < (cmd.minArgs ?? 0)) {
+    console.error(`usage: marrow ${invocation(name)}`);
+    return 2;
+  }
+
+  return cmd.run(parsed, { marrowHome, toolRoot });
 }
 
 export async function run(): Promise<number> {
-  const marrowHome = process.env.MARROW_HOME ?? `${process.env.HOME}/dev/marrow`;
-  const devRoot = process.env.MARROW_DEV_ROOT ?? `${process.env.HOME}/dev`;
-  return main(process.argv.slice(2), marrowHome, devRoot);
+  const marrowHome = process.env.MARROW_HOME ?? path.join(process.env.HOME ?? "", ".marrow");
+  // The tool's own install location — templates/, CONVENTION.md and package.json
+  // live here, resolved independently of MARROW_HOME. import.meta.dir is this
+  // module's real (symlink-resolved) directory, i.e. <tool checkout>/src.
+  const toolRoot = path.join(import.meta.dir, "..");
+  return main(process.argv.slice(2), marrowHome, toolRoot);
 }
 
 if (import.meta.main) {

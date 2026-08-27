@@ -4,9 +4,10 @@ Authoritative on anything safety-related. `architecture.md` and `cli.md` describ
 marrow does; this file describes the guarantees that must keep holding regardless of what
 else changes.
 
-marrow's core risk is structural: `adopt` moves real content out of a real project
-directory and re-homes it as a git worktree. Every rule below exists to make that
-operation either safe or loud about not being safe — never silently lossy.
+marrow's core risk is structural: `add`, when adopting an existing `.agents/`, moves real
+content out of a real project directory and re-homes it as a git worktree. Every rule
+below exists to make that operation either safe or loud about not being safe — never
+silently lossy.
 
 ## Private-only vault
 
@@ -29,16 +30,18 @@ hygiene; that's an ordinary dev-project concern, not a marrow safety property.
 Never force-push. Never rewrite history — on any vault project branch, or on the tool
 repo's own `main`. This applies even to `event-link`, whose parent repo is public and
 once tracked `.agents/` directly in its history: the fix there is to untrack going
-forward, not to scrub the past (see `../plans/implementation-plan.md` decision log). A
+forward, not to scrub the past. That was decided deliberately, not left undecided — the
+content stays in that repo's public history and marrow does not touch it. A
 branch that needs correcting gets a new commit, the same as any other git history — never
 `reset --hard` + force-push, never `filter-repo`.
 
 ## Backup before mutate
 
-`adopt`'s first live action is always a tar backup of the project's current `.agents/`,
-written under `<MARROW_HOME>/backups/`, verified non-empty and listable before anything
-else happens (`cli.md` → `adopt`, step 1). If the backup can't be produced or verified,
-`adopt` aborts before touching the project directory at all. The original content is only
+When `add` is adopting an existing `.agents/`, its first live action is always a tar
+backup of the project's current `.agents/`, written under `<MARROW_HOME>/backups/`,
+verified non-empty and listable before anything else happens (`cli.md` → `add`, step 1).
+If the backup can't be produced or verified, `add` aborts before touching the project
+directory at all. The original content is only
 ever **moved**, never deleted outright: it goes through a same-volume rename to
 `.agents.pre-marrow`, and that staging directory is only removed once its contents have
 been moved into the new worktree.
@@ -51,54 +54,56 @@ tarball older than 30 days, as a nudge, not a cleanup mechanism.
 ## Rollback on partial failure
 
 If worktree creation (`git worktree add --orphan`) fails after the original `.agents/` has
-already been renamed aside, `adopt` renames it straight back before reporting the error.
+already been renamed aside, `add` renames it straight back before reporting the error.
 The project directory is never left in a state with no `.agents/` at all, and no half-built
-worktree is left behind for a human to find later. This is the only mutation `adopt`
+worktree is left behind for a human to find later. This is the only mutation `add`
 performs on error; every other precondition failure aborts before anything is written.
 
 ## Content-preservation verification
 
-Every live `adopt` run snapshots the recursive file count and total size of the source
-`.agents/` before starting, and re-snapshots the destination worktree (excluding `.git`)
-after the commit and push have already landed. If the after-snapshot is smaller in either
-dimension, `adopt` still reports success up through the push — the commit is real and
-already on the branch — but exits `1` with an explicit `WARNING possible content loss`
-naming the backup tarball, so a human is never left assuming the migration was silently
-lossy. Test coverage enforces the same invariant directly: a test must fail if `adopt`
-ever loses a file, verified by comparing recursive directory listings (including
-dotfiles) before and after, independent of the count/size heuristic.
+Every live adopt run (`add` against an existing `.agents/`) snapshots the recursive file
+count and total size of the source `.agents/` before starting, and re-snapshots the
+destination worktree (excluding `.git`) after the commit and push have already landed. If
+the after-snapshot is smaller in either dimension, `add` still reports success up through
+the push — the commit is real and already on the branch — but exits `1` with an explicit
+`WARNING possible content loss` naming the backup tarball, so a human is never left
+assuming the migration was silently lossy. Test coverage enforces the same invariant
+directly: a test must fail if `add` ever loses a file while adopting, verified by
+comparing recursive directory listings (including dotfiles) before and after, independent
+of the count/size heuristic.
 
 ## Tracked-parent-repo refusal
 
 If a project's parent repo already tracks `.agents/` in its index (`eos`, and — until its
-own untracking — `event-link`), `adopt` refuses outright rather than attempting to
+own untracking — `event-link`), `add` refuses outright rather than attempting to
 `git rm --cached` on a repo it doesn't own. It prints the exact untracking commands and
-stops; the human runs them, commits in the parent repo themselves, and re-invokes `adopt`.
+stops; the human runs them, commits in the parent repo themselves, and re-invokes `add`.
 marrow never commits inside a project's own repository — the only repo it ever commits
 into is the vault, via its worktrees. This holds even when the "project" being adopted is
-marrow's own tool repo (Phase 5, self-adoption): `adopt` may append `.agents/` to that
+marrow's own tool repo (Phase 5, self-adoption): `add` may append `.agents/` to that
 repo's `.gitignore` on disk, but it still never commits that change itself — the human
 does, the same as for any other project.
 
 ## Attended operation
 
-`adopt` and `new` have no interactive confirmation prompt — nothing in the code stops an
-agent from invoking them unattended. That gap is intentional but not free: the operating
-rule is that a human is present and approving each real (non-`--dry-run`) `adopt` of an
-existing project, one project at a time. This is a human/agent discipline, not a
-code-enforced gate — see `../AGENTS.md` for the concrete rule and the per-project
-migration order it governs. `--dry-run` exists precisely so that rule can be honored
-without giving up a preview: it runs every precondition check and prints the full plan
-against a real project directory without writing anything, anywhere.
+`add` has no interactive confirmation prompt — nothing in the code stops an agent from
+invoking it unattended, in either mode. That gap is intentional but not free: the
+operating rule is that a human is present and approving each real (non-`--dry-run`) `add`
+that adopts an existing project, one project at a time. This is a human/agent discipline,
+not a code-enforced gate — see `../AGENTS.md` for the concrete rule, and
+`../.agents/plans/implementation-plan.md` (vault worktree) for the per-project migration
+order it governs.
+`--dry-run` exists precisely so that rule can be honored without giving up a preview: it
+runs every precondition check and prints the full plan against a real project directory
+without writing anything, anywhere.
 
 ## Known gaps
 
-- **No symlink hardening.** Unlike a filesystem-mutation tool operating on arbitrary
-  user-supplied paths, `adopt`/`new` do not canonicalize paths or refuse symlinked
-  components before writing. This is an accepted gap for a tool whose write surface is
-  limited to `<MARROW_DEV_ROOT>/<project>/.agents` and marrow's own `backups/` — not a
-  general-purpose filesystem tool's threat model — but it means a symlinked `.agents` or
-  a symlinked project directory has not been specifically defended against.
+- **No symlink hardening.** `add` accepts a project path and does not canonicalize it
+  or refuse symlinked components before writing, in either mode. This is an accepted gap:
+  its write surface is the explicitly supplied project's `.agents/` path and marrow's own
+  `backups/`, but a symlinked `.agents` or project directory has not been specifically
+  defended against.
 - **No credential handling.** marrow stores and moves plain files; it has no concept of
   secrets, and `.agents/` content is expected to follow the same "no credentials" norm as
   the rest of the personal-planning convention (`../CONVENTION.md`). marrow does not
@@ -108,9 +113,8 @@ against a real project directory without writing anything, anywhere.
 
 `bun test` fixtures build throwaway stand-ins for both repos under a temp directory: a
 fake tool root (so `templates/`/`CONVENTION.md` resolution is exercised without touching
-the real install) and a fake `MARROW_HOME`/`MARROW_DEV_ROOT` pair for the vault
-(including a `file://`-backed bare `origin`, and — for `adopt`/`new`/`doctor` tests —
-real, disposable parent project repos in each of the three gitignore states). Tests
-refuse to run if `MARROW_HOME` would resolve to the real vault location. This is the
-mechanism that makes it safe to exercise `adopt`'s live (non-`--dry-run`) path in CI/local
-test runs at all — see `../AGENTS.md` for the full build-discipline rule this backs.
+the real install), a fake `MARROW_HOME` vault (including a `file://`-backed bare `origin`),
+and explicit disposable project paths in each of the three gitignore states. Tests refuse
+to run if `MARROW_HOME` would resolve to the real vault location. This is the mechanism
+that makes it safe to exercise `add`'s live (non-`--dry-run`) adopt path in CI/local test runs
+at all — see `../AGENTS.md` for the full build-discipline rule this backs.

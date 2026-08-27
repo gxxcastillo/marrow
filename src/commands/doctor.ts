@@ -1,12 +1,12 @@
 import { existsSync } from "node:fs";
-import { readdir, realpath, stat } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
-import { aheadBehind, git, listProjectWorktrees, run } from "../git";
+import { aheadBehind, git, listProjectWorktrees, run, vaultDir } from "../git";
 
 const UNPUSHED_WARN_THRESHOLD = 20;
 const STALE_BACKUP_DAYS = 30;
 
-export async function doctorCommand(marrowHome: string, devRoot: string): Promise<number> {
+export async function doctorCommand(marrowHome: string): Promise<number> {
   const lines: string[] = [];
   let failed = false;
   const ok = (msg: string) => lines.push(`OK    ${msg}`);
@@ -15,65 +15,51 @@ export async function doctorCommand(marrowHome: string, devRoot: string): Promis
     lines.push(`FAIL  ${msg}`);
     failed = true;
   };
+  const check = (pass: boolean, okMsg: string, failMsg: string) => (pass ? ok(okMsg) : fail(failMsg));
 
-  const worktrees = await listProjectWorktrees(marrowHome);
-  const worktreeByBranch = new Map(worktrees.map((w) => [w.branch, w.path]));
-
-  // Worktrees are derived from local branches (git worktree list), so every
-  // worktree already has a branch by construction: checking each branch's
-  // worktree covers both directions of "branch <-> worktree" in one pass.
-  const branchesRes = await git(["for-each-ref", "--format=%(refname:short)", "refs/heads/"], marrowHome);
-  const branches = branchesRes.stdout.split("\n").filter((b) => b && b !== "main");
-
-  for (const branch of branches) {
-    const expected = path.join(devRoot, branch, ".agents");
-    const actual = worktreeByBranch.get(branch);
-    if (!actual) {
-      fail(`branch '${branch}' has no worktree`);
-      continue;
-    }
-    // Compare real paths: git resolves symlinks (e.g. macOS /var -> /private/var)
-    // when reporting worktree paths, so a naive string compare can false-fail.
-    let matches: boolean;
-    try {
-      matches = (await realpath(actual)) === (await realpath(expected));
-    } catch {
-      matches = false;
-    }
-    if (!matches) {
-      fail(`branch '${branch}' worktree at ${actual}, expected ${expected}`);
-    } else {
-      ok(`branch '${branch}' worktree at conventional path`);
-    }
+  const vault = vaultDir(marrowHome);
+  const worktrees = await listProjectWorktrees(vault);
+  // A vault clone contains every branch, but a machine may intentionally
+  // attach only some of them. Worktrees are this machine's registry.
+  for (const wt of worktrees) {
+    const actual = wt.path;
+    check(
+      path.basename(actual) === ".agents",
+      `branch '${wt.branch}' worktree at ${actual}`,
+      `branch '${wt.branch}' worktree at ${actual} is not named .agents`,
+    );
   }
 
   for (const wt of worktrees) {
     const projectDir = path.dirname(wt.path);
-    const check = await git(["check-ignore", "-q", "--", ".agents"], projectDir);
-    if (check.code === 0) {
-      ok(`${wt.branch}: parent repo ignores .agents`);
-    } else {
-      fail(`${wt.branch}: parent repo (${projectDir}) does not ignore .agents`);
+    // `add` supports creating a fresh worktree in a plain directory; a parent
+    // that is not a git repo has nothing to ignore .agents into.
+    const inRepo = await git(["rev-parse", "--is-inside-work-tree"], projectDir);
+    if (inRepo.code !== 0) {
+      ok(`${wt.branch}: parent is not a git repo (nothing to ignore)`);
+      continue;
     }
+    const ignored = await git(["check-ignore", "-q", "--", ".agents"], projectDir);
+    check(
+      ignored.code === 0,
+      `${wt.branch}: parent repo ignores .agents`,
+      `${wt.branch}: parent repo (${projectDir}) does not ignore .agents`,
+    );
   }
 
-  const remotes = await git(["remote"], marrowHome);
+  const remotes = await git(["remote"], vault);
   if (!remotes.stdout.split("\n").includes("origin")) {
-    fail("no 'origin' remote configured");
+    warn("no 'origin' remote configured");
   } else {
-    const originUrl = await git(["remote", "get-url", "origin"], marrowHome);
-    const reachable = await run("git", ["ls-remote", "--exit-code", "origin"], marrowHome);
-    if (reachable.code !== 0) {
-      fail(`origin (${originUrl.stdout}) is not reachable`);
-    } else {
-      ok("origin is reachable");
-    }
+    const originUrl = await git(["remote", "get-url", "origin"], vault);
+    const reachable = await run("git", ["ls-remote", "--exit-code", "origin"], vault);
+    check(reachable.code === 0, "origin is reachable", `origin (${originUrl.stdout}) is not reachable`);
 
     const ghPath = Bun.which("gh");
     if (!ghPath) {
       warn("gh not available; skipped origin visibility check");
     } else {
-      const vis = await run("gh", ["repo", "view", "--json", "visibility", "-q", ".visibility"], marrowHome);
+      const vis = await run("gh", ["repo", "view", "--json", "visibility", "-q", ".visibility"], vault);
       if (vis.code !== 0) {
         warn(`could not determine origin visibility via gh: ${vis.stderr || vis.stdout}`);
       } else if (vis.stdout.trim() !== "PRIVATE") {
@@ -105,11 +91,8 @@ export async function doctorCommand(marrowHome: string, devRoot: string): Promis
   }
 
   const marrowOnPath = Bun.which("marrow");
-  if (!marrowOnPath) {
-    warn("bin/marrow is not on PATH");
-  } else {
-    ok(`marrow on PATH at ${marrowOnPath}`);
-  }
+  if (marrowOnPath) ok(`marrow on PATH at ${marrowOnPath}`);
+  else warn("bin/marrow is not on PATH");
 
   for (const line of lines) console.log(line);
   console.log(failed ? "doctor: FAIL" : "doctor: OK");

@@ -1,6 +1,6 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
-import { dirtyCount, git, hasOrigin, listProjectWorktrees } from "../git";
+import { aheadBehind, dirtyCount, git, hasOrigin, listProjectWorktrees, vaultDir } from "../git";
 
 export interface SyncOptions {
   message?: string;
@@ -13,57 +13,75 @@ function isoLocal(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-async function logLine(marrowHome: string, line: string): Promise<void> {
+// --auto redirects every line to <MARROW_HOME>/logs/sync.log instead of the
+// terminal, so a hook or launchd job leaves a record without writing to stdout.
+async function report(marrowHome: string, auto: boolean | undefined, line: string, isError = false): Promise<void> {
+  if (!auto) {
+    if (isError) console.error(line);
+    else console.log(line);
+    return;
+  }
   const logsDir = path.join(marrowHome, "logs");
   await mkdir(logsDir, { recursive: true });
   await appendFile(path.join(logsDir, "sync.log"), `${isoLocal()} ${line}\n`);
 }
 
-async function report(marrowHome: string, auto: boolean | undefined, line: string, isError = false): Promise<void> {
-  if (auto) {
-    await logLine(marrowHome, line);
-    return;
-  }
-  if (isError) console.error(line);
-  else console.log(line);
-}
-
 export async function syncCommand(targets: string[], opts: SyncOptions, marrowHome: string): Promise<number> {
-  const all = await listProjectWorktrees(marrowHome);
-  const worktrees = targets.length > 0 ? all.filter((w) => targets.includes(w.branch)) : all;
+  const vault = vaultDir(marrowHome);
+  const all = await listProjectWorktrees(vault);
+  const matches = (target: string) => all.filter((w) => w.branch === target || path.basename(path.dirname(w.path)) === target);
+  const worktrees = targets.length > 0 ? targets.flatMap(matches) : all;
 
   let hadError = false;
 
   if (targets.length > 0) {
-    const found = new Set(worktrees.map((w) => w.branch));
-    const missing = targets.filter((t) => !found.has(t));
+    const missing = targets.filter((t) => matches(t).length !== 1);
     if (missing.length > 0) {
       hadError = true;
       await report(marrowHome, opts.auto, `unknown project(s): ${missing.join(", ")}`, true);
     }
   }
 
+  if (await hasOrigin(vault)) {
+    const fetchRes = await git(["fetch", "--prune", "origin"], vault);
+    if (fetchRes.code !== 0) {
+      if (!opts.auto) hadError = true;
+      await report(marrowHome, opts.auto, `fetch: WARN ${fetchRes.stderr}`, true);
+    }
+  }
+
   for (const wt of worktrees) {
     try {
+      const name = path.basename(path.dirname(wt.path));
+      const syncState = await aheadBehind(wt.path, wt.branch);
+      if (syncState?.behind) {
+        const dirtyBeforePull = await dirtyCount(wt.path);
+        if (dirtyBeforePull > 0 || syncState.ahead > 0) {
+          throw new Error("remote changes require manual reconciliation");
+        }
+        const fastForward = await git(["merge", "--ff-only", `origin/${wt.branch}`], wt.path);
+        if (fastForward.code !== 0) throw new Error(`fast-forward failed: ${fastForward.stderr}`);
+        await report(marrowHome, opts.auto, `${name}: fast-forwarded`);
+      }
       const dirty = await dirtyCount(wt.path);
       if (dirty === 0) continue;
 
       const addRes = await git(["add", "-A"], wt.path);
       if (addRes.code !== 0) throw new Error(addRes.stderr);
 
-      const message = opts.message ? `${wt.branch}: ${opts.message}` : `${wt.branch}: sync ${isoLocal()}`;
+      const message = opts.message ? `${name}: ${opts.message}` : `${name}: sync ${isoLocal()}`;
       const commitRes = await git(["commit", "-m", message], wt.path);
       if (commitRes.code !== 0) throw new Error(commitRes.stderr);
 
-      await report(marrowHome, opts.auto, `${wt.branch}: committed (${dirty} change(s))`);
+      await report(marrowHome, opts.auto, `${name}: committed (${dirty} change(s))`);
     } catch (err) {
       hadError = true;
       await report(marrowHome, opts.auto, `${wt.branch}: ERROR ${(err as Error).message}`, true);
     }
   }
 
-  if (await hasOrigin(marrowHome)) {
-    const pushRes = await git(["push", "origin", "--all"], marrowHome);
+  if (await hasOrigin(vault)) {
+    const pushRes = await git(["push", "origin", "--all"], vault);
     if (pushRes.code !== 0) {
       // Offline / unreachable push is tolerated in --auto mode; still surfaced as an error otherwise.
       if (!opts.auto) hadError = true;

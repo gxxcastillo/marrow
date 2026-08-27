@@ -1,3 +1,2 @@
-backups/
-logs/
 node_modules/
+.agents/

@@ -1,6 +1,6 @@
 ## Persistence
 
-This directory is a git worktree of the private `marrow` repo (branch: `{{project}}`).
+This directory is a git worktree of the private `marrow` repo (branch: `{{branch}}`).
 It is never committed to the parent repo. Convention: `marrow convention`.
 
 - Before ending a session in which you wrote here:

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { syncCommand } from "../src/commands/sync";
-import { dirtyCount, git, lastCommit } from "../src/git";
+import { dirtyCount, git, lastCommit, vaultDir } from "../src/git";
 import { addProjectWorktree, makeFixture, type Fixture } from "./fixtures";
 
 describe("sync", () => {
@@ -70,7 +70,7 @@ describe("sync", () => {
   test("tolerates an unreachable origin in --auto mode and still exits 0", async () => {
     const agentsPath = await addProjectWorktree(fx, "ossa");
     await Bun.write(path.join(agentsPath, "note.md"), "note\n");
-    await git(["remote", "set-url", "origin", path.join(fx.root, "does-not-exist.git")], fx.marrowHome);
+    await git(["remote", "set-url", "origin", path.join(fx.root, "does-not-exist.git")], vaultDir(fx.marrowHome));
 
     const code = await syncCommand([], { auto: true }, fx.marrowHome);
     expect(code).toBe(0);
@@ -83,7 +83,7 @@ describe("sync", () => {
   test("surfaces a push failure as a non-zero exit outside --auto", async () => {
     const agentsPath = await addProjectWorktree(fx, "ossa");
     await Bun.write(path.join(agentsPath, "note.md"), "note\n");
-    await git(["remote", "set-url", "origin", path.join(fx.root, "does-not-exist.git")], fx.marrowHome);
+    await git(["remote", "set-url", "origin", path.join(fx.root, "does-not-exist.git")], vaultDir(fx.marrowHome));
 
     const code = await syncCommand([], {}, fx.marrowHome);
     expect(code).toBe(1);
@@ -91,7 +91,7 @@ describe("sync", () => {
 
   test("skips push with a warning (not an error) when there is no origin", async () => {
     const agentsPath = await addProjectWorktree(fx, "ossa");
-    await git(["remote", "remove", "origin"], fx.marrowHome);
+    await git(["remote", "remove", "origin"], vaultDir(fx.marrowHome));
     await Bun.write(path.join(agentsPath, "note.md"), "note\n");
 
     const code = await syncCommand([], {}, fx.marrowHome);

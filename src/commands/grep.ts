@@ -1,7 +1,7 @@
-import { listProjectWorktrees } from "../git";
+import { listProjectWorktrees, vaultDir } from "../git";
 
 export async function grepCommand(pattern: string, extraArgs: string[], marrowHome: string): Promise<number> {
-  const worktrees = await listProjectWorktrees(marrowHome);
+  const worktrees = await listProjectWorktrees(vaultDir(marrowHome));
   if (worktrees.length === 0) {
     console.log("No project worktrees.");
     return 0;

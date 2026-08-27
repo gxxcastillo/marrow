@@ -1,5 +1,7 @@
 // Thin Bun.spawn git wrapper and worktree discovery. No git library.
 
+import path from "node:path";
+
 export interface SpawnResult {
   code: number;
   stdout: string;
@@ -20,32 +22,28 @@ export async function git(args: string[], cwd: string): Promise<SpawnResult> {
   return run("git", args, cwd);
 }
 
-export interface Worktree {
-  path: string;
-  branch: string;
+// <MARROW_HOME>/vault.git is the bare repo every git-invoking command
+// actually targets; MARROW_HOME itself is just its parent (also holding
+// backups/ and logs/ as plain sibling directories).
+export function vaultDir(marrowHome: string): string {
+  return path.join(marrowHome, "vault.git");
 }
 
-// Discovers project worktrees registered against MARROW_HOME, excluding the
-// main checkout (branch "main"). Zero config: worktrees are the registry.
-export async function listProjectWorktrees(marrowHome: string): Promise<Worktree[]> {
-  const res = await git(["worktree", "list", "--porcelain"], marrowHome);
+// Discovers project worktrees registered against the vault. Zero config:
+// worktrees are the registry. The vault is bare, so it has no main-checkout
+// entry of its own — every entry `git worktree list` reports is a real
+// project by construction.
+export async function listProjectWorktrees(vaultPath: string): Promise<{ path: string; branch: string }[]> {
+  const res = await git(["worktree", "list", "--porcelain"], vaultPath);
   if (res.code !== 0) throw new Error(`git worktree list failed: ${res.stderr}`);
 
-  const entries: Worktree[] = [];
-  let path = "";
-  let branch = "";
-  for (const line of [...res.stdout.split("\n"), ""]) {
-    if (line.startsWith("worktree ")) {
-      path = line.slice("worktree ".length);
-    } else if (line.startsWith("branch ")) {
-      branch = line.slice("branch ".length).replace(/^refs\/heads\//, "");
-    } else if (line === "") {
-      if (path && branch && branch !== "main") entries.push({ path, branch });
-      path = "";
-      branch = "";
-    }
-  }
-  return entries;
+  // --porcelain emits one blank-line-separated block per worktree. A block
+  // without a branch line (detached HEAD) is not a project worktree.
+  return res.stdout.split("\n\n").flatMap((block) => {
+    const wtPath = block.match(/^worktree (.+)$/m)?.[1];
+    const branch = block.match(/^branch (?:refs\/heads\/)?(.+)$/m)?.[1];
+    return wtPath && branch ? [{ path: wtPath, branch }] : [];
+  });
 }
 
 export async function dirtyCount(cwd: string): Promise<number> {
@@ -54,13 +52,8 @@ export async function dirtyCount(cwd: string): Promise<number> {
   return res.stdout.length === 0 ? 0 : res.stdout.split("\n").length;
 }
 
-export interface AheadBehind {
-  ahead: number;
-  behind: number;
-}
-
 // null when there is no origin/<branch> to compare against (never pushed / no origin).
-export async function aheadBehind(cwd: string, branch: string): Promise<AheadBehind | null> {
+export async function aheadBehind(cwd: string, branch: string): Promise<{ ahead: number; behind: number } | null> {
   const check = await git(["rev-parse", "--verify", "--quiet", `origin/${branch}`], cwd);
   if (check.code !== 0) return null;
   const res = await git(["rev-list", "--left-right", "--count", `HEAD...origin/${branch}`], cwd);
@@ -69,12 +62,7 @@ export async function aheadBehind(cwd: string, branch: string): Promise<AheadBeh
   return { ahead, behind };
 }
 
-export interface LastCommit {
-  date: string;
-  subject: string;
-}
-
-export async function lastCommit(cwd: string): Promise<LastCommit | null> {
+export async function lastCommit(cwd: string): Promise<{ date: string; subject: string } | null> {
   const res = await git(["log", "-1", "--format=%ad|%s", "--date=short"], cwd);
   if (res.code !== 0 || res.stdout === "") return null;
   const [date, ...rest] = res.stdout.split("|");

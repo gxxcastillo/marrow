@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# One-time local setup: symlink bin/marrow onto PATH, then run `marrow init` to
+# create or hydrate the vault's bare repo. Pass `--from <vault-url>` to attach
+# this machine to an existing vault. Safe to re-run — both steps are no-ops if
+# already done. Never creates or touches the vault's GitHub remote; see
+# AGENTS.md -> Safety rules.
+set -euo pipefail
+
+if ! command -v git >/dev/null 2>&1; then
+  echo "install: git is required but not found on PATH" >&2
+  exit 1
+fi
+if ! command -v bun >/dev/null 2>&1; then
+  echo "install: bun is required (to run marrow) but not found on PATH" >&2
+  exit 1
+fi
+
+# Resolve the directory this script lives in (the tool checkout), following symlinks.
+script_path="${BASH_SOURCE[0]}"
+while [ -L "$script_path" ]; do
+  script_dir="$(cd -P "$(dirname "$script_path")" && pwd)"
+  script_path="$(readlink "$script_path")"
+  [[ "$script_path" != /* ]] && script_path="$script_dir/$script_path"
+done
+tool_root="$(cd -P "$(dirname "$script_path")/.." && pwd)"
+
+bin_dir="$HOME/.local/bin"
+
+# 1. Symlink bin/marrow onto PATH.
+source="$tool_root/bin/marrow"
+target="$bin_dir/marrow"
+mkdir -p "$bin_dir"
+
+if [ -L "$target" ] && [ "$(readlink "$target")" = "$source" ]; then
+  echo "install: already linked: $target -> $source"
+elif [ -e "$target" ]; then
+  echo "install: refusing to overwrite existing $target (not a marrow symlink to this checkout)" >&2
+  exit 1
+else
+  ln -s "$source" "$target"
+  echo "install: linked $target -> $source"
+fi
+
+case ":$PATH:" in
+  *":$bin_dir:"*) ;;
+  *) echo "install: warning: $bin_dir is not on your PATH" >&2 ;;
+esac
+
+# 2. Initialize the vault. Invoked directly (not via $target) so this doesn't
+# depend on $bin_dir already being on PATH in the current shell.
+echo "install: running 'marrow init $*'..."
+"$source" init "$@"
+
+echo "install: done. The vault's private GitHub remote is a separate, gated step — see AGENTS.md -> Safety rules."
