@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # One-time local setup: symlink bin/marrow onto PATH, then run `marrow init` to
-# create or hydrate the vault's bare repo. Pass `--from <vault-url>` to attach
-# this machine to an existing vault. Safe to re-run — both steps are no-ops if
-# already done. Never creates or touches the vault's GitHub remote; see
-# AGENTS.md -> Safety rules.
+# create the local vault's bare repo. Safe to re-run — both steps are no-ops if
+# already done. Never creates or touches the vault's GitHub remote; use
+# `marrow init --from` or `marrow publish` for explicit remote lifecycle work.
 set -euo pipefail
 
 if ! command -v git >/dev/null 2>&1; then
@@ -13,6 +12,10 @@ fi
 if ! command -v bun >/dev/null 2>&1; then
   echo "install: bun is required (to run marrow) but not found on PATH" >&2
   exit 1
+fi
+if [ "$#" -ne 0 ]; then
+  echo "install: unexpected arguments; run 'marrow init --from <vault-url>' after install to attach an existing vault" >&2
+  exit 2
 fi
 
 # Resolve the directory this script lives in (the tool checkout), following symlinks.
@@ -48,7 +51,7 @@ esac
 
 # 2. Initialize the vault. Invoked directly (not via $target) so this doesn't
 # depend on $bin_dir already being on PATH in the current shell.
-echo "install: running 'marrow init $*'..."
-"$source" init "$@"
+echo "install: running 'marrow init'..."
+"$source" init
 
-echo "install: done. The vault's private GitHub remote is a separate, gated step — see AGENTS.md -> Safety rules."
+echo "install: done. Use 'marrow init --from' or 'marrow publish' for the separate, gated remote step."

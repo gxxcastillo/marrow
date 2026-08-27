@@ -47,8 +47,8 @@ with* marrow, not to marrow's own behavior:
   step before `add` will accept them; one of those parent repos is public. The plan's
   inventory table is authoritative on which projects and what each one needs — follow it
   exactly rather than a copy of it.
-- Creating the vault's private GitHub remote (`gh repo create gxxcastillo/marrow-vault
-  --private`) requires Gabriel's explicit go-ahead — never do it on your own initiative.
+- Creating the vault's private GitHub remote (`marrow publish gxxcastillo/marrow-vault`)
+  requires Gabriel's explicit go-ahead — never do it on your own initiative.
   `spec/safety.md` → Private-only vault owns the requirement itself; `marrow doctor`
   re-verifies visibility on every run once the remote exists.
 

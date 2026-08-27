@@ -117,8 +117,11 @@ tree; this spec's `README.md` → "What lives outside this spec" says what moved
 checkout without the vault is still complete.
 
 Install: `bin/install` symlinks `bin/marrow` onto `PATH`, then runs `marrow init` (see
-`cli.md` → `init`) to create the vault's bare repo; both steps are idempotent and neither
-touches the vault's GitHub remote. Currently `~/.local/bin/marrow -> ~/dev/marrow/bin/marrow`.
+`cli.md` → `init`) to create the local vault's bare repo; both steps are idempotent and
+neither touches the vault's GitHub remote. Remote lifecycle is explicit: `marrow
+publish <owner>/<repo>` creates a new private GitHub vault remote, while `marrow init
+--from <vault-url>` attaches a machine to an existing private vault remote. Currently
+`~/.local/bin/marrow -> ~/dev/marrow/bin/marrow`.
 
 **Vault** (`~/.marrow` by default, no `main`/tool content, ever):
 

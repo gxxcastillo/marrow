@@ -43,6 +43,8 @@ change, or fix the code if the spec was the intended design.
 marrow status
 marrow sync ossa -m "weekly review"
 marrow add ~/dev/sobremesa --dry-run
+marrow init --from git@github.com:gxxcastillo/marrow-vault.git --dry-run
+marrow publish gxxcastillo/marrow-vault --dry-run
 marrow doctor
 marrow grep "TODO"
 ```

@@ -9,7 +9,7 @@ export interface SpawnResult {
 }
 
 export async function run(cmd: string, args: string[], cwd: string): Promise<SpawnResult> {
-  const proc = Bun.spawn([cmd, ...args], { cwd, stdout: "pipe", stderr: "pipe" });
+  const proc = Bun.spawn([cmd, ...args], { cwd, env: { ...process.env }, stdout: "pipe", stderr: "pipe" });
   const [stdout, stderr, code] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),

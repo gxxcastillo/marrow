@@ -21,14 +21,21 @@ describe("cli dispatch", () => {
     expect(code).toBe(0);
     expect(errLines).toEqual([]);
     const usage = outLines.join("\n");
-    for (const name of ["init", "status", "sync", "add", "doctor", "grep", "convention"]) {
+    for (const name of ["init", "publish", "status", "sync", "add", "doctor", "grep", "convention"]) {
       expect(usage).toContain(name);
     }
   });
 
   test("usage lines come from the command table", async () => {
     const { outLines } = await call(["--help"]);
+    expect(outLines.join("\n")).toContain("init");
     expect(outLines.join("\n")).toContain("sync [project...] [-m <msg>] [--auto]");
+  });
+
+  test.each(["create", "connect"])("%s is not a remote lifecycle command", async (command) => {
+    const { code, errLines } = await call([command, "file:///tmp/vault.git"]);
+    expect(code).toBe(2);
+    expect(errLines.join("\n")).toContain("usage: marrow <command> [args]");
   });
 
   test.each([["-v"], ["--version"]])("%s prints the tool version and exits 0", async (flag) => {
@@ -66,6 +73,7 @@ describe("cli dispatch", () => {
   });
 
   test.each([
+    ["publish", "usage: marrow publish <owner>/<repo> [--dry-run]"],
     ["add", "usage: marrow add <project-path> [--id <stable-id>] [--dry-run]"],
     ["grep", "usage: marrow grep <pattern> [rg-args...]"],
   ])("%s without its required argument exits 2", async (command, expected) => {

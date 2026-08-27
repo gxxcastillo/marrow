@@ -5,12 +5,12 @@ Authoritative on command syntax, options, output, and exit codes.
 Global behavior: plain text output, one line per project where applicable. `MARROW_HOME`
 names the vault parent directory; every command that touches the vault's git history
 actually runs `git` against `<MARROW_HOME>/vault.git`, the bare repo (see
-`architecture.md` → Env overrides), created by [`init`](#init). Every command other than
-`init` assumes that bare repo already exists; if it doesn't, a command fails with an
-uncaught error (stack trace, non-zero exit) rather than a clean message — this is a known
-gap, not a designed error path. `templates/`, `CONVENTION.md` and `package.json` are
-resolved relative to the running tool's own install location, never relative to
-`MARROW_HOME`.
+`architecture.md` → Env overrides), initialized by [`init`](#init). Commands that are
+not part of vault setup assume that bare repo already exists; if it doesn't, they fail
+with an uncaught error (stack trace, non-zero exit) rather than a clean message — this is
+a known gap, not a designed error path.
+`templates/`, `CONVENTION.md` and `package.json` are resolved relative to the running
+tool's own install location, never relative to `MARROW_HOME`.
 
 **Global flags.** `-h`/`--help` prints the usage block to stdout and exits `0`;
 `<command> --help` (or `-h`) prints that one command's usage line and summary, also to
@@ -26,7 +26,8 @@ single command table in `src/cli.ts` — the per-command syntax in this document
 
 | Command | Purpose | Mutates |
 |---|---|---|
-| [`init`](#init) | create or hydrate the vault's bare repo | vault (creates/configures) |
+| [`init`](#init) | initialize the local vault, empty or from an existing remote | vault (create/clone/configure/fetch) |
+| [`publish`](#publish) | publish the vault to a new private GitHub remote | GitHub, vault remote refs |
 | [`status`](#status) | per-project worktree health | no |
 | [`sync`](#sync) | commit + push project worktrees | project worktrees, vault |
 | [`add`](#add) | bring a project's `.agents/` under marrow — adopts if one exists, creates fresh otherwise | project dir, vault |
@@ -37,15 +38,101 @@ single command table in `src/cli.ts` — the per-command syntax in this document
 ## `init`
 
 ```
-marrow init [--from <vault-url>]
+marrow init [--from <vault-url>] [--dry-run]
 ```
 
-Without `--from`, ensures `<MARROW_HOME>/vault.git` exists with `git init --bare -b main`.
-With `--from`, creates a bare clone of the supplied vault, or hydrates an empty local vault
-by configuring `origin` and fetching its branches. It refuses to replace a non-empty vault
-or a different configured origin. `--from` never creates a remote; the caller supplies an
-already-created private vault. When `gh` can determine the origin visibility, `init`
-refuses a non-private source. Exit `0` on success, `1` on clone, fetch, or safety failure.
+Without `--from`, ensures `<MARROW_HOME>/vault.git` exists with `git init --bare -b
+main`. It creates `<MARROW_HOME>` if needed. It is idempotent: if the vault already
+exists, it prints `vault already exists: <path>` and exits `0`. This local path never
+configures `origin`, fetches, pushes, or creates a remote.
+
+With `--from`, initializes this machine from an already-created private vault remote.
+`<vault-url>` is a generic Git URL. There are only two accepted local states:
+
+| Local state | Behavior |
+|---|---|
+| `<MARROW_HOME>/vault.git` does not exist | Bare-clone `<vault-url>` into that path, fetch remote refs, and verify reachability/private visibility |
+| `<MARROW_HOME>/vault.git` exists, has no local branches, has no project worktrees, and has no `origin` | Configure `origin`, fetch remote refs, and verify reachability/private visibility |
+
+Every other local state is refused before mutation: an existing `origin`, any local
+branch, any project worktree, or a non-bare/non-git file at the vault path. `init --from`
+never merges histories, reconciles two populated vaults, replaces an origin, pushes, or
+creates a remote.
+
+**`--dry-run`.** Without `--from`, prints whether the local empty-vault init would run.
+With `--from`, checks the vault path state and prints whether it would clone or hydrate
+the local vault. It may run read-only Git checks against `<vault-url>`, but it does not
+create directories, configure remotes, fetch into the local vault, or push.
+
+**Live `--from` run.** After clone or hydrate, fetches `origin`, verifies `git ls-remote
+--exit-code origin`, and applies the same private-visibility policy used by
+[`doctor`](#doctor): a successful `gh` visibility result must be `PRIVATE`; missing `gh`
+or an unsupported non-GitHub URL is a warning, not a failure. A successful `gh` result of
+`PUBLIC` or `INTERNAL` is a failure.
+
+**Output.** Without `--from`, prints `initialized vault: <path>` or `vault already
+exists: <path>`. With `--from`, prints whether it cloned or hydrated the vault, the
+configured origin URL, fetched branch count, and private-visibility result or warning.
+
+**Exit codes.** `2` (from `marrow` dispatch): an unrecognized option or a missing value
+for `--from`. `1`: `<MARROW_HOME>` could not be created; `git init`, clone, origin
+configuration, fetch, or reachability failed; the local state was refused; or a
+successful visibility check reported a non-private remote. `0`: local vault exists or
+was created, or the remote vault was cloned/hydrated, fetched, reachable, and not known
+public.
+
+## `publish`
+
+```
+marrow publish <owner>/<repo> [--dry-run]
+```
+
+Publishes the local vault to a new private GitHub repository, configures it as `origin`
+on `<MARROW_HOME>/vault.git`, pushes every local vault branch, fetches remote refs, then
+verifies reachability and private visibility. This command is GitHub-specific because it
+uses `gh`.
+
+Calling `publish` live is the explicit authorization to create the GitHub repository
+named by `<owner>/<repo>`. The slug must contain exactly one slash, non-empty owner and
+repo segments, and only GitHub repository slug characters (`A-Z`, `a-z`, `0-9`, `.`,
+`_`, and `-`). `publish` requires `gh` on `PATH`, an initialized local vault, and no
+configured `origin`. It refuses to replace an existing origin. It never force-pushes and
+never deletes a GitHub repository, including after partial failure.
+
+**`--dry-run`.** Checks the local vault path, existing-origin precondition, slug syntax,
+and local branch list. It prints the intended repository, the origin URL that would be
+configured, and the branches that would be pushed. It does not invoke `gh` and does not
+run any Git mutation.
+
+**Live run.** The steps are:
+
+1. Create the GitHub repository as private.
+2. Read the repository's canonical Git URL.
+3. Add that URL as `origin` on the local vault.
+4. Push all local vault branches with ordinary `git push origin --all`.
+5. Fetch remote refs.
+6. Verify `origin` is reachable.
+7. Verify GitHub reports the repository visibility as `PRIVATE`.
+
+If GitHub creation succeeds but a later step fails, the command exits `1` with a partial
+failure report naming the created repository, whether `origin` was configured, whether
+any push completed, and the exact safe next command to run after fixing the reported
+problem. The safe next command is either `marrow doctor` when the local origin is already
+configured or `git -C <MARROW_HOME>/vault.git remote add origin <url>` followed by
+`marrow doctor` when only the GitHub repository exists. The command must not suggest
+deleting the repository, replacing an origin, force-pushing, or rewriting history.
+
+**Output.** In live mode, prints `publishing vault to private GitHub repository
+<owner>/<repo>...` before the first external mutation. On success, prints the created
+repository, configured origin URL, pushed branch count, and private-visibility
+verification. With no local vault branches, the push step is a no-op and the branch
+count is `0`.
+
+**Exit codes.** `2` (from `marrow` dispatch): missing `<owner>/<repo>` argument or an
+unrecognized option. `1`: invalid slug, missing `gh`, missing local vault, existing
+origin, GitHub creation failure, origin configuration failure, push failure, fetch
+failure, reachability failure, or non-private visibility. `0`: remote created,
+configured, pushed, fetched, reachable, and private.
 
 ## `status`
 
@@ -261,6 +348,8 @@ if the file is missing.
 
 ```bash
 marrow init                            # one-time: create the vault's bare repo
+marrow init --from git@github.com:gxxcastillo/marrow-vault.git --dry-run # preview existing remote setup
+marrow publish gxxcastillo/marrow-vault --dry-run # preview private remote creation
 marrow status                          # what's dirty, what's unpushed
 marrow sync                            # commit + push everything dirty
 marrow sync ossa -m "weekly review"    # one project, a real message

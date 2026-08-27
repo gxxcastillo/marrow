@@ -17,13 +17,21 @@ including, for `sobremesa`, `solid-forms`, `ultra-sound-music`, `embracingroots`
 `event-link`, content about projects whose own repos are public. This is a stricter bar
 than the tool repo (`gxxcastillo/marrow`) needs, which is exactly why they're separate
 repos: the tool repo could in principle go public later (open, deferred question — see
-`architecture.md` → Non-goals) without ever putting the vault at risk. Creating the
-vault's remote (`gh repo create ... --private`) requires an explicit human go-ahead the
-first time; every push after that assumes the remote's visibility hasn't changed
-underneath it. `doctor` re-checks the vault's visibility on every run (via
-`gh repo view --json visibility` when `gh` is available) specifically to catch that drift
-— see `cli.md` → `doctor`. `doctor` does not audit the tool repo's own visibility or
-hygiene; that's an ordinary dev-project concern, not a marrow safety property.
+`architecture.md` → Non-goals) without ever putting the vault at risk.
+
+Creating the vault's remote is handled only by `marrow publish <owner>/<repo>`, which is
+GitHub-specific and always creates a private repository. Running that live command is the
+explicit human go-ahead to create the repository named in the command. Connecting an
+existing remote is handled only by `marrow init --from <vault-url>`, which never creates
+a remote, never pushes, and refuses a remote that a successful visibility check reports
+as non-private. Plain `marrow init` creates only the local bare vault and must never
+configure or hydrate a remote.
+
+Every push after setup assumes the remote's visibility hasn't changed underneath it.
+`doctor` re-checks the vault's visibility on every run (via `gh repo view --json
+visibility` when `gh` is available) specifically to catch that drift — see `cli.md` →
+`doctor`. `doctor` does not audit the tool repo's own visibility or hygiene; that's an
+ordinary dev-project concern, not a marrow safety property.
 
 ## No destructive git operations, ever
 

@@ -32,15 +32,20 @@ bin/install
 
 To set up another machine from an existing vault:
 ```
-bin/install --from git@github.com:gxxcastillo/marrow-vault.git
+bin/install
+marrow init --from git@github.com:gxxcastillo/marrow-vault.git --dry-run
+marrow init --from git@github.com:gxxcastillo/marrow-vault.git
 marrow add ~/dev-stuff-and-things/ossa
 ```
 
 Symlinks `bin/marrow` onto `~/.local/bin`, then runs `marrow init` to create the vault as
 a bare repo at `MARROW_HOME` (default `~/.marrow`). Safe to re-run — both steps are no-ops
 if already done, and it refuses to overwrite a non-marrow file already at the symlink
-target. It never touches the vault's GitHub remote — that's a separate step gated on
-explicit go-ahead, see `AGENTS.md` → Safety rules.
+target. It never touches the vault's GitHub remote unless you explicitly pass
+`marrow init --from <vault-url>` to attach this machine to an existing private vault.
+Use `marrow publish <owner>/<repo>` to create a new private GitHub vault remote after
+explicit go-ahead. The remote contains only vault branches, not project repositories or
+backup tarballs.
 
 Equivalent by hand:
 ```
@@ -64,10 +69,10 @@ Phase 3's local, attended migration is complete. The initial inventory — `ossa
 `eos`, and `event-link` — is attached to the local vault. Each adoption has its backup
 tarball under `~/.marrow/backups/`.
 
-The vault has no remote yet. Creating or connecting its private remote remains gated on
-Gabriel's explicit approval. Until then, branches are local-only and `marrow doctor`
-reports `WARN no 'origin' remote configured` by design. The one-time migration record and
-the remote-lifecycle plan live in `.agents/plans/`.
+The vault has no remote yet. Publishing it, or initializing a machine from an existing
+private remote, remains gated on Gabriel's explicit approval. Until then, branches are
+local-only and `marrow doctor` reports `WARN no 'origin' remote configured` by design.
+The one-time migration record and the remote-lifecycle plan live in `.agents/plans/`.
 
 ### Everyday commands, once projects are adopted
 

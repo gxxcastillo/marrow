@@ -3,7 +3,6 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { addCommand } from "../src/commands/add";
 import { doctorCommand } from "../src/commands/doctor";
-import { initCommand } from "../src/commands/init";
 import { git, listProjectWorktrees, vaultDir } from "../src/git";
 import { makeFixture, makeProjectRepo, type Fixture } from "./fixtures";
 import { captureLogs } from "./helpers";
@@ -23,17 +22,27 @@ async function secondProject(fx: Fixture, name: string): Promise<string> {
   return dir;
 }
 
-describe("multi-machine lifecycle", () => {
+async function cloneVaultForSecondMachine(fx: Fixture): Promise<string> {
+  const machineBHome = path.join(fx.root, "machine-b", "marrow-home");
+  await mkdir(machineBHome, { recursive: true });
+  const clone = await git(["clone", "--bare", fx.bareOrigin, vaultDir(machineBHome)], machineBHome);
+  expect(clone.code).toBe(0);
+  await git(["config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"], vaultDir(machineBHome));
+  const fetch = await git(["fetch", "--prune", "origin"], vaultDir(machineBHome));
+  expect(fetch.code).toBe(0);
+  return machineBHome;
+}
+
+describe("multi-machine attachment", () => {
   let fx: Fixture;
   beforeEach(async () => { fx = await makeFixture(); });
   afterEach(async () => { await fx.cleanup(); });
 
-  test("init --from and add attach an existing branch at a different checkout path", async () => {
+  test("add attaches an existing branch at a different checkout path", async () => {
     const machineA = await makeProjectRepo(fx, "ossa", "ignored");
     expect(await addCommand(machineA, {}, fx.marrowHome, fx.toolRoot)).toBe(0);
 
-    const machineBHome = path.join(fx.root, "machine-b", "marrow-home");
-    expect(await initCommand(machineBHome, fx.bareOrigin)).toBe(0);
+    const machineBHome = await cloneVaultForSecondMachine(fx);
     const machineB = await secondProject(fx, "ossa");
     const { code, outLines } = await captureLogs(() => addCommand(machineB, {}, machineBHome, fx.toolRoot));
     expect(code).toBe(0);
@@ -45,8 +54,7 @@ describe("multi-machine lifecycle", () => {
   test("doctor permits remote branches that this machine has not attached", async () => {
     const machineA = await makeProjectRepo(fx, "ossa", "ignored");
     expect(await addCommand(machineA, {}, fx.marrowHome, fx.toolRoot)).toBe(0);
-    const machineBHome = path.join(fx.root, "machine-b", "marrow-home");
-    await initCommand(machineBHome, fx.bareOrigin);
+    const machineBHome = await cloneVaultForSecondMachine(fx);
     const { code, outLines } = await captureLogs(() => doctorCommand(machineBHome));
     expect(code).toBe(0);
     expect(outLines.some((line) => line.includes("has no worktree"))).toBe(false);

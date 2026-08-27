@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
-import { aheadBehind, git, listProjectWorktrees, run, vaultDir } from "../git";
+import { aheadBehind, git, listProjectWorktrees, vaultDir } from "../git";
+import { originUrl, verifyOriginReachable, verifyPrivateVisibility } from "../remote";
 
 const UNPUSHED_WARN_THRESHOLD = 20;
 const STALE_BACKUP_DAYS = 30;
@@ -47,27 +48,21 @@ export async function doctorCommand(marrowHome: string): Promise<number> {
     );
   }
 
-  const remotes = await git(["remote"], vault);
-  if (!remotes.stdout.split("\n").includes("origin")) {
+  const url = await originUrl(vault);
+  if (!url) {
     warn("no 'origin' remote configured");
   } else {
-    const originUrl = await git(["remote", "get-url", "origin"], vault);
-    const reachable = await run("git", ["ls-remote", "--exit-code", "origin"], vault);
-    check(reachable.code === 0, "origin is reachable", `origin (${originUrl.stdout}) is not reachable`);
-
-    const ghPath = Bun.which("gh");
-    if (!ghPath) {
-      warn("gh not available; skipped origin visibility check");
-    } else {
-      const vis = await run("gh", ["repo", "view", "--json", "visibility", "-q", ".visibility"], vault);
-      if (vis.code !== 0) {
-        warn(`could not determine origin visibility via gh: ${vis.stderr || vis.stdout}`);
-      } else if (vis.stdout.trim() !== "PRIVATE") {
-        fail(`origin visibility is ${vis.stdout.trim()}, expected PRIVATE`);
-      } else {
-        ok("origin is PRIVATE");
-      }
+    try {
+      await verifyOriginReachable(vault);
+      ok("origin is reachable");
+    } catch {
+      fail(`origin (${url}) is not reachable`);
     }
+
+    const visibility = await verifyPrivateVisibility(vault, false);
+    if (visibility.status === "ok") ok(visibility.message);
+    else if (visibility.status === "warn") warn(visibility.message);
+    else fail(visibility.message);
   }
 
   for (const wt of worktrees) {

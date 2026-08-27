@@ -5,6 +5,7 @@ import { conventionCommand } from "./commands/convention";
 import { doctorCommand } from "./commands/doctor";
 import { grepCommand } from "./commands/grep";
 import { initCommand } from "./commands/init";
+import { publishCommand } from "./commands/publish";
 import { statusCommand } from "./commands/status";
 import { syncCommand } from "./commands/sync";
 
@@ -28,10 +29,19 @@ interface Command {
 
 const COMMANDS: Record<string, Command> = {
   init: {
-    args: "[--from <vault-url>]",
-    summary: "create or hydrate the vault's bare repo at MARROW_HOME",
-    options: { from: { type: "string" } },
-    run: ({ values }, ctx) => initCommand(ctx.marrowHome, values.from as string | undefined),
+    args: "[--from <vault-url>] [--dry-run]",
+    summary: "initialize the local vault",
+    options: { from: { type: "string" }, "dry-run": { type: "boolean", default: false } },
+    run: ({ values }, ctx) =>
+      initCommand(ctx.marrowHome, { from: values.from as string | undefined, dryRun: values["dry-run"] as boolean }),
+  },
+
+  publish: {
+    args: "<owner>/<repo> [--dry-run]",
+    summary: "publish the vault to a new private GitHub remote",
+    options: { "dry-run": { type: "boolean", default: false } },
+    minArgs: 1,
+    run: ({ values, positionals }, ctx) => publishCommand(positionals[0], { dryRun: values["dry-run"] as boolean }, ctx.marrowHome),
   },
 
   status: {
