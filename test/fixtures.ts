@@ -133,3 +133,12 @@ export async function addUnattachedBranch(fx: Fixture, branch: string): Promise<
   const removed = await git(["worktree", "remove", "--force", agentsPath], vault);
   if (removed.code !== 0) throw new Error(`worktree remove failed: ${removed.stderr}`);
 }
+
+// Simulates a worktree directory deleted out from under its registration (by
+// hand, by a wider cleanup) rather than detached through marrow: the vault
+// keeps the branch and the worktree administrative data, but `git worktree
+// list --porcelain` reports the entry `prunable`. Distinct from
+// `addUnattachedBranch`, which properly removes the registration itself.
+export async function deleteWorktreeDir(agentsPath: string): Promise<void> {
+  await rm(agentsPath, { recursive: true, force: true });
+}

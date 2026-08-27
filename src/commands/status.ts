@@ -44,7 +44,13 @@ export async function statusCommand(marrowHome: string): Promise<number> {
   let aheadTotal = 0;
   let behindTotal = 0;
   const rows: string[][] = [];
+  const missingBranches: string[] = [];
   for (const wt of worktrees) {
+    if (wt.missing) {
+      missingBranches.push(wt.branch);
+      rows.push([displayPath(wt.path), wt.branch, "missing", "-", "-"]);
+      continue;
+    }
     const dirty = await dirtyCount(wt.path);
     const ab = await aheadBehind(wt.path, wt.branch);
     const commit = await lastCommit(wt.path);
@@ -79,5 +85,12 @@ export async function statusCommand(marrowHome: string): Promise<number> {
   ].filter(Boolean);
   console.log(`${countLabel(worktrees.length, "project")}: ${changes}, ${sync.join(", ") || "all synced"}`);
   if (unattachedNote) console.log(unattachedNote);
+  if (missingBranches.length > 0) {
+    const subject = missingBranches.length === 1 ? "its worktree directory" : "their worktree directories";
+    console.log(
+      `${countLabel(missingBranches.length, "project")} missing ${subject}; run \`marrow detach <project>\` to clear ` +
+        `the registration: ${missingBranches.join(", ")}`,
+    );
+  }
   return 0;
 }

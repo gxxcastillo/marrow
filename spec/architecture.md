@@ -41,6 +41,15 @@ what the registry-reading commands can see, `grep`, `status`, and `doctor` each 
 unattached branches rather than presenting a partial view as a complete one — `cli.md`
 per command.
 
+**The registry can drift from the filesystem.** A worktree's directory can be deleted
+outside marrow — by hand, by a wider cleanup, by an unrelated tool — while the vault still
+carries the branch and the registration. `git worktree list --porcelain` reports this as
+`prunable`; marrow calls it a **missing** worktree. It is not a health failure the way a
+misplaced or untracked worktree is: the branch and its history are intact in the vault
+either way. `status`, `sync`, `grep`, and `doctor` each surface it (`cli.md` per command)
+rather than crashing on a `cwd` that no longer exists, and name `marrow detach <project>`
+as the remediation — it clears the registration without touching the branch.
+
 **Project identity is independent of checkout path.** A GitHub project's default identity
 is its normalized repository name from the parent-repo `origin`; SSH and HTTPS forms
 resolve to the same repo name. Its vault branch is exactly that identity (`notes`,

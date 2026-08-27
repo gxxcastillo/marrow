@@ -35,7 +35,9 @@ ordinary dev-project concern, not a marrow safety property.
 Never force-push. Never rewrite history — on any vault project branch, the vault's
 minimal `main` landing branch, or the tool repo's own `main`. A branch that needs
 correcting gets a new commit, the same as any other git history — never `reset --hard` +
-force-push, never `filter-repo`.
+force-push, never `filter-repo`. `detach` (`cli.md` → `detach`) never deletes history
+either: it removes a worktree checkout, or clears the registration for one already gone
+from disk, and leaves the branch itself untouched in the vault.
 
 ## Backup before mutate
 

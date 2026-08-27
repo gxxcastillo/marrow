@@ -29,11 +29,23 @@ export function vaultDir(marrowHome: string): string {
   return path.join(marrowHome, "vault.git");
 }
 
+export interface ProjectWorktree {
+  path: string;
+  branch: string;
+  // Set when git reports this worktree `prunable` — its directory no longer
+  // exists on disk (deleted out from under the registration) while the vault
+  // still carries the branch and the worktree administrative data. Every git
+  // command that would use `path` as `cwd` (status, ahead/behind, ignore
+  // checks) throws ENOENT against a missing directory, so callers must skip
+  // those for a missing worktree rather than crash.
+  missing: boolean;
+}
+
 // Discovers project worktrees registered against the vault. Zero config:
 // worktrees are the registry. The vault is bare, so it has no main-checkout
 // entry of its own — every entry `git worktree list` reports is a real
 // project by construction.
-export async function listProjectWorktrees(vaultPath: string): Promise<{ path: string; branch: string }[]> {
+export async function listProjectWorktrees(vaultPath: string): Promise<ProjectWorktree[]> {
   const res = await git(["worktree", "list", "--porcelain"], vaultPath);
   if (res.code !== 0) throw new Error(`git worktree list failed: ${res.stderr}`);
 
@@ -42,7 +54,8 @@ export async function listProjectWorktrees(vaultPath: string): Promise<{ path: s
   return res.stdout.split("\n\n").flatMap((block) => {
     const wtPath = block.match(/^worktree (.+)$/m)?.[1];
     const branch = block.match(/^branch (?:refs\/heads\/)?(.+)$/m)?.[1];
-    return wtPath && branch ? [{ path: wtPath, branch }] : [];
+    const missing = /^prunable /m.test(block);
+    return wtPath && branch ? [{ path: wtPath, branch, missing }] : [];
   });
 }
 

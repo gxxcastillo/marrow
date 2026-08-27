@@ -51,8 +51,22 @@ export async function syncCommand(targets: string[], opts: SyncOptions, marrowHo
   }
 
   for (const wt of worktrees) {
+    const name = path.basename(path.dirname(wt.path));
+    if (wt.missing) {
+      // The branch and its ref are still fine — only the worktree directory is
+      // gone — so this never blocks the push below. Unnamed (all-projects) sync
+      // treats it as a warning; naming this project explicitly is an error, the
+      // same as naming an unknown one.
+      const remediation = `worktree directory missing at ${wt.path}; run \`marrow detach ${wt.branch}\` to clear the registration`;
+      if (targets.length > 0) {
+        hadError = true;
+        await report(marrowHome, opts.auto, `${name}: ERROR ${remediation}`, true);
+      } else {
+        await report(marrowHome, opts.auto, `${name}: WARN ${remediation}`, true);
+      }
+      continue;
+    }
     try {
-      const name = path.basename(path.dirname(wt.path));
       const syncState = await aheadBehind(wt.path, wt.branch);
       if (syncState?.behind) {
         const dirtyBeforePull = await dirtyCount(wt.path);

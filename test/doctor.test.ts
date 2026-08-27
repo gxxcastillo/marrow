@@ -4,7 +4,7 @@ import path from "node:path";
 import { addCommand } from "../src/commands/add";
 import { doctorCommand } from "../src/commands/doctor";
 import { git, vaultDir } from "../src/git";
-import { addProjectWorktree, addUnattachedBranch, makeFixture, makeProjectRepo, type Fixture } from "./fixtures";
+import { addProjectWorktree, addUnattachedBranch, deleteWorktreeDir, makeFixture, makeProjectRepo, type Fixture } from "./fixtures";
 import { captureLogs } from "./helpers";
 
 describe("doctor", () => {
@@ -198,6 +198,21 @@ describe("doctor", () => {
     expect(line).toContain("beta");
     expect(outLines.some((l) => /^(WARN|FAIL)/.test(l) && l.includes("not attached"))).toBe(false);
     expect(code).toBe(0);
+  });
+
+  test("warns about a registered worktree whose directory is missing, without crashing on the rest", async () => {
+    const alphaPath = await addProjectWorktree(fx, "alpha");
+    await addProjectWorktree(fx, "beta");
+    await deleteWorktreeDir(alphaPath);
+
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
+    expect(code).toBe(0);
+    expect(outLines.some((l) => l.startsWith("FAIL"))).toBe(false);
+    const line = outLines.find((l) => l.includes("registered worktree missing"));
+    expect(line).toBeDefined();
+    expect(line).toStartWith("WARN");
+    expect(line).toContain("marrow detach alpha");
+    expect(outLines).toContain("OK    .agents ignored for 1 project parent");
   });
 
   test("reports git worktree --orphan support before vault findings", async () => {

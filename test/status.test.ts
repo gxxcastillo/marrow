@@ -3,7 +3,7 @@ import { realpath } from "node:fs/promises";
 import path from "node:path";
 import { statusCommand } from "../src/commands/status";
 import { git } from "../src/git";
-import { addProjectWorktree, addUnattachedBranch, makeFixture, type Fixture } from "./fixtures";
+import { addProjectWorktree, addUnattachedBranch, deleteWorktreeDir, makeFixture, type Fixture } from "./fixtures";
 import { captureLogs } from "./helpers";
 
 describe("status", () => {
@@ -99,5 +99,20 @@ describe("status", () => {
     const { outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
     expect(outLines[0]).toContain("No projects attached on this machine");
     expect(outLines[1]).toBe("The vault has 2 project branches not attached here: beta, gamma.");
+  });
+
+  test("reports a deleted project directory as a missing row instead of crashing", async () => {
+    const alphaPath = await addProjectWorktree(fx, "alpha");
+    await addProjectWorktree(fx, "beta");
+    await deleteWorktreeDir(alphaPath);
+
+    const { code, outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
+    expect(code).toBe(0);
+    const row = outLines.find((l) => l.includes("alpha"));
+    expect(row).toContain("missing");
+    expect(outLines.some((l) => l.includes("beta") && l.includes("clean"))).toBe(true);
+    expect(outLines.at(-1)).toBe(
+      "1 project missing its worktree directory; run `marrow detach <project>` to clear the registration: alpha",
+    );
   });
 });

@@ -3,7 +3,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { syncCommand } from "../src/commands/sync";
 import { dirtyCount, git, lastCommit, vaultDir } from "../src/git";
-import { addProjectWorktree, makeFixture, type Fixture } from "./fixtures";
+import { addProjectWorktree, deleteWorktreeDir, makeFixture, type Fixture } from "./fixtures";
+import { captureLogs } from "./helpers";
 
 describe("sync", () => {
   let fx: Fixture;
@@ -97,5 +98,37 @@ describe("sync", () => {
     const code = await syncCommand([], {}, fx.marrowHome);
     expect(code).toBe(0);
     expect(await dirtyCount(agentsPath)).toBe(0);
+  });
+
+  test("warns and skips a deleted project directory when no targets are named", async () => {
+    const alphaPath = await addProjectWorktree(fx, "alpha");
+    await addProjectWorktree(fx, "beta");
+    await deleteWorktreeDir(alphaPath);
+
+    const { code, errLines } = await captureLogs(() => syncCommand([], {}, fx.marrowHome));
+    expect(code).toBe(0);
+    expect(errLines.join("\n")).toContain("alpha: WARN worktree directory missing");
+    expect(errLines.join("\n")).toContain("marrow detach alpha");
+  });
+
+  test("errors on a deleted project directory named explicitly", async () => {
+    const alphaPath = await addProjectWorktree(fx, "alpha");
+    await deleteWorktreeDir(alphaPath);
+
+    const { code, errLines } = await captureLogs(() => syncCommand(["alpha"], {}, fx.marrowHome));
+    expect(code).toBe(1);
+    expect(errLines.join("\n")).toContain("alpha: ERROR worktree directory missing");
+  });
+
+  test("still pushes a missing worktree's branch, since only the directory is gone", async () => {
+    const alphaPath = await addProjectWorktree(fx, "alpha");
+    await git(["commit", "--allow-empty", "-q", "-m", "local only"], alphaPath);
+    await deleteWorktreeDir(alphaPath);
+
+    const { code } = await captureLogs(() => syncCommand([], {}, fx.marrowHome));
+    expect(code).toBe(0);
+    const remoteRev = await git(["rev-parse", "origin/alpha"], vaultDir(fx.marrowHome));
+    const localRev = await git(["rev-parse", "refs/heads/alpha"], vaultDir(fx.marrowHome));
+    expect(remoteRev.stdout).toBe(localRev.stdout);
   });
 });

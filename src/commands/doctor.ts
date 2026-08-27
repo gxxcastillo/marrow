@@ -61,6 +61,11 @@ export async function doctorCommand(marrowHome: string): Promise<number> {
 
   const vault = vaultDir(marrowHome);
   const worktrees = await listProjectWorktrees(vault);
+  // A registered worktree whose directory is gone can't be filesystem-checked
+  // (ignore state, identity, ahead/behind all shell out with its path as cwd,
+  // which throws against a missing directory) — those checks run against this
+  // subset instead. The registration itself is still reported, via the WARN below.
+  const presentWorktrees = worktrees.filter((wt) => !wt.missing);
   // A vault clone contains every branch, but a machine may intentionally
   // attach only some of them. Worktrees are this machine's registry.
   const misplaced = worktrees.filter((wt) => path.basename(wt.path) !== ".agents");
@@ -69,6 +74,10 @@ export async function doctorCommand(marrowHome: string): Promise<number> {
   }
   for (const wt of worktrees) {
     if (path.basename(wt.path) !== ".agents") fail(`branch '${wt.branch}' worktree at ${wt.path} is not named .agents`);
+  }
+
+  for (const wt of worktrees) {
+    if (wt.missing) warn(`registered worktree missing at ${wt.path}; run \`marrow detach ${wt.branch}\` to clear the registration`);
   }
 
   // Reported, never a WARN: attaching a subset is a deliberate choice, not
@@ -82,7 +91,7 @@ export async function doctorCommand(marrowHome: string): Promise<number> {
   }
 
   let ignoredParents = 0;
-  for (const wt of worktrees) {
+  for (const wt of presentWorktrees) {
     const projectDir = path.dirname(wt.path);
     // `add` supports creating a fresh worktree in a plain directory; a parent
     // that is not a git repo has nothing to ignore .agents into.
@@ -95,10 +104,12 @@ export async function doctorCommand(marrowHome: string): Promise<number> {
     if (ignored.code === 0) ignoredParents++;
     else fail(`${wt.branch}: parent repo (${projectDir}) does not ignore .agents`);
   }
-  if (ignoredParents === worktrees.length && worktrees.length > 0) ok(`.agents ignored for ${countLabel(worktrees.length, "project parent")}`);
+  if (ignoredParents === presentWorktrees.length && presentWorktrees.length > 0) {
+    ok(`.agents ignored for ${countLabel(presentWorktrees.length, "project parent")}`);
+  }
 
   let checkedIdentities = 0;
-  for (const wt of worktrees) {
+  for (const wt of presentWorktrees) {
     const projectDir = path.dirname(wt.path);
     const origin = await git(["remote", "get-url", "origin"], projectDir);
     const originId = origin.code === 0 ? githubId(origin.stdout) : null;
@@ -139,7 +150,7 @@ export async function doctorCommand(marrowHome: string): Promise<number> {
 
   const missingOriginRefs: string[] = [];
   let tooFarAhead = 0;
-  for (const wt of worktrees) {
+  for (const wt of presentWorktrees) {
     if (!originRefsCurrent) continue;
     const ab = await aheadBehind(wt.path, wt.branch);
     if (ab === null) {
@@ -151,8 +162,8 @@ export async function doctorCommand(marrowHome: string): Promise<number> {
   }
   if (missingOriginRefs.length > 0) {
     warn(`${countLabel(missingOriginRefs.length, "branch", "branches")} missing origin refs; run \`marrow sync\`: ${branchList(missingOriginRefs)}`);
-  } else if (originRefsCurrent && tooFarAhead === 0 && worktrees.length > 0) {
-    ok(`push state within threshold for ${countLabel(worktrees.length, "project branch", "project branches")}`);
+  } else if (originRefsCurrent && tooFarAhead === 0 && presentWorktrees.length > 0) {
+    ok(`push state within threshold for ${countLabel(presentWorktrees.length, "project branch", "project branches")}`);
   }
 
   const backupsDir = path.join(marrowHome, "backups");

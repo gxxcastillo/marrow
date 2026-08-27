@@ -31,6 +31,7 @@ single command table in `src/cli.ts` — the per-command syntax in this document
 | [`status`](#status)         | per-project worktree health                                                               | no                                   |
 | [`sync`](#sync)             | commit + push project worktrees                                                           | project worktrees, vault             |
 | [`add`](#add)               | bring a project's `.agents/` under marrow — adopts if one exists, creates fresh otherwise | project dir, vault                   |
+| [`detach`](#detach)         | remove a project's worktree, keeping its branch in the vault                              | project dir (worktree only)          |
 | [`doctor`](#doctor)         | vault + worktree health checks                                                            | no                                   |
 | [`grep`](#grep)             | search across all project worktrees                                                       | no                                   |
 | [`convention`](#convention) | print `CONVENTION.md`                                                                     | no                                   |
@@ -159,6 +160,13 @@ With zero project worktrees, prints `No projects attached on this machine. Run \
 branches not attached here: ...` when any exist — an empty vault and an unattached one
 are different situations and must not print the same thing. Always exits `0`.
 
+A registered worktree whose directory no longer exists on disk (deleted out from under the
+registration, rather than detached through marrow) still gets a row: `CHANGES`, `SYNC`,
+and `LAST COMMIT` each print `-` in place of a value that would require reading the
+missing directory. After the summary line, one further line names every such project and
+its remediation: `1 project missing its worktree directory; run \`marrow detach
+<project>\` to clear the registration: <branch>`.
+
 ## `sync`
 
 ```
@@ -187,6 +195,14 @@ skipped with a warning (not a failure); with no project worktrees attached, it i
 as well. Concurrent syncs of the same project serialize on git's own lock; a lock failure
 should be treated as retryable, not a hard error.
 
+A target whose worktree directory has been deleted out from under its registration (a
+`missing` worktree, `../architecture.md` → Design model) is skipped rather than crashing:
+its branch and history are untouched either way. Naming it as an explicit target is an
+error (the same as naming an unknown project); appearing only because no targets were
+given is a warning. Either way the printed line names the path and
+`marrow detach <branch>` as the remediation. It is still included in the final push, since
+pushing only touches the branch ref, not the worktree directory.
+
 `--auto`: for a session-end hook or a periodic timer. Every line normally printed to
 stdout/stderr instead appends to `<MARROW_HOME>/logs/sync.log` (created if absent), one
 line per action, each prefixed with an ISO-8601-local timestamp. A push failure (offline,
@@ -195,8 +211,8 @@ exits `0`, even when a target project failed to commit or the push failed — it
 backstop and must never break a hook chain or scheduled job.
 
 **Exit codes.** `0`: nothing failed (or `--auto`, unconditionally). `1` (non-`--auto`
-only): an unknown project name was given, a target's `git add`/`git commit` failed, or the
-push failed.
+only): an unknown project name was given, an explicitly named target's worktree directory
+was missing, a target's `git add`/`git commit` failed, or the push failed.
 
 ## `add`
 
@@ -293,6 +309,41 @@ paths, and exits `0` without touching disk. Exit `2` on a missing
 `<project-path>` argument, `1` on the branch-exists failure above or a
 worktree/commit/push failure, `0` on success.
 
+## `detach`
+
+```
+marrow detach <project> [--dry-run]
+```
+
+Removes a project's worktree from this machine while leaving its branch, and everything on
+it, untouched in the vault. `<project>` resolves like a `sync` target: the local project
+directory basename, or the exact branch name; exactly one match is required — no match is
+`unknown project: <project>`, more than one is `ambiguous name <project> matches: <paths>`.
+`detach` never touches the branch or a configured remote — it is not a deletion, and
+re-attaching the same branch later (`marrow add <project-path>` at any checkout path) picks
+up exactly where it left off.
+
+The registered worktree's state decides what happens:
+
+| Worktree state                          | Behavior                                                                                                        |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Directory already missing (`architecture.md` → Design model) | Clears the registration only (`git worktree remove --force <path>`); there is nothing on disk to remove |
+| Clean (no uncommitted changes)           | `git worktree remove <path>`                                                                                       |
+| Dirty (uncommitted changes present)      | Refuses; prints the uncommitted-change count and both remediation paths: `marrow sync <project>` first, or discard with `git -C <path> checkout -- . && git -C <path> clean -fd` |
+
+**`--dry-run`.** Runs the same resolution and dirty check, prints what it would do, and
+exits `0` without touching disk. A dirty worktree still refuses under `--dry-run`, the same
+as live — dry runs preview a plan, not a bypass of the refusal.
+
+**Output.** On success, prints the retained branch name and, for a clean non-missing
+worktree, any unpushed commit count still held on that branch (nothing was lost — those
+commits just aren't reachable from a local worktree anymore). For an already-missing
+worktree, notes that nothing was pushed or deleted, since the directory was already gone.
+
+**Exit codes.** `2` (from `marrow` dispatch): missing `<project>` argument. `1`: unknown or
+ambiguous project name, a dirty-worktree refusal, or a `git worktree remove` failure. `0`:
+detached cleanly, or the dry-run preview printed successfully.
+
 ## `doctor`
 
 ```
@@ -309,6 +360,7 @@ for every attached project may be summarized as one `OK` line. Per-project `FAIL
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `git --version` is at least 2.42, the release that added `git worktree add --orphan`                                                                                                                                         | FAIL below 2.42 — `add` and `publish` cannot run at all. WARN if the version string cannot be parsed, so an exotic build is never blocked. Checked first, before any vault finding |
 | Every locally registered worktree is named `.agents`                                                                                                                                                                          | FAIL                                                                                                                                                                    |
+| Every registered worktree's directory still exists on disk                                                                                                                                                                    | WARN per missing worktree, naming the path and `marrow detach <branch>` as the remediation |
 | Project branches in the vault with no worktree on this machine are listed by name                                                                                                                                            | Never fails — reported as an `OK` line. Attaching a subset is a deliberate choice, not drift; it is surfaced only because it bounds what `grep` and `status` can see    |
 | Every project worktree's parent repo ignores `.agents` (`git check-ignore -q -- .agents` in the parent dir). A parent directory that is not a git repository at all passes — there is nothing it could commit `.agents/` into | FAIL                                                                                                                                                                    |
 | Every project worktree with a supported GitHub parent-repo `origin` uses the default repo-name identity; a non-default `--id` is surfaced here for review                                                                     | WARN only                                                                                                                                                               |
@@ -322,6 +374,10 @@ for every attached project may be summarized as one `OK` line. Per-project `FAIL
 
 `doctor` checks the **vault's** origin only — the tool repo's own git hygiene is not
 marrow's concern, the same as it is not marrow's job to audit adopted parent repos.
+
+A worktree reported missing is excluded from every other per-project check that needs its
+directory (`.agents`-ignored, GitHub identity, ahead/behind) — there is nothing on disk to
+check — so those checks' `OK` summaries count only present worktrees.
 
 The vault's worktree registry is the source of each path; marrow does not require a common
 projects root. Exit `1` if any check produced a `FAIL` line, `0` otherwise — `WARN` never
@@ -361,6 +417,13 @@ same line appears (worded `no project branches are attached here`) in the zero-w
 case, where the bare `No project worktrees.` would otherwise read as "the vault is
 empty".
 
+A registered worktree whose directory is missing (`architecture.md` → Design model) is
+excluded from the search rather than passed to `rg`/`grep` as a nonexistent path. One
+stderr line names the skipped branches and `marrow detach <project>` as the remediation,
+same channel and same non-contamination rule as the unattached-branches caveat above. If
+every remaining worktree is missing, `grep` prints `No project worktrees.` to stdout (after
+the stderr notice) and exits `0`, the same as the zero-worktree case.
+
 Output streams directly to the terminal (not buffered/parsed by marrow). With zero
 project worktrees, prints `No project worktrees.` to stdout and exits `0` without
 invoking `rg`/`grep` at all. Otherwise the exit code is whatever the underlying `rg`/`grep` process
@@ -389,6 +452,7 @@ marrow sync notes -m "weekly review"   # one project, a real message
 marrow add /path/to/project --dry-run   # preview before touching a real project
 marrow add /path/to/project             # for real; attended when adopting existing memory
 marrow add /path/to/new-project --id local/new-project # no prior .agents/ — created fresh instead
+marrow detach old-project               # stop tracking it here; branch stays in the vault
 marrow doctor                          # health check after any of the above
 marrow grep "TODO" -C2                 # cross-project search, rg flags pass through
 marrow convention                      # what should be inside .agents/

@@ -2,6 +2,7 @@ import { parseArgs } from "node:util";
 import path from "node:path";
 import { addCommand } from "./commands/add";
 import { conventionCommand } from "./commands/convention";
+import { detachCommand } from "./commands/detach";
 import { doctorCommand } from "./commands/doctor";
 import { grepCommand } from "./commands/grep";
 import { initCommand } from "./commands/init";
@@ -72,6 +73,15 @@ const COMMANDS: Record<string, Command> = {
     minArgs: 1,
     run: ({ values, positionals }, ctx) =>
       addCommand(positionals[0], { dryRun: values["dry-run"] as boolean, id: values.id as string | undefined }, ctx.marrowHome, ctx.toolRoot),
+  },
+
+  detach: {
+    args: "<project> [--dry-run]",
+    summary: "remove a project's worktree, keeping its branch in the vault",
+    options: { "dry-run": { type: "boolean", default: false } },
+    minArgs: 1,
+    run: ({ values, positionals }, ctx) =>
+      detachCommand(positionals[0], { dryRun: values["dry-run"] as boolean }, ctx.marrowHome),
   },
 
   doctor: {

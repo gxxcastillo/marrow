@@ -29,8 +29,23 @@ export async function grepCommand(pattern: string, extraArgs: string[], marrowHo
     reportPartial(0, unattached);
     return 0;
   }
-  const paths = worktrees.map((w) => w.path);
-  reportPartial(worktrees.length, unattached);
+
+  // A registered worktree whose directory is gone can't be searched; report
+  // it rather than pass a nonexistent path to rg/grep.
+  const missing = worktrees.filter((w) => w.missing);
+  const present = worktrees.filter((w) => !w.missing);
+  if (missing.length > 0) {
+    console.error(
+      `marrow grep: skipping ${countLabel(missing.length, "branch", "branches")} with a missing worktree directory ` +
+        `(run \`marrow detach <project>\` to clear the registration): ${missing.map((w) => w.branch).join(", ")}`,
+    );
+  }
+  if (present.length === 0) {
+    console.log("No project worktrees.");
+    return 0;
+  }
+  const paths = present.map((w) => w.path);
+  reportPartial(present.length, unattached);
 
   const cmd = Bun.which("rg")
     ? ["rg", "--hidden", "--no-ignore", "-g", "!.git", pattern, ...extraArgs, ...paths]

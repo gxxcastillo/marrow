@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import path from "node:path";
 import { grepCommand } from "../src/commands/grep";
-import { addProjectWorktree, addUnattachedBranch, makeFixture, type Fixture } from "./fixtures";
+import { addProjectWorktree, addUnattachedBranch, deleteWorktreeDir, makeFixture, type Fixture } from "./fixtures";
 import { captureLogs } from "./helpers";
 
 describe("grep", () => {
@@ -63,5 +63,28 @@ describe("grep", () => {
     expect(outLines).toEqual(["No project worktrees."]);
     expect(errLines[0]).toContain("no project branches are attached here");
     expect(errLines[0]).toContain("beta");
+  });
+
+  test("skips a deleted project directory with a stderr notice, still searching the rest", async () => {
+    const alphaPath = await addProjectWorktree(fx, "alpha");
+    await deleteWorktreeDir(alphaPath);
+    const betaPath = await addProjectWorktree(fx, "beta");
+    await Bun.write(path.join(betaPath, "note.md"), "findme-marker\n");
+
+    const { code, errLines } = await captureLogs(() => grepCommand("findme-marker", [], fx.marrowHome));
+    expect(code).toBe(0);
+    expect(errLines.join("\n")).toContain("skipping 1 branch with a missing worktree directory");
+    expect(errLines.join("\n")).toContain("marrow detach <project>");
+    expect(errLines.join("\n")).toContain("alpha");
+  });
+
+  test("prints No project worktrees. when every attached worktree's directory is missing", async () => {
+    const alphaPath = await addProjectWorktree(fx, "alpha");
+    await deleteWorktreeDir(alphaPath);
+
+    const { code, outLines, errLines } = await captureLogs(() => grepCommand("needle", [], fx.marrowHome));
+    expect(code).toBe(0);
+    expect(outLines).toEqual(["No project worktrees."]);
+    expect(errLines.join("\n")).toContain("missing worktree directory");
   });
 });
