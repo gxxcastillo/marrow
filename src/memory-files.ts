@@ -13,16 +13,20 @@ export async function renderTemplate(
   return content;
 }
 
-const FENCED_PERSISTENCE_RE = /<!-- marrow:persistence-block v[\d.]+ -->[\s\S]*?<!-- \/marrow:persistence-block -->\n?/;
-const TRAILING_PERSISTENCE_SECTION_RE = /^## Persistence\n[\s\S]*$/m;
+// `\r?\n` (not bare `\n`): a CRLF README must still be recognized, or the fenced/trailing
+// section goes undetected and gets duplicated below instead of replaced in place.
+const FENCED_PERSISTENCE_RE = /<!-- marrow:persistence-block v[\d.]+ -->[\s\S]*?<!-- \/marrow:persistence-block -->\r?\n?/;
+// Stops at the next heading (or true end-of-string) rather than devouring the rest of the
+// file — an old-style README may have content of the user's own after this section.
+const TRAILING_PERSISTENCE_SECTION_RE = /^## Persistence\r?\n[\s\S]*?(?=\r?\n#{1,6}[ \t]|(?![\s\S]))/m;
 
 function normalized(content: string): string {
   return content.replaceAll("\r\n", "\n").trim();
 }
 
 function replacePersistenceSection(existing: string, match: RegExpExecArray, block: string): string {
-  const before = existing.slice(0, match.index).replace(/\n+$/, "");
-  const after = existing.slice(match.index + match[0].length).replace(/^\n+/, "");
+  const before = existing.slice(0, match.index).replace(/(?:\r?\n)+$/, "");
+  const after = existing.slice(match.index + match[0].length).replace(/^(?:\r?\n)+/, "");
   return after.length > 0 ? `${before}\n\n${block}\n\n${after}\n` : `${before}\n\n${block}\n`;
 }
 
@@ -47,9 +51,13 @@ async function writeReadme(toolRoot: string, agentsPath: string, project: string
   await writeFile(readmePath, `${existing}${sep}${rawBlock}`);
 }
 
+export function hasCurrentState(agentsPath: string): boolean {
+  return existsSync(path.join(agentsPath, "current-state.md"));
+}
+
 export async function ensureCurrentState(toolRoot: string, agentsPath: string, project: string): Promise<boolean> {
+  if (hasCurrentState(agentsPath)) return false;
   const statePath = path.join(agentsPath, "current-state.md");
-  if (existsSync(statePath)) return false;
   const parent = path.dirname(agentsPath);
   const head = await git(["rev-parse", "--short", "HEAD"], parent);
   const parentRevision = head.code === 0 ? head.stdout : "no-HEAD";
