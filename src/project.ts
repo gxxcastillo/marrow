@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { countLabel } from "./format";
 import { git } from "./git";
 import { renderTemplate } from "./memory-files";
 
@@ -24,9 +25,14 @@ export function findAgentsNote(content: string): { index: number; length: number
   return match ? { index: match.index, length: match[0].length, version: match[1] } : undefined;
 }
 
+// The canonical parent instruction filenames marrow looks for, in priority order.
+// Shared so a caller like `doctor` can name them in a message without restating
+// the list as a literal that could drift out of sync with what's actually checked.
+export const PARENT_INSTRUCTION_FILENAMES = ["AGENTS.md", "CLAUDE.md"] as const;
+
 async function parentInstructionFiles(projectDir: string): Promise<{ name: string; path: string; content: string }[]> {
   const files = [];
-  for (const name of ["AGENTS.md", "CLAUDE.md"]) {
+  for (const name of PARENT_INSTRUCTION_FILENAMES) {
     const file = path.join(projectDir, name);
     if (!existsSync(file)) continue;
     files.push({ name, path: file, content: await readFile(file, "utf8") });
@@ -56,23 +62,30 @@ export type AgentsBlockStatus =
 export async function agentsBlockStatus(toolRoot: string, projectDir: string, project: string): Promise<AgentsBlockStatus> {
   const block = normalizedBlock(await agentsBlock(toolRoot, project));
   const currentVersion = findAgentsNote(block)?.version;
+  if (currentVersion === undefined) {
+    // marrow's own bundled template failing to parse is a marrow bug, not a project
+    // problem — fail loudly instead of silently treating every project as up to date.
+    throw new Error("marrow's bundled agents-block template has no recognizable version tag");
+  }
   const stale: StaleAgentsBlockFile[] = [];
   let current = false;
   for (const file of await parentInstructionFiles(projectDir)) {
-    const content = file.content.replaceAll("\r\n", "\n");
-    if (normalizedBlock(content).includes(block)) {
+    if (normalizedBlock(file.content).includes(block)) {
       current = true;
       continue;
     }
-    const note = findAgentsNote(content);
+    // Found against the file's own raw content (not the \n-normalized copy above) so
+    // note.index/length stay valid offsets into file.content — writing that back later
+    // must not silently rewrite a CRLF file's line endings to LF.
+    const note = findAgentsNote(file.content);
     if (!note) continue;
-    if (currentVersion === undefined || note.version === currentVersion) {
+    if (note.version === currentVersion) {
       current = true;
       continue;
     }
-    stale.push({ path: file.path, content, note });
+    stale.push({ path: file.path, content: file.content, note });
   }
-  if (stale.length > 0 && currentVersion !== undefined) return { kind: "stale", currentVersion, files: stale };
+  if (stale.length > 0) return { kind: "stale", currentVersion, files: stale };
   if (current) return { kind: "current" };
   return { kind: "missing" };
 }
@@ -95,17 +108,18 @@ async function agentsMentionCounts(projectDir: string): Promise<{ name: string; 
 }
 
 async function agentsBlockTarget(projectDir: string): Promise<string> {
-  const agents = path.join(projectDir, "AGENTS.md");
+  const [primary, fallback] = PARENT_INSTRUCTION_FILENAMES;
+  const agents = path.join(projectDir, primary);
   if (existsSync(agents)) return agents;
-  const claude = path.join(projectDir, "CLAUDE.md");
+  const claude = path.join(projectDir, fallback);
   return existsSync(claude) ? claude : agents;
 }
 
 function reviewNotes(counts: { name: string; count: number }[]): string[] {
-  return counts.map(({ name, count }) => {
-    const noun = count === 1 ? "reference" : "references";
-    return `  ${name.padEnd(25)} ${count} existing .agents ${noun} found; review for inconsistent guidance`;
-  });
+  return counts.map(
+    ({ name, count }) =>
+      `  ${name.padEnd(25)} ${countLabel(count, "existing .agents reference", "existing .agents references")} found; review for inconsistent guidance`,
+  );
 }
 
 // Joins the block with whatever follows using exactly one blank line, regardless of
