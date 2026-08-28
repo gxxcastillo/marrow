@@ -354,7 +354,7 @@ describe("add", () => {
       expect(code).toBe(0);
       expect(outLines.join("\n")).toContain("Project instructions:");
       expect(outLines.join("\n")).toContain(`would update marrow .agents note (v10.20.30.40 -> v${await currentAgentsBlockVersion(fx.toolRoot)})`);
-      expect(outLines.join("\n")).toContain("AGENTS.md                 2 existing .agents references found; review for inconsistent guidance");
+      expect(outLines.join("\n")).not.toContain("existing .agents reference");
       expect(agents).toBe(before);
     });
 
@@ -368,6 +368,8 @@ describe("add", () => {
         "",
         "# Existing Guidance",
         "",
+        "Read `.agents/custom-plan.md` before changing the custom flow.",
+        "",
       ].join("\n"));
 
       const { code, outLines } = await captureLogs(() =>
@@ -379,11 +381,12 @@ describe("add", () => {
       expect(code).toBe(0);
       expect(outLines.join("\n")).toContain("Project instructions:");
       expect(outLines.join("\n")).toContain(`marrow .agents note updated (v10.20.30.40 -> v${currentVersion})`);
-      expect(outLines.join("\n")).toContain("AGENTS.md                 2 existing .agents references found; review for inconsistent guidance");
+      expect(outLines.join("\n")).toContain("AGENTS.md                 1 existing .agents reference found; review for inconsistent guidance");
       expect(outLines).toContain("marrow did not commit these project files.");
       expect(agents).toContain(`> <p align="right">v${currentVersion}</p>`);
       expect(agents).not.toContain("v10.20.30.40");
       expect(agents).toContain("# Existing Guidance");
+      expect(agents).toContain("`.agents/custom-plan.md`");
     });
 
     test("upgrades a real historical v1 note to the current version", async () => {
@@ -407,6 +410,7 @@ describe("add", () => {
 
       expect(code).toBe(0);
       expect(outLines.join("\n")).toContain(`marrow .agents note updated (v1 -> v${currentVersion})`);
+      expect(outLines.join("\n")).not.toContain("existing .agents reference");
       expect(agents).toContain(`> <p align="right">v${currentVersion}</p>`);
       expect(agents).toContain("# Existing Guidance");
     });

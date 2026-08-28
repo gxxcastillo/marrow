@@ -304,9 +304,11 @@ instructions:`, an indented relative path, and `marrow .agents note updated (v<o
 v<new>)`. When neither file has a recognized note at all, live `add` instead prepends the
 current block to `AGENTS.md` when it exists, otherwise to `CLAUDE.md` when it exists,
 otherwise to a new `AGENTS.md`, printing `marrow .agents note added`. If either checked
-file already contains `.agents` references, it prints one count row per file, such as
-`2 existing .agents references found; review for inconsistent guidance`. Arbitrary
-`.agents` prose with no recognized note is never interpreted as an agents block.
+file contains `.agents` references outside a recognized marrow note, it prints one count
+row per file, such as `2 existing .agents references found; review for inconsistent
+guidance`. References inside recognized current or stale notes are excluded from this
+review count. Arbitrary `.agents` prose with no recognized note is never interpreted as
+an agents block.
 `--dry-run` prints the same target and review note, with `would update`/`would add`
 phrasing matching which case applies, without writing.
 

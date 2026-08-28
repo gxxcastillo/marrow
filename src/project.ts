@@ -79,10 +79,18 @@ export async function agentsBlockStatus(toolRoot: string, projectDir: string, pr
 
 async function agentsMentionCounts(projectDir: string): Promise<{ name: string; count: number }[]> {
   return (await parentInstructionFiles(projectDir))
-    .map((file) => ({
-      name: file.name,
-      count: file.content.split("\n").filter((line) => line.includes(".agents")).length,
-    }))
+    .map((file) => {
+      let reviewContent = file.content;
+      let note = findAgentsNote(reviewContent);
+      while (note) {
+        reviewContent = reviewContent.slice(0, note.index) + reviewContent.slice(note.index + note.length);
+        note = findAgentsNote(reviewContent);
+      }
+      return {
+        name: file.name,
+        count: reviewContent.split("\n").filter((line) => line.includes(".agents")).length,
+      };
+    })
     .filter((file) => file.count > 0);
 }
 
