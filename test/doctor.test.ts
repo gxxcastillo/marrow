@@ -28,7 +28,20 @@ describe("doctor", () => {
     const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
     expect(outLines.some((l) => l.startsWith("FAIL"))).toBe(false);
     expect(outLines).toContain("OK    marrow .agents note current for 1 project parent");
+    expect(outLines).toContain("OK    current-state.md present for 1 project worktree");
     expect(code).toBe(0);
+  });
+
+  test("warns when required current-state.md is missing", async () => {
+    const agentsPath = await addProjectWorktree(fx, "alpha");
+
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
+
+    expect(code).toBe(0);
+    const line = outLines.find((item) => item.includes("missing required current-state.md"));
+    expect(line).toStartWith("WARN");
+    expect(line).toContain(path.join(agentsPath, "current-state.md"));
+    expect(line).toContain("marrow sync alpha");
   });
 
   test("warns when a project's AGENTS.md has no marrow .agents note", async () => {

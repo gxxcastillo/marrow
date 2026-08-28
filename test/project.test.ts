@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { agentsBlock, findAgentsNote, writeReadme } from "../src/project";
+import { writeMemoryFiles } from "../src/memory-files";
+import { agentsBlock, findAgentsNote } from "../src/project";
 import { makeFixture, type Fixture } from "./fixtures";
 
 describe("project", () => {
@@ -26,7 +27,7 @@ describe("project", () => {
     });
   });
 
-  describe("writeReadme", () => {
+  describe("writeMemoryFiles", () => {
     async function readmeFixture(name: string): Promise<{ dir: string; readmePath: string }> {
       const dir = path.join(fx.root, "readme-fixtures", name);
       await mkdir(dir, { recursive: true });
@@ -51,7 +52,7 @@ describe("project", () => {
         ].join("\n"),
       );
 
-      await writeReadme(fx.toolRoot, dir, "widget", "widget");
+      await writeMemoryFiles(fx.toolRoot, dir, "widget", "widget");
       const content = await readFile(readmePath, "utf8");
 
       expect(content).toContain("custom prose");
@@ -79,7 +80,7 @@ describe("project", () => {
         ].join("\n"),
       );
 
-      await writeReadme(fx.toolRoot, dir, "widget", "widget");
+      await writeMemoryFiles(fx.toolRoot, dir, "widget", "widget");
       const content = await readFile(readmePath, "utf8");
 
       expect(content).toContain("## Start here");
@@ -91,9 +92,9 @@ describe("project", () => {
     test("a second pass does not stack a duplicate block", async () => {
       const { dir, readmePath } = await readmeFixture("idempotent");
 
-      await writeReadme(fx.toolRoot, dir, "widget", "widget");
+      await writeMemoryFiles(fx.toolRoot, dir, "widget", "widget");
       const once = await readFile(readmePath, "utf8");
-      await writeReadme(fx.toolRoot, dir, "widget", "widget");
+      await writeMemoryFiles(fx.toolRoot, dir, "widget", "widget");
       const twice = await readFile(readmePath, "utf8");
 
       expect(twice).toBe(once);
@@ -104,11 +105,25 @@ describe("project", () => {
       const { dir, readmePath } = await readmeFixture("no-section");
       await Bun.write(readmePath, "# custom routing guide\n\nsome hand-written notes.\n");
 
-      await writeReadme(fx.toolRoot, dir, "widget", "widget");
+      await writeMemoryFiles(fx.toolRoot, dir, "widget", "widget");
       const content = await readFile(readmePath, "utf8");
 
       expect(content).toContain("some hand-written notes.");
       expect(content).toContain("<!-- marrow:persistence-block");
+    });
+
+    test("creates required current-state.md without overwriting an existing one", async () => {
+      const { dir } = await readmeFixture("current-state");
+
+      await writeMemoryFiles(fx.toolRoot, dir, "widget", "widget");
+      const statePath = path.join(dir, "current-state.md");
+      const seeded = await readFile(statePath, "utf8");
+      expect(seeded).toContain("# Current state — widget");
+      expect(seeded).toContain("(widget @no-HEAD)");
+
+      await Bun.write(statePath, "custom state\n");
+      await writeMemoryFiles(fx.toolRoot, dir, "widget", "widget");
+      expect(await readFile(statePath, "utf8")).toBe("custom state\n");
     });
   });
 });

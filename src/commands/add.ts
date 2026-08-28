@@ -4,7 +4,8 @@ import path from "node:path";
 import { ensureAgentMemoryDisabled } from "../agent-config";
 import { resolveIdentity } from "../identity";
 import { git, hasOrigin, listProjectWorktrees, run, vaultDir } from "../git";
-import { ensureAgentsBlock, ensureIgnored, gitignoreState, trackedMessage, writeReadme, type IgnoreState } from "../project";
+import { writeMemoryFiles } from "../memory-files";
+import { ensureAgentsBlock, ensureIgnored, gitignoreState, trackedMessage, type IgnoreState } from "../project";
 
 export interface AddOptions { dryRun?: boolean; id?: string }
 class AddAbort extends Error {}
@@ -66,7 +67,7 @@ async function agentsState(agentsPath: string): Promise<AgentsState> {
   return existsSync(path.join(agentsPath, ".git")) ? "worktree" : "directory";
 }
 async function commitAndPush(t: Target, subject: string, localNote = ""): Promise<"pushed" | "not-pushed"> {
-  await writeReadme(t.toolRoot, t.agentsPath, t.name, t.branch);
+  await writeMemoryFiles(t.toolRoot, t.agentsPath, t.name, t.branch);
   await git(["add", "-A"], t.agentsPath);
   const commit = await git(["commit", "-m", `${t.name}: ${subject}`], t.agentsPath);
   if (commit.code !== 0) throw new AddAbort(`commit failed: ${commit.stderr}`);

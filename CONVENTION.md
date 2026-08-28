@@ -67,9 +67,14 @@ Bump the version whenever the wording changes.
 
 ## Files
 
+Every `.agents/` directory contains:
+
 - `README.md` — routing guide only, plus the Persistence block.
 - `current-state.md` — shortest resumption context: what landed, where it lives, next
   step.
+
+Other files are project-specific. Common choices are:
+
 - `agent-notes.md` — private agent-facing guidance that is not code, spec, or build
   discipline.
 - `deferred-items.md` — accepted limitations and deliberately deferred work, each with
@@ -92,6 +97,7 @@ Do not use harness-provided per-user memory for project memory except as a point
   updates to a wrap-up pass.
 - Stamp freshness. `current-state.md` opens with
   `As of YYYY-MM-DD (<parent repo> @<short-sha>)`, refreshed with every content update.
+  Use `@no-HEAD` only when the parent has no commit to name.
 - Repair on read. At session start, check the stamp against `git log` (parent repo and
   `.agents/`) before trusting `current-state.md`; if reality has moved past it, reconcile
   before building on it. A clean branch can still be stale, and `current-state.md`,

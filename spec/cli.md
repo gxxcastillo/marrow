@@ -362,7 +362,7 @@ directory or the vault — safe to run against a real project.
 2. **Move aside.** `<project>/.agents` → `<project>/.agents.pre-marrow` (rename, same volume — not a copy).
 3. **Create the worktree.** `git worktree add --orphan -b <identity> <project>/.agents` runs against `<MARROW_HOME>/vault.git`. On failure, step 2 is undone (`.agents.pre-marrow` renamed back to `.agents`) before erroring out — the project directory is never left without a `.agents/`.
 4. **Restore contents.** Every entry under `.agents.pre-marrow/` — including dotfiles — is moved into the new (currently empty) worktree, then `.agents.pre-marrow` is removed.
-5. **README.** `templates/persistence-block.md` (`{{project}}` substituted, read from the tool's own install location) is appended to `.agents/README.md`; if no `README.md` existed, one is created first from `templates/readme-seed.md`.
+5. **Working-memory files.** `templates/persistence-block.md` (`{{project}}` substituted, read from the tool's own install location) is appended to `.agents/README.md`; if no `README.md` existed, one is created first from `templates/readme-seed.md`. If `current-state.md` is absent, marrow creates it from `templates/current-state.md` with the current date and parent `HEAD` short SHA, or `no-HEAD` when the parent has no commit. An existing `current-state.md` is never overwritten.
 6. **Commit and push.** `git add -A`, commit `<project>: adopt into marrow`. If the vault has no `origin` remote, the commit is left local; otherwise `git push -u origin <project>`.
 7. **Parent config.** Update the parent project's Codex and Claude Code memory config
    files, then the parent instruction block described above. These files are parent-repo
@@ -377,8 +377,8 @@ Otherwise it prints `added <project> to marrow` with `project`, `location`, and 
 fields; an `Adopted existing .agents` block with the backup path, `files: <before>
 before, <after> after`, and `size: <before>B before, <after>B after`; then `vault: pushed
 origin/<project>` or `vault: not pushed (no origin configured)`,
-and exits `0`. The persistence-block append and README creation account for the normal
-small size increase; the count only decreases in an actual loss.
+and exits `0`. The persistence-block append and required-file creation account for the
+normal small size increase; the count only decreases in an actual loss.
 
 **Exit codes.** `2` (from `marrow` dispatch): missing `<project-path>` argument. `1`: any
 precondition failure, backup failure, worktree-creation failure, commit/push failure, or a
@@ -388,9 +388,9 @@ post-adoption content-count/size shrink. `0`: adopted cleanly.
 
 Used automatically when `<project-path>/.agents` does **not** exist and its identity branch
 does not exist. Otherwise: creates the
-project directory if needed, runs the same worktree-creation, README-seeding (from
-`templates/readme-seed.md`, read from the tool's own install location — there is no prior
-README to append to), and commit/push steps as the adopt path (steps 3, 5, 6 above), plus
+project directory if needed, runs the same worktree-creation, README and
+`current-state.md` seeding (from templates read from the tool's own install location),
+and commit/push steps as the adopt path (steps 3, 5, 6 above), plus
 the shared `.gitignore` handling and parent config step described above — which here runs
 against a directory that may have just been created and need not be a git repo at all. The
 commit message is `<project>: init via marrow add`. There is no backup step — there is
@@ -458,6 +458,7 @@ for every attached project may be summarized as one `OK` line. Per-project `FAIL
 | Project branches in the vault with no worktree on this machine are listed by name                                                                                                                                            | Never fails — reported as an `OK` line. Attaching a subset is a deliberate choice, not drift; it is surfaced only because it bounds what `grep` and `status` can see    |
 | Every project worktree's parent repo ignores `.agents` (`git check-ignore -q -- .agents` in the parent dir). A parent directory that is not a git repository at all passes — there is nothing it could commit `.agents/` into | FAIL                                                                                                                                                                    |
 | Every project worktree's parent `AGENTS.md`/`CLAUDE.md` carries the current marrow `.agents` note, recognized the same way `add`'s parent instruction block check recognizes it                                              | WARN per project missing or carrying a stale note, naming the path and `marrow add <project-dir>` as the remediation                                                   |
+| Every project worktree contains the required `current-state.md` resumption record                                                                                                                                            | WARN per project missing the file, naming its expected path and `marrow sync <project>` after creation                                                                  |
 | `origin` remote is configured on `<MARROW_HOME>/vault.git`                                                                                                                                                                    | WARN if absent                                                                                                                                                          |
 | `origin` is reachable (`git ls-remote origin`; no `--exit-code`, so a reachable remote with zero refs — e.g. before the first `marrow publish` — is not misreported as unreachable) | FAIL if unreachable                                                                                                                                                     |
 | `origin` refs can be refreshed (`git fetch --prune origin`)                                                                                                                                                                   | FAIL if fetch fails                                                                                                                                                     |

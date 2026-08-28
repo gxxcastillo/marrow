@@ -67,7 +67,7 @@ log` or `git merge`. This makes push races between projects structurally impossi
 and should be treated as a retryable warning, not an error.
 
 **Deliberate syncs are the mechanism.** The expected rhythm is an agent running
-`marrow sync <project> -m "<summary>"` at the end of a working session (per the
+`marrow sync <project> -m "<summary>"` when work lands or a decision is made (per the
 Persistence block appended to every adopted `.agents/README.md`). Automation
 (scheduled/hook-driven syncing) is deliberately not built — see Non-goals below.
 
@@ -101,12 +101,14 @@ marrow/
 ├── spec/                    # this directory
 ├── templates/
 │   ├── agents-block.md      # parent instruction block printed by `marrow add`
+│   ├── current-state.md     # required resumption-context seed
 │   ├── readme-seed.md       # seeds a fresh `marrow add`; {{project}} substituted
 │   └── persistence-block.md # appended to every adopted/created README.md
 ├── src/
 │   ├── cli.ts                # entry, arg parsing (node:util parseArgs), dispatch
 │   ├── git.ts                 # Bun.spawn git wrapper; worktree discovery; status helpers
-│   ├── project.ts             # project-arg resolution; README templating
+│   ├── memory-files.ts        # required-file seeding; README persistence block updates
+│   ├── project.ts             # parent instruction and ignore handling
 │   └── commands/
 │       ├── status.ts, sync.ts, add.ts, doctor.ts, grep.ts, convention.ts
 ├── test/                     # bun test; fixtures build a throwaway tool root + vault

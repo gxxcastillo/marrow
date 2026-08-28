@@ -115,6 +115,21 @@ export async function doctorCommand(marrowHome: string, toolRoot: string): Promi
     ok(`marrow .agents note current for ${countLabel(presentWorktrees.length, "project parent")}`);
   }
 
+  let currentStateFiles = 0;
+  for (const wt of presentWorktrees) {
+    const statePath = path.join(wt.path, "current-state.md");
+    if (existsSync(statePath)) {
+      currentStateFiles++;
+    } else {
+      warn(
+        `${wt.branch}: missing required current-state.md at ${statePath}; create it with an honest As of stamp, then run \`marrow sync ${wt.branch}\``,
+      );
+    }
+  }
+  if (currentStateFiles === presentWorktrees.length && presentWorktrees.length > 0) {
+    ok(`current-state.md present for ${countLabel(presentWorktrees.length, "project worktree")}`);
+  }
+
   const url = await originUrl(vault);
   let originRefsCurrent = false;
   if (!url) {

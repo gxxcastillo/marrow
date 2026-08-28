@@ -64,6 +64,18 @@ describe("add", () => {
       expect((await stat(path.join(backupsDir, entries[0]))).size).toBeGreaterThan(0);
     });
 
+    test("creates required current-state.md with the parent HEAD when adopting without one", async () => {
+      const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
+      await rm(path.join(projectDir, ".agents", "current-state.md"));
+      const parentHead = (await git(["rev-parse", "--short", "HEAD"], projectDir)).stdout;
+
+      const { code } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+
+      expect(code).toBe(0);
+      const currentState = await readFile(path.join(projectDir, ".agents", "current-state.md"), "utf8");
+      expect(currentState).toContain(`(alpha @${parentHead})`);
+    });
+
     test("reports a local-only add after the result when the vault has no origin", async () => {
       const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
       await git(["remote", "remove", "origin"], vaultDir(fx.marrowHome));
@@ -450,6 +462,11 @@ describe("add", () => {
       expect(readme).toContain("## Persistence");
       expect(readme).toContain("## Ownership");
       expect(readme).toContain("remain authoritative for accepted requirements");
+
+      const currentState = await readFile(path.join(agentsPath, "current-state.md"), "utf8");
+      expect(currentState).toContain("# Current state — freshproj");
+      expect(currentState).toContain("(freshproj @no-HEAD)");
+      expect(currentState).toContain("No resumption context has been recorded yet.");
 
       const agentsMd = await readFile(path.join(projectDir, "AGENTS.md"), "utf8");
       expect(agentsMd).toStartWith("> [!NOTE]");

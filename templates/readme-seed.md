@@ -12,10 +12,11 @@ operational rules, and team policy.
 
 ## Start here
 
-Examples established by the default convention — keep what's useful, drop what isn't:
-
 - `current-state.md` — shortest resumption context: what landed most recently, where it
   lives, the next step.
+
+Other files are optional. Common choices are:
+
 - `agent-notes.md` — private agent-facing working guidance for this repo.
 - `deferred-items.md` — accepted limitations and deferred work, each with the reason.
 - `plans/` — one focused plan file per substantial line of work.

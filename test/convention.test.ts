@@ -30,6 +30,8 @@ describe("convention", () => {
     expect(code).toBe(0);
     expect(output).toContain("Project instructions identify the authoritative sources");
     expect(output).toContain("the designated authority wins");
+    expect(output).toContain("Every `.agents/` directory contains:");
+    expect(output).toContain("`current-state.md` — shortest resumption context");
   });
 
   test("embeds the current agents-block and persistence-block templates verbatim", async () => {

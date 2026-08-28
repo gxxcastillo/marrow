@@ -2,54 +2,10 @@ import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { git } from "./git";
-
-async function template(toolRoot: string, name: string, substitutions: Record<string, string>): Promise<string> {
-  let content = await readFile(path.join(toolRoot, "templates", name), "utf8");
-  for (const [key, value] of Object.entries(substitutions)) content = content.replaceAll(`{{${key}}}`, value);
-  return content;
-}
-
-const FENCED_PERSISTENCE_RE = /<!-- marrow:persistence-block v[\d.]+ -->[\s\S]*?<!-- \/marrow:persistence-block -->\n?/;
-// Predates the fences (`8b15633`); every project adopted before then ends its README
-// with this heading instead. Migrated once, in place, the same as a fenced block.
-const TRAILING_PERSISTENCE_SECTION_RE = /^## Persistence\n[\s\S]*$/m;
-
-function replacePersistenceSection(existing: string, match: RegExpExecArray, block: string): string {
-  const before = existing.slice(0, match.index).replace(/\n+$/, "");
-  const after = existing.slice(match.index + match[0].length).replace(/^\n+/, "");
-  return after.length > 0 ? `${before}\n\n${block}\n\n${after}\n` : `${before}\n\n${block}\n`;
-}
-
-// Creates README.md from the seed template if absent, then writes the persistence
-// block (substituted with the project name). An existing block is replaced in place —
-// a fenced block outright, or a one-time migration of the unfenced trailing
-// `## Persistence` section every project adopted before the fences shipped ends with —
-// rather than appended a second time.
-// `toolRoot` is the running tool's own install location, resolved
-// independently of MARROW_HOME — see spec/architecture.md -> "Env overrides".
-export async function writeReadme(toolRoot: string, agentsPath: string, project: string, branch: string): Promise<void> {
-  const substitutions = { project, branch };
-  const rawBlock = await template(toolRoot, "persistence-block.md", substitutions);
-  const readmePath = path.join(agentsPath, "README.md");
-
-  if (!existsSync(readmePath)) {
-    await writeFile(readmePath, `${await template(toolRoot, "readme-seed.md", substitutions)}\n${rawBlock}`);
-    return;
-  }
-
-  const existing = await readFile(readmePath, "utf8");
-  const match = FENCED_PERSISTENCE_RE.exec(existing) ?? TRAILING_PERSISTENCE_SECTION_RE.exec(existing);
-  if (match) {
-    await writeFile(readmePath, replacePersistenceSection(existing, match, normalizedBlock(rawBlock)));
-    return;
-  }
-
-  const sep = existing.endsWith("\n\n") ? "" : existing.endsWith("\n") ? "\n" : "\n\n";
-  await writeFile(readmePath, `${existing}${sep}${rawBlock}`);
-}
+import { renderTemplate } from "./memory-files";
 
 export async function agentsBlock(toolRoot: string, project: string): Promise<string> {
-  return template(toolRoot, "agents-block.md", { project });
+  return renderTemplate(toolRoot, "agents-block.md", { project });
 }
 
 function normalizedBlock(content: string): string {
