@@ -13,10 +13,18 @@ if ! command -v git >/dev/null 2>&1; then
   echo "install: git is required but not found on PATH" >&2
   exit 1
 fi
+if [ "$#" -ne 0 ]; then
+  echo "install: unexpected arguments; run 'marrow init --from <vault-url>' after install to attach an existing vault" >&2
+  exit 2
+fi
 
 if [ -e "$clone_dir" ]; then
   if [ -d "$clone_dir/.git" ] && \
      [ "$(git -C "$clone_dir" remote get-url origin 2>/dev/null)" = "$repo_url" ]; then
+    if [ -n "$(git -C "$clone_dir" status --porcelain 2>/dev/null)" ]; then
+      echo "install: refusing to update $clone_dir — it has local changes (inspect with 'git -C $clone_dir status', or remove the directory to reinstall cleanly)" >&2
+      exit 1
+    fi
     echo "install: updating existing checkout at $clone_dir"
     git -C "$clone_dir" fetch --depth 1 origin "$default_branch"
     git -C "$clone_dir" reset --hard "origin/$default_branch"
