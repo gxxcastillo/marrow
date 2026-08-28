@@ -181,9 +181,13 @@ A registered worktree whose directory no longer exists on disk (deleted out from
 registration, rather than detached through marrow) still gets a row: `STATUS` prints
 `missing` and `LAST COMMIT` prints `-`. After the table and any unattached-branch note,
 a blank line separates this remediation from the table when there was no earlier
-post-table note. One further line names every such project and its remediation:
-`1 project missing its worktree directory; run \`marrow detach
-<project>\` to clear the registration: <branch>`.
+post-table note. One further line names every such project and its remediation: for
+exactly one, the branch name is interpolated into a copy-pasteable command — `1 project
+missing its worktree directory; run \`marrow detach <branch>\` to clear the
+registration`; for more than one, `detach` only takes one project per invocation, so the
+line instead names the branches after a generic command — `2 projects missing their
+worktree directories; run \`marrow detach <project>\` to clear the registration: <branch>,
+<branch>`.
 
 ## `sync`
 

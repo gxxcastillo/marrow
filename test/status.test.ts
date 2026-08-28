@@ -178,7 +178,19 @@ describe("status", () => {
     expect(outLines[0]).toBe("2 projects: 1 missing, all synced");
     expect(outLines.at(-2)).toBe("");
     expect(outLines.at(-1)).toBe(
-      "1 project missing its worktree directory; run `marrow detach <project>` to clear the registration: alpha",
+      "1 project missing its worktree directory; run `marrow detach alpha` to clear the registration",
+    );
+  });
+
+  test("uses a generic detach command plus a name list when multiple worktree directories are missing", async () => {
+    const alphaPath = await addProjectWorktree(fx, "alpha");
+    const betaPath = await addProjectWorktree(fx, "beta");
+    await deleteWorktreeDir(alphaPath);
+    await deleteWorktreeDir(betaPath);
+
+    const { outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
+    expect(outLines.at(-1)).toBe(
+      "2 projects missing their worktree directories; run `marrow detach <project>` to clear the registration: alpha, beta",
     );
   });
 });

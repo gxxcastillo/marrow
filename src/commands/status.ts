@@ -147,10 +147,13 @@ export async function statusCommand(marrowHome: string): Promise<number> {
   if (missingBranches.length > 0) {
     if (!printedPostTableNote) console.log("");
     const subject = missingBranches.length === 1 ? "its worktree directory" : "their worktree directories";
-    console.log(
-      `${countLabel(missingBranches.length, "project")} missing ${subject}; run \`marrow detach <project>\` to clear ` +
-        `the registration: ${missingBranches.join(", ")}`,
-    );
+    // Singular case interpolates the real branch name into a copy-pasteable command
+    // (mirrors `doctor`'s per-branch line); plural keeps one generic command plus
+    // the name list, since `detach` only takes one project per invocation.
+    const remediation = missingBranches.length === 1
+      ? `run \`marrow detach ${missingBranches[0]}\` to clear the registration`
+      : `run \`marrow detach <project>\` to clear the registration: ${missingBranches.join(", ")}`;
+    console.log(`${countLabel(missingBranches.length, "project")} missing ${subject}; ${remediation}`);
   }
   return 0;
 }
