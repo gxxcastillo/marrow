@@ -4,7 +4,15 @@ import path from "node:path";
 import { addCommand } from "../src/commands/add";
 import { doctorCommand } from "../src/commands/doctor";
 import { git, vaultDir } from "../src/git";
-import { addProjectWorktree, addUnattachedBranch, deleteWorktreeDir, makeFixture, makeProjectRepo, type Fixture } from "./fixtures";
+import {
+  addProjectWorktree,
+  addUnattachedBranch,
+  deleteWorktreeDir,
+  installGhStub,
+  makeFixture,
+  makeProjectRepo,
+  type Fixture,
+} from "./fixtures";
 import { captureLogs, currentAgentsBlockVersion } from "./helpers";
 
 describe("doctor", () => {
@@ -25,11 +33,28 @@ describe("doctor", () => {
     );
     expect(adoptCode).toBe(0);
 
-    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot, { verbose: true }));
     expect(outLines.some((l) => l.startsWith("FAIL"))).toBe(false);
     expect(outLines).toContain("OK    marrow .agents note current for 1 project parent");
     expect(outLines).toContain("OK    current-state.md present for 1 project worktree");
     expect(code).toBe(0);
+  });
+
+  test("prints only the summary line by default for a clean vault", async () => {
+    const restoreGh = await installGhStub(fx);
+    try {
+      const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
+      const { code: adoptCode } = await captureLogs(() =>
+        addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
+      );
+      expect(adoptCode).toBe(0);
+
+      const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
+      expect(outLines).toEqual(["doctor: OK"]);
+      expect(code).toBe(0);
+    } finally {
+      restoreGh();
+    }
   });
 
   test("warns when required current-state.md is missing", async () => {
@@ -92,7 +117,7 @@ describe("doctor", () => {
     }) as typeof process.stdout.write;
 
     try {
-      const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
+      const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot, { verbose: true }));
 
       expect(code).toBe(0);
       expect(writes[0]).toBe("checking vault and project worktree health...");
@@ -110,7 +135,7 @@ describe("doctor", () => {
     await addProjectWorktree(fx, "alpha");
     await addProjectWorktree(fx, "beta");
 
-    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot, { verbose: true }));
 
     expect(code).toBe(0);
     expect(outLines).toContain("OK    2 project worktrees named .agents");
@@ -165,7 +190,7 @@ describe("doctor", () => {
     // makeFixture never pushes to — exactly a freshly created GitHub repo before
     // the first `marrow publish`. `git ls-remote --exit-code` used to treat its
     // zero refs as "unreachable"; plain `ls-remote` correctly reports it as fine.
-    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot, { verbose: true }));
     expect(code).toBe(0);
     expect(outLines.some((l) => l.startsWith("FAIL"))).toBe(false);
     expect(outLines).toContain("OK    origin is reachable");
@@ -222,7 +247,7 @@ describe("doctor", () => {
     await addProjectWorktree(fx, "alpha");
     await addUnattachedBranch(fx, "beta");
 
-    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot, { verbose: true }));
     const line = outLines.find((l) => l.includes("not attached on this machine"));
     expect(line).toBeDefined();
     // Attaching a subset is a deliberate choice, not drift: it is reported,
@@ -239,7 +264,7 @@ describe("doctor", () => {
     await addProjectWorktree(fx, "beta");
     await deleteWorktreeDir(alphaPath);
 
-    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot, { verbose: true }));
     expect(code).toBe(0);
     expect(outLines.some((l) => l.startsWith("FAIL"))).toBe(false);
     const line = outLines.find((l) => l.includes("registered worktree missing"));
@@ -252,7 +277,7 @@ describe("doctor", () => {
   test("reports git worktree --orphan support before vault findings", async () => {
     await addProjectWorktree(fx, "alpha");
 
-    const { outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
+    const { outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot, { verbose: true }));
     const line = outLines.find((l) => l.includes("worktree add --orphan"));
     expect(line).toBeDefined();
     expect(line).toStartWith("OK");

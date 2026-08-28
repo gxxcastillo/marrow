@@ -99,9 +99,12 @@ const COMMANDS: Record<string, Command> = {
   },
 
   doctor: {
-    args: "",
+    args: "[--verbose]",
     summary: "check vault + worktree health",
-    run: (_parsed, ctx) => doctorCommand(ctx.marrowHome, ctx.toolRoot),
+    options: {
+      verbose: { type: "boolean", short: "v", default: false, desc: "print every passing check, not just warnings and failures" },
+    },
+    run: ({ values }, ctx) => doctorCommand(ctx.marrowHome, ctx.toolRoot, { verbose: values.verbose as boolean }),
   },
 
   grep: {

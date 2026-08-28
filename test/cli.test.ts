@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import path from "node:path";
 import { main } from "../src/cli";
 import { vaultDir } from "../src/git";
-import { FIXTURE_VERSION, makeFixture, type Fixture } from "./fixtures";
+import { FIXTURE_VERSION, installGhStub, makeFixture, type Fixture } from "./fixtures";
 import { captureLogs } from "./helpers";
 
 describe("cli dispatch", () => {
@@ -111,6 +111,25 @@ describe("cli dispatch", () => {
     const { code, outLines } = await call(["status"]);
     expect(code).toBe(0);
     expect(outLines).toEqual(["No projects attached on this machine. Run `marrow add <project-path>` to get started."]);
+  });
+
+  test("doctor prints only the summary by default; --verbose and -v both print every passing check", async () => {
+    const restoreGh = await installGhStub(fx);
+    try {
+      const { code, outLines } = await call(["doctor"]);
+      expect(code).toBe(0);
+      expect(outLines).toEqual(["doctor: OK"]);
+
+      const long = await call(["doctor", "--verbose"]);
+      expect(long.code).toBe(0);
+      expect(long.outLines).toContain("OK    no project worktrees attached");
+      expect(long.outLines).toContain("OK    origin is PRIVATE");
+
+      const short = await call(["doctor", "-v"]);
+      expect(short.outLines).toEqual(long.outLines);
+    } finally {
+      restoreGh();
+    }
   });
 });
 

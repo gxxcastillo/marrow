@@ -1,4 +1,4 @@
-import { cp, mkdtemp, mkdir, rm } from "node:fs/promises";
+import { chmod, cp, mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { git, vaultDir } from "../src/git";
@@ -141,4 +141,49 @@ export async function addUnattachedBranch(fx: Fixture, branch: string): Promise<
 // `addUnattachedBranch`, which properly removes the registration itself.
 export async function deleteWorktreeDir(agentsPath: string): Promise<void> {
   await rm(agentsPath, { recursive: true, force: true });
+}
+
+// Puts a fake `gh` first on PATH so origin-visibility checks (`doctor`,
+// `publish`) get a deterministic answer instead of depending on whatever real
+// `gh` is installed on the machine running the tests. Returns a restorer;
+// callers are responsible for calling it (typically in a try/finally or
+// afterEach) to undo the PATH and env mutation.
+export async function installGhStub(fx: Fixture, opts: { url?: string; visibility?: string; createExit?: string } = {}): Promise<() => void> {
+  const dir = path.join(fx.root, `gh-stub-${Math.random().toString(16).slice(2)}`);
+  const log = path.join(dir, "gh.log");
+  await mkdir(dir, { recursive: true });
+  await Bun.write(path.join(dir, "gh"), `#!/usr/bin/env bash
+set -euo pipefail
+echo "$*" >> "$GH_STUB_LOG"
+if [ "$1 $2" = "repo create" ]; then
+  exit "$GH_STUB_CREATE_EXIT"
+fi
+if [ "$1 $2" = "repo view" ]; then
+  case "$*" in
+    *sshUrl*) printf '%s\\n' "$GH_STUB_URL" ;;
+    *visibility*) printf '%s\\n' "$GH_STUB_VISIBILITY" ;;
+    *) exit 1 ;;
+  esac
+  exit 0
+fi
+exit 1
+`);
+  await chmod(path.join(dir, "gh"), 0o755);
+  const oldPath = process.env.PATH;
+  const oldLog = process.env.GH_STUB_LOG;
+  const oldUrl = process.env.GH_STUB_URL;
+  const oldVisibility = process.env.GH_STUB_VISIBILITY;
+  const oldCreateExit = process.env.GH_STUB_CREATE_EXIT;
+  process.env.PATH = `${dir}:${oldPath ?? ""}`;
+  process.env.GH_STUB_LOG = log;
+  process.env.GH_STUB_URL = opts.url ?? fx.bareOrigin;
+  process.env.GH_STUB_VISIBILITY = opts.visibility ?? "PRIVATE";
+  process.env.GH_STUB_CREATE_EXIT = opts.createExit ?? "0";
+  return () => {
+    process.env.PATH = oldPath;
+    process.env.GH_STUB_LOG = oldLog;
+    process.env.GH_STUB_URL = oldUrl;
+    process.env.GH_STUB_VISIBILITY = oldVisibility;
+    process.env.GH_STUB_CREATE_EXIT = oldCreateExit;
+  };
 }

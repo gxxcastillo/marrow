@@ -3,7 +3,8 @@ import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { MIN_GIT_MAJOR, MIN_GIT_MINOR, aheadBehind, git, gitTooOld, gitVersion, listProjectWorktrees, splitByMissing, vaultDir } from "../git";
 import { clearProgress, countLabel, displayPath, showProgress } from "../format";
-import { agentsBlockStatus } from "../project";
+import { hasCurrentState } from "../memory-files";
+import { PARENT_INSTRUCTION_FILENAMES, agentsBlockStatus } from "../project";
 import { originUrl, verifyOriginReachable, verifyPrivateVisibility } from "../remote";
 import { unattachedBranches } from "../vault";
 
@@ -15,12 +16,18 @@ function branchList(branches: string[]): string {
   return branches.sort().join(", ");
 }
 
-export async function doctorCommand(marrowHome: string, toolRoot: string): Promise<number> {
+export async function doctorCommand(marrowHome: string, toolRoot: string, opts: { verbose?: boolean } = {}): Promise<number> {
+  const verbose = opts.verbose ?? false;
   const lines: string[] = [];
   let failed = false;
   let warnings = 0;
   let failures = 0;
-  const ok = (msg: string) => lines.push(`OK    ${msg}`);
+  // Passing checks are noise once the vault is healthy — WARN/FAIL always
+  // print (they're the actionable part), but OK lines only earn their line
+  // with --verbose. A clean repo then prints just the summary line.
+  const ok = (msg: string) => {
+    if (verbose) lines.push(`OK    ${msg}`);
+  };
   const warn = (msg: string) => {
     lines.push(`WARN  ${msg}`);
     warnings++;
@@ -76,55 +83,53 @@ export async function doctorCommand(marrowHome: string, toolRoot: string): Promi
     );
   }
 
+  // Three independent per-project health checks in one pass over presentWorktrees:
+  // gitignore state, the marrow .agents note, and current-state.md. None depends on
+  // another, so they share a single traversal instead of three.
   let ignoredParents = 0;
+  let currentAgentsBlocks = 0;
+  let currentStateFiles = 0;
   for (const wt of presentWorktrees) {
     const projectDir = path.dirname(wt.path);
+
     // `add` supports creating a fresh worktree in a plain directory; a parent
     // that is not a git repo has nothing to ignore .agents into.
     const inRepo = await git(["rev-parse", "--is-inside-work-tree"], projectDir);
     if (inRepo.code !== 0) {
       ignoredParents++;
-      continue;
+    } else {
+      const ignored = await git(["check-ignore", "-q", "--", ".agents"], projectDir);
+      if (ignored.code === 0) ignoredParents++;
+      else fail(`${wt.branch}: parent repo (${projectDir}) does not ignore .agents`);
     }
-    const ignored = await git(["check-ignore", "-q", "--", ".agents"], projectDir);
-    if (ignored.code === 0) ignoredParents++;
-    else fail(`${wt.branch}: parent repo (${projectDir}) does not ignore .agents`);
-  }
-  if (ignoredParents === presentWorktrees.length && presentWorktrees.length > 0) {
-    ok(`.agents ignored for ${countLabel(presentWorktrees.length, "project parent")}`);
-  }
 
-  // Mirrors the .gitignore check above: `add` plants this note on every attach and
-  // re-verifies it on every re-run, but nothing catches drift (a manual edit, a merge)
-  // between runs short of re-running `add`. WARN, not FAIL — a missing or stale note
-  // doesn't break marrow, it just leaves agents in that project without the pointer.
-  let currentAgentsBlocks = 0;
-  for (const wt of presentWorktrees) {
-    const projectDir = path.dirname(wt.path);
+    // `add` plants this note on every attach and re-verifies it on every re-run, but
+    // nothing catches drift (a manual edit, a merge) between runs short of re-running
+    // `add`. WARN, not FAIL — a missing or stale note doesn't break marrow, it just
+    // leaves agents in that project without the pointer.
     const status = await agentsBlockStatus(toolRoot, projectDir, path.basename(projectDir));
     if (status.kind === "current") {
       currentAgentsBlocks++;
     } else if (status.kind === "missing") {
-      warn(`${wt.branch}: no marrow .agents note in AGENTS.md or CLAUDE.md; run \`marrow add ${displayPath(projectDir)}\` to add it`);
+      warn(`${wt.branch}: no marrow .agents note in ${PARENT_INSTRUCTION_FILENAMES.join(" or ")}; run \`marrow add ${displayPath(projectDir)}\` to add it`);
     } else {
       const versions = status.files.map((f) => `${path.basename(f.path)} v${f.note.version}`).join(", ");
       warn(`${wt.branch}: stale marrow .agents note (${versions} -> v${status.currentVersion}); run \`marrow add ${displayPath(projectDir)}\` to update it`);
     }
-  }
-  if (currentAgentsBlocks === presentWorktrees.length && presentWorktrees.length > 0) {
-    ok(`marrow .agents note current for ${countLabel(presentWorktrees.length, "project parent")}`);
-  }
 
-  let currentStateFiles = 0;
-  for (const wt of presentWorktrees) {
-    const statePath = path.join(wt.path, "current-state.md");
-    if (existsSync(statePath)) {
+    if (hasCurrentState(wt.path)) {
       currentStateFiles++;
     } else {
       warn(
         `${wt.branch}: missing required .agents/current-state.md; create it with an honest As of stamp, then run \`marrow sync ${wt.branch}\``,
       );
     }
+  }
+  if (ignoredParents === presentWorktrees.length && presentWorktrees.length > 0) {
+    ok(`.agents ignored for ${countLabel(presentWorktrees.length, "project parent")}`);
+  }
+  if (currentAgentsBlocks === presentWorktrees.length && presentWorktrees.length > 0) {
+    ok(`marrow .agents note current for ${countLabel(presentWorktrees.length, "project parent")}`);
   }
   if (currentStateFiles === presentWorktrees.length && presentWorktrees.length > 0) {
     ok(`current-state.md present for ${countLabel(presentWorktrees.length, "project worktree")}`);

@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmod, mkdir, rm, symlink } from "node:fs/promises";
+import { mkdir, rm, symlink } from "node:fs/promises";
 import path from "node:path";
 import { initCommand } from "../src/commands/init";
 import { publishCommand } from "../src/commands/publish";
 import { git, vaultDir } from "../src/git";
 import { fetchedOriginBranches, originUrl } from "../src/remote";
 import { VAULT_README } from "../src/vault";
-import { addProjectWorktree, makeFixture, type Fixture } from "./fixtures";
+import { addProjectWorktree, installGhStub, makeFixture, type Fixture } from "./fixtures";
 import { captureLogs } from "./helpers";
 
 async function removeVaultOrigin(fx: Fixture): Promise<void> {
@@ -24,46 +24,6 @@ async function seedRemoteBranch(fx: Fixture, branch = "remote"): Promise<void> {
   await git(["commit", "-q", "-m", "seed"], repo);
   await git(["remote", "add", "origin", fx.bareOrigin], repo);
   await git(["push", "-q", "origin", `HEAD:refs/heads/${branch}`], repo);
-}
-
-async function installGhStub(fx: Fixture, opts: { url?: string; visibility?: string; createExit?: string } = {}): Promise<() => void> {
-  const dir = path.join(fx.root, `gh-stub-${Math.random().toString(16).slice(2)}`);
-  const log = path.join(dir, "gh.log");
-  await mkdir(dir, { recursive: true });
-  await Bun.write(path.join(dir, "gh"), `#!/usr/bin/env bash
-set -euo pipefail
-echo "$*" >> "$GH_STUB_LOG"
-if [ "$1 $2" = "repo create" ]; then
-  exit "$GH_STUB_CREATE_EXIT"
-fi
-if [ "$1 $2" = "repo view" ]; then
-  case "$*" in
-    *sshUrl*) printf '%s\\n' "$GH_STUB_URL" ;;
-    *visibility*) printf '%s\\n' "$GH_STUB_VISIBILITY" ;;
-    *) exit 1 ;;
-  esac
-  exit 0
-fi
-exit 1
-`);
-  await chmod(path.join(dir, "gh"), 0o755);
-  const oldPath = process.env.PATH;
-  const oldLog = process.env.GH_STUB_LOG;
-  const oldUrl = process.env.GH_STUB_URL;
-  const oldVisibility = process.env.GH_STUB_VISIBILITY;
-  const oldCreateExit = process.env.GH_STUB_CREATE_EXIT;
-  process.env.PATH = `${dir}:${oldPath ?? ""}`;
-  process.env.GH_STUB_LOG = log;
-  process.env.GH_STUB_URL = opts.url ?? fx.bareOrigin;
-  process.env.GH_STUB_VISIBILITY = opts.visibility ?? "PRIVATE";
-  process.env.GH_STUB_CREATE_EXIT = opts.createExit ?? "0";
-  return () => {
-    process.env.PATH = oldPath;
-    process.env.GH_STUB_LOG = oldLog;
-    process.env.GH_STUB_URL = oldUrl;
-    process.env.GH_STUB_VISIBILITY = oldVisibility;
-    process.env.GH_STUB_CREATE_EXIT = oldCreateExit;
-  };
 }
 
 async function hideGhButKeepGit(fx: Fixture): Promise<() => void> {

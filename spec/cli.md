@@ -450,14 +450,16 @@ detached cleanly, or the dry-run preview printed successfully.
 ## `doctor`
 
 ```
-marrow doctor
+marrow doctor [--verbose]
 ```
 
 Writes `checking vault and project worktree health...` as a transient terminal status,
-then replaces it with the fixed set of checks, printed in this order. Checks that pass
-for every attached project may be summarized as one `OK` line. Per-project `FAIL` and
-`WARN` lines stay explicit. Output ends with `doctor: OK`, `doctor: OK (<n> warnings)`, or
-`doctor: FAIL (<n> failures[, <n> warnings])`:
+then runs the fixed set of checks below, in this order. `WARN` and `FAIL` lines always
+print — they're the actionable part. `OK` lines print only with `--verbose`/`-v`; by
+default a clean vault prints nothing but the summary line. Per-project `FAIL` and `WARN`
+lines stay explicit even under `--verbose`; checks that pass for every attached project
+are summarized as one `OK` line rather than one per project. Output ends with
+`doctor: OK`, `doctor: OK (<n> warnings)`, or `doctor: FAIL (<n> failures[, <n> warnings])`:
 
 | Check                                                                                                                                                                                                                         | Result on failure                                                                                                                                                       |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
