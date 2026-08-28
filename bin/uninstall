@@ -11,7 +11,17 @@ link="$HOME/.local/bin/marrow"
 
 removed_something=0
 
-if [ -L "$link" ] && [ "$(readlink "$link")" = "$clone_dir/bin/marrow" ]; then
+# bin/setup resolves symlinks in its own location (`cd -P`) before writing
+# $link's target, so if any ancestor of $clone_dir (e.g. $HOME itself, under
+# a dotfile manager) is a symlink, the target it wrote is the resolved path,
+# not this literal one. Compare against both so uninstall still recognizes
+# (and cleans up) a symlink it created.
+resolved_clone_dir="$clone_dir"
+if [ -d "$clone_dir" ]; then
+  resolved_clone_dir="$(cd -P "$clone_dir" && pwd)"
+fi
+
+if [ -L "$link" ] && { [ "$(readlink "$link")" = "$clone_dir/bin/marrow" ] || [ "$(readlink "$link")" = "$resolved_clone_dir/bin/marrow" ]; }; then
   rm "$link"
   echo "uninstall: removed $link"
   removed_something=1
