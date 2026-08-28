@@ -1,7 +1,6 @@
-import os from "node:os";
 import path from "node:path";
 import { aheadBehind, dirtyCount, lastCommit, listProjectWorktrees, vaultDir } from "../git";
-import { clearProgress, countLabel, showProgress } from "../format";
+import { clearProgress, countLabel, displayPath, showProgress } from "../format";
 import { unattachedBranches } from "../vault";
 
 const PROGRESS_LINE = "checking project status...";
@@ -20,12 +19,6 @@ function syncLabel(aheadBehind: { ahead: number; behind: number } | null): strin
   if (aheadBehind.ahead > 0) pending.push(`${countLabel(aheadBehind.ahead, "commit")} to push`);
   if (aheadBehind.behind > 0) pending.push(`${countLabel(aheadBehind.behind, "commit")} to pull`);
   return pending.join(", ");
-}
-
-function displayPath(worktreePath: string): string {
-  const projectPath = path.dirname(worktreePath);
-  const relative = path.relative(os.homedir(), projectPath);
-  return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative) ? `~/${relative}` : projectPath;
 }
 
 function shorten(value: string, width: number): string {
@@ -103,7 +96,7 @@ export async function statusCommand(marrowHome: string): Promise<number> {
   for (const wt of worktrees) {
     if (wt.missing) {
       missingBranches.push(wt.branch);
-      rows.push([displayPath(wt.path), wt.branch, "missing", "-"]);
+      rows.push([displayPath(path.dirname(wt.path)), wt.branch, "missing", "-"]);
       continue;
     }
     const dirty = await dirtyCount(wt.path);
@@ -117,7 +110,7 @@ export async function statusCommand(marrowHome: string): Promise<number> {
     }
 
     rows.push([
-      displayPath(wt.path),
+      displayPath(path.dirname(wt.path)),
       wt.branch,
       `${dirty > 0 ? countLabel(dirty, "uncommitted change") : "clean"}, ${syncLabel(ab)}`,
       displayCommit(commit, wt.branch),
