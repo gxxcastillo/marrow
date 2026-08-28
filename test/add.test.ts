@@ -247,6 +247,21 @@ describe("add", () => {
       expect(claude.autoMemoryEnabled).toBe(false);
     });
 
+    test("live add still succeeds when an existing .claude/settings.json is not valid JSON", async () => {
+      const projectDir = await makeProjectRepo(fx, "bad-claude-settings", "ignored");
+      await mkdir(path.join(projectDir, ".claude"), { recursive: true });
+      await Bun.write(path.join(projectDir, ".claude", "settings.json"), "{ not valid json,, }");
+
+      const { code, outLines } = await captureLogs(() =>
+        addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
+      );
+
+      expect(code).toBe(0);
+      expect(outLines.join("\n")).toContain(".claude/settings.json     could not update:");
+      expect(outLines.join("\n")).toContain("Codex memory disabled");
+      expect(await readFile(path.join(projectDir, ".claude", "settings.json"), "utf8")).toBe("{ not valid json,, }");
+    });
+
     test("keeps Codex memory settings inside the intended TOML tables", async () => {
       const projectDir = await makeProjectRepo(fx, "complex-toml-config", "ignored");
       await mkdir(path.join(projectDir, ".codex"), { recursive: true });

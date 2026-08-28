@@ -43,7 +43,11 @@ function tomlTableHeader(line: string): { name: string; array: boolean } | null 
       continue;
     }
     if (ch === "]") {
-      const name = line.slice(start, i).trim();
+      const rawName = line.slice(start, i).trim();
+      const name =
+        rawName.length >= 2 && (rawName[0] === '"' || rawName[0] === "'") && rawName[rawName.length - 1] === rawName[0]
+          ? rawName.slice(1, -1)
+          : rawName;
       i += 1;
       if (array) {
         if (line[i] !== "]") return null;
@@ -73,6 +77,42 @@ function appendTable(content: string, table: string, key: string, value: boolean
   return `${base}${prefix}[${table}]\n${key} = ${value}\n`;
 }
 
+// A value can span multiple lines (an array or inline table split across lines); this
+// walks forward from the key's line tracking bracket depth (honoring quotes and comments)
+// so the whole old value is replaced instead of leaving its continuation lines dangling.
+function valueLineSpan(lines: string[], start: number, limit: number): number {
+  let depth = 0;
+  let quote: '"' | "'" | null = null;
+  let escaped = false;
+  let count = 0;
+  for (let li = start; li < limit; li += 1) {
+    count += 1;
+    const line = lines[li];
+    for (let i = 0; i < line.length; i += 1) {
+      const ch = line[i];
+      if (quote === '"') {
+        if (escaped) escaped = false;
+        else if (ch === "\\") escaped = true;
+        else if (ch === '"') quote = null;
+        continue;
+      }
+      if (quote === "'") {
+        if (ch === "'") quote = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        quote = ch;
+        continue;
+      }
+      if (ch === "#") break;
+      if (ch === "[" || ch === "{") depth += 1;
+      else if (ch === "]" || ch === "}") depth -= 1;
+    }
+    if (depth <= 0) break;
+  }
+  return count;
+}
+
 function setTomlBoolean(content: string, table: string, key: string, value: boolean): string {
   const normalized = content.replaceAll("\r\n", "\n");
   const lines = normalized.replace(/\n+$/, "").split("\n");
@@ -92,12 +132,13 @@ function setTomlBoolean(content: string, table: string, key: string, value: bool
   const keyPattern = new RegExp(`^\\s*${escapeRegExp(key)}\\s*=`);
   let inserted = false;
   const next: string[] = [];
-  for (let i = 0; i < lines.length; i += 1) {
+  for (let i = 0; i < lines.length; ) {
     if (i > start && i < end && keyPattern.test(lines[i])) {
       if (!inserted) {
         next.push(`${key} = ${value}`);
         inserted = true;
       }
+      i += valueLineSpan(lines, i, end);
       continue;
     }
     if (i === insert && !inserted) {
@@ -105,6 +146,7 @@ function setTomlBoolean(content: string, table: string, key: string, value: bool
       inserted = true;
     }
     next.push(lines[i]);
+    i += 1;
   }
   if (!inserted) next.push(`${key} = ${value}`);
   return withFinalNewline(next.join("\n").replace(/\n+$/, ""));
@@ -124,7 +166,12 @@ function claudeSettingsWithMemoryDisabled(content: string): string {
     throw new Error("Claude Code settings must be a JSON object");
   }
   const settings = parsed as Record<string, unknown>;
-  if (!("$schema" in settings)) settings.$schema = "https://json.schemastore.org/claude-code-settings.json";
+  const hasSchema = "$schema" in settings;
+  // Already correct: return the original text untouched rather than round-tripping
+  // through JSON.stringify, which would reformat (and report as "changed") a file
+  // whose whitespace/indentation doesn't happen to match our canonical 2-space output.
+  if (hasSchema && settings.autoMemoryEnabled === false) return content;
+  if (!hasSchema) settings.$schema = "https://json.schemastore.org/claude-code-settings.json";
   settings.autoMemoryEnabled = false;
   return `${JSON.stringify(settings, null, 2)}\n`;
 }
@@ -146,9 +193,19 @@ export async function ensureAgentMemoryDisabled(projectDir: string, dryRun: bool
   ];
 
   const changed: string[] = [];
+  const skipped: string[] = [];
   for (const change of changes) {
     const existing = existsSync(change.path) ? await readFile(change.path, "utf8") : "";
-    const next = change.next(existing);
+    let next: string;
+    try {
+      next = change.next(existing);
+    } catch (err) {
+      // An unrelated pre-existing file the project already has (e.g. hand-edited,
+      // invalid JSON) must not turn a successful attach into a reported failure —
+      // skip just this file and let the rest of `add` finish normally.
+      skipped.push(`  ${path.relative(projectDir, change.path).padEnd(25)} could not update: ${err instanceof Error ? err.message : String(err)}`);
+      continue;
+    }
     if (next === existing) continue;
     changed.push(`  ${path.relative(projectDir, change.path).padEnd(25)} ${change.label}`);
     if (!dryRun) {
@@ -158,8 +215,9 @@ export async function ensureAgentMemoryDisabled(projectDir: string, dryRun: bool
   }
 
   console.log("");
+  for (const entry of skipped) console.log(entry);
   if (changed.length === 0) {
-    console.log("Project settings already up to date.");
+    if (skipped.length === 0) console.log("Project settings already up to date.");
     return false;
   }
   if (dryRun) {
