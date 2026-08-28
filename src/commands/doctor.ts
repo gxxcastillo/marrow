@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { MIN_GIT_MAJOR, MIN_GIT_MINOR, aheadBehind, git, gitTooOld, gitVersion, listProjectWorktrees, splitByMissing, vaultDir } from "../git";
-import { countLabel } from "../format";
+import { clearProgress, countLabel, showProgress } from "../format";
 import { originUrl, verifyOriginReachable, verifyPrivateVisibility } from "../remote";
 import { unattachedBranches } from "../vault";
 
@@ -12,17 +12,6 @@ const PROGRESS_LINE = "checking vault and project worktree health...";
 
 function branchList(branches: string[]): string {
   return branches.sort().join(", ");
-}
-
-function showProgress(): boolean {
-  if (!process.stdout.isTTY) return false;
-  process.stdout.write(PROGRESS_LINE);
-  return true;
-}
-
-function clearProgress(shown: boolean): void {
-  if (!shown) return;
-  process.stdout.write(`\r${" ".repeat(PROGRESS_LINE.length)}\r`);
 }
 
 export async function doctorCommand(marrowHome: string): Promise<number> {
@@ -41,7 +30,7 @@ export async function doctorCommand(marrowHome: string): Promise<number> {
     failures++;
   };
 
-  const progressShown = showProgress();
+  const progressShown = showProgress(PROGRESS_LINE);
 
   // Checked before anything else: without `worktree add --orphan` neither
   // `add` nor `publish` can run at all, so it outranks every vault finding.
@@ -164,7 +153,7 @@ export async function doctorCommand(marrowHome: string): Promise<number> {
   if (marrowOnPath) ok(`marrow on PATH at ${marrowOnPath}`);
   else warn("bin/marrow is not on PATH");
 
-  clearProgress(progressShown);
+  clearProgress(progressShown, PROGRESS_LINE);
   for (const line of lines) console.log(line);
   const warningLabel = warnings > 0 ? `, ${countLabel(warnings, "warning")}` : "";
   console.log(failed ? `doctor: FAIL (${countLabel(failures, "failure")}${warningLabel})` : warnings > 0 ? `doctor: OK (${countLabel(warnings, "warning")})` : "doctor: OK");

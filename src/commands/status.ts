@@ -1,8 +1,10 @@
 import os from "node:os";
 import path from "node:path";
 import { aheadBehind, dirtyCount, lastCommit, listProjectWorktrees, vaultDir } from "../git";
-import { countLabel } from "../format";
+import { clearProgress, countLabel, showProgress } from "../format";
 import { unattachedBranches } from "../vault";
+
+const PROGRESS_LINE = "checking project status...";
 
 function syncLabel(aheadBehind: { ahead: number; behind: number } | null): string {
   if (!aheadBehind) return "not pushed";
@@ -65,6 +67,7 @@ function displayCommit(commit: { date: string; subject: string } | null, project
 }
 
 export async function statusCommand(marrowHome: string): Promise<number> {
+  const progressShown = showProgress(PROGRESS_LINE);
   const vault = vaultDir(marrowHome);
   const worktrees = await listProjectWorktrees(vault);
   // The table covers attached worktrees only. Naming what it leaves out keeps
@@ -75,6 +78,7 @@ export async function statusCommand(marrowHome: string): Promise<number> {
     : `${countLabel(unattached.length, "project branch", "project branches")} not attached here`;
 
   if (worktrees.length === 0) {
+    clearProgress(progressShown, PROGRESS_LINE);
     console.log("No projects attached on this machine. Run `marrow add <project-path>` to get started.");
     if (unattachedNote) printBranchList(`The vault has ${unattachedNote}`, unattached);
     return 0;
@@ -110,6 +114,7 @@ export async function statusCommand(marrowHome: string): Promise<number> {
     ]);
   }
 
+  clearProgress(progressShown, PROGRESS_LINE);
   const changeSummary = [
     missingBranches.length > 0 ? `${missingBranches.length} missing` : "",
     dirtyTotal > 0 ? `${dirtyTotal} with uncommitted changes` : "",

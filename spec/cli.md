@@ -147,20 +147,22 @@ configured, pushed, fetched, reachable, and private.
 marrow status
 ```
 
-Prints a grammatical summary first, a blank line, then an aligned table with `PROJECT`,
-`KEY`, `STATUS`, and `LAST COMMIT` columns. `PROJECT` is the parent directory of the
-`.agents` worktree, abbreviated with `~` when it is under the user's home directory, and
-shortened from the left when needed. `KEY` shows the stable project identity. `STATUS`
-combines the local change state and sync
-state, e.g. `clean, synced`, `1 uncommitted change, synced`, or `clean, 1 commit to push`.
-`LAST COMMIT` prints the date and subject of the branch's current commit and is shortened
-when needed so one long subject does not dominate the table. When the subject starts with
-the exact `KEY` plus `: `, that redundant prefix is omitted from the display only.
-"Uncommitted changes" counts lines from
-`git status --porcelain` (i.e. files changed, not diff hunks). Ahead/behind compares
-`HEAD` against the local `origin/<branch>` ref — it does not fetch first, so it can be
-stale relative to a remote no one has pulled recently. The summary names the project
-count, missing worktrees, uncommitted projects, and sync work remaining.
+Writes `checking project status...` as a transient terminal status while it walks every
+attached worktree (mirrors [`doctor`](#doctor)'s progress line — this loop shells out
+per project and can take a moment on a vault with many attached projects), then replaces
+it with a grammatical summary, a blank line, and an aligned table with `PROJECT`, `KEY`,
+`STATUS`, and `LAST COMMIT` columns. `PROJECT` is the parent directory of the `.agents`
+worktree, abbreviated with `~` when it is under the user's home directory, and shortened
+from the left when needed. `KEY` shows the stable project identity. `STATUS` combines the
+local change state and sync state, e.g. `clean, synced`, `1 uncommitted change, synced`,
+or `clean, 1 commit to push`. `LAST COMMIT` prints the date and subject of the branch's
+current commit and is shortened when needed so one long subject does not dominate the
+table. When the subject starts with the exact `KEY` plus `: `, that redundant
+prefix is omitted from the display only. "Uncommitted changes" counts lines from `git
+status --porcelain` (i.e. files changed, not diff hunks). Ahead/behind compares `HEAD`
+against the local `origin/<branch>` ref — it does not fetch first, so it can be stale
+relative to a remote no one has pulled recently. The summary names the project count,
+missing worktrees, uncommitted projects, and sync work remaining.
 
 The table covers attached worktrees only. When the vault holds project branches with no
 worktree here, a blank line and note follow the table — `2 project branches not attached

@@ -81,6 +81,32 @@ describe("status", () => {
     expect(outLines[4]).toContain("beta: pending");
   });
 
+  test("shows transient progress without keeping it in final output", async () => {
+    await addProjectWorktree(fx, "alpha");
+
+    const writes: string[] = [];
+    const originalWrite = process.stdout.write;
+    const originalIsTTY = process.stdout.isTTY;
+    Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      writes.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+
+    try {
+      const { code, outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
+
+      expect(code).toBe(0);
+      expect(writes[0]).toBe("checking project status...");
+      expect(writes).toContain(`\r${" ".repeat("checking project status...".length)}\r`);
+      expect(outLines[0]).toBe("1 project: all clean, all synced");
+      expect(outLines).not.toContain("checking project status...");
+    } finally {
+      process.stdout.write = originalWrite;
+      Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: originalIsTTY });
+    }
+  });
+
   test("lists multiple projects, one per line", async () => {
     await addProjectWorktree(fx, "alpha");
     await addProjectWorktree(fx, "beta");
