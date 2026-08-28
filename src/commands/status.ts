@@ -5,6 +5,12 @@ import { clearProgress, countLabel, showProgress } from "../format";
 import { unattachedBranches } from "../vault";
 
 const PROGRESS_LINE = "checking project status...";
+// A floor, not a target: below this, LAST COMMIT (the most diagnostic column —
+// what actually happened) degenerates into a bare truncated date with zero of the
+// actual subject, in exactly the cases (long paths/keys, many pending commits)
+// where a reader most needs to skim it. Taking the row past the target width is
+// an acceptable trade for that.
+const MIN_LAST_COMMIT_WIDTH = 24;
 
 function syncLabel(aheadBehind: { ahead: number; behind: number } | null): string {
   if (!aheadBehind) return "not pushed";
@@ -34,8 +40,11 @@ function shortenProject(value: string, width: number): string {
   return `...${value.slice(value.length - width + 3)}`;
 }
 
+// No upper cap on terminal width: PROJECT and LAST COMMIT are still clamped to
+// their own natural content width below, so a wide terminal doesn't pad columns
+// wider than needed — it just stops truncating them prematurely.
 function tableTargetWidth(): number {
-  return Math.max(50, Math.min(process.stdout.columns ?? 100, 100));
+  return Math.max(50, process.stdout.columns ?? 100);
 }
 
 function printBranchList(header: string, branches: string[]): void {
@@ -50,7 +59,7 @@ function printRows(rows: string[][]): void {
   const projectMax = Math.max(headers[0].length, Math.min(widths[0], Math.floor(target * 0.32)));
   const fixedWidth = projectMax + widths[1] + widths[2] + 2 * (headers.length - 1);
   widths[0] = projectMax;
-  widths[3] = Math.max(headers[3].length, Math.min(widths[3], target - fixedWidth));
+  widths[3] = Math.min(widths[3], Math.max(MIN_LAST_COMMIT_WIDTH, target - fixedWidth));
   const format = (row: string[]) =>
     row.map((cell, index) => (index === 0 ? shortenProject(cell, widths[index]) : shorten(cell, widths[index])).padEnd(widths[index])).join("  ").trimEnd();
 

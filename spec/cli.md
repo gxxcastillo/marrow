@@ -157,7 +157,9 @@ from the left when needed. `KEY` shows the stable project identity. `STATUS` com
 local change state and sync state, e.g. `clean, synced`, `1 uncommitted change, synced`,
 or `clean, 1 commit to push`. `LAST COMMIT` prints the date and subject of the branch's
 current commit and is shortened when needed so one long subject does not dominate the
-table. When the subject starts with the exact `KEY` plus `: `, that redundant
+table — but never below a floor wide enough to keep part of the subject visible, even
+when the other columns are collectively wide enough that the row exceeds the table's
+target width. When the subject starts with the exact `KEY` plus `: `, that redundant
 prefix is omitted from the display only. "Uncommitted changes" counts lines from `git
 status --porcelain` (i.e. files changed, not diff hunks). Ahead/behind compares `HEAD`
 against the local `origin/<branch>` ref — it does not fetch first, so it can be stale

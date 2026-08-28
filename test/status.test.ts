@@ -107,6 +107,28 @@ describe("status", () => {
     }
   });
 
+  test("keeps part of the commit subject visible even when other columns are wide", async () => {
+    const originalColumns = process.stdout.columns;
+    Object.defineProperty(process.stdout, "columns", { configurable: true, value: 100 });
+
+    try {
+      // A long key alone pushes the fixed columns (PROJECT + KEY + STATUS) past the
+      // 100-column target, which used to starve LAST COMMIT down to its own header
+      // length (11 chars) — not even room for a bare date.
+      const longKey = "some-very-long-project-key-used-only-for-width-testing";
+      const agentsPath = await addProjectWorktree(fx, longKey, longKey);
+      const subject = "a distinctive long commit subject that must not be fully swallowed";
+      await git(["commit", "--allow-empty", "-q", "-m", `${longKey}: ${subject}`], agentsPath);
+
+      const { outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
+      const row = outLines.find((l) => l.includes(longKey) && l.includes("commit to push"));
+      expect(row).toBeDefined();
+      expect(row).toContain(subject.slice(0, 10));
+    } finally {
+      Object.defineProperty(process.stdout, "columns", { configurable: true, value: originalColumns });
+    }
+  });
+
   test("lists multiple projects, one per line", async () => {
     await addProjectWorktree(fx, "alpha");
     await addProjectWorktree(fx, "beta");
