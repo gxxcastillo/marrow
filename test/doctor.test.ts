@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, utimes } from "node:fs/promises";
+import { mkdir, readFile, realpath, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { addCommand } from "../src/commands/add";
 import { doctorCommand } from "../src/commands/doctor";
@@ -25,9 +25,42 @@ describe("doctor", () => {
     );
     expect(adoptCode).toBe(0);
 
-    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
     expect(outLines.some((l) => l.startsWith("FAIL"))).toBe(false);
+    expect(outLines).toContain("OK    marrow .agents note current for 1 project parent");
     expect(code).toBe(0);
+  });
+
+  test("warns when a project's AGENTS.md has no marrow .agents note", async () => {
+    const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
+    const { code: adoptCode } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+    expect(adoptCode).toBe(0);
+    await writeFile(path.join(projectDir, "AGENTS.md"), "# alpha\n");
+
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
+    expect(code).toBe(0);
+    const line = outLines.find((l) => l.includes("no marrow .agents note"));
+    expect(line).toBeDefined();
+    expect(line).toStartWith("WARN");
+    expect(line).toContain("alpha");
+    expect(line).toContain(`marrow add ${await realpath(projectDir)}`);
+  });
+
+  test("warns when a project's marrow .agents note is stale", async () => {
+    const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
+    const { code: adoptCode } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+    expect(adoptCode).toBe(0);
+    const agentsMdPath = path.join(projectDir, "AGENTS.md");
+    const stale = (await readFile(agentsMdPath, "utf8")).replace(/<p align="right">v\d+<\/p>/, '<p align="right">v0</p>');
+    await writeFile(agentsMdPath, stale);
+
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
+    expect(code).toBe(0);
+    const line = outLines.find((l) => l.includes("stale marrow .agents note"));
+    expect(line).toBeDefined();
+    expect(line).toStartWith("WARN");
+    expect(line).toContain("v0 -> v1");
+    expect(line).toContain(`marrow add ${await realpath(projectDir)}`);
   });
 
   test("shows transient progress without keeping it in final output", async () => {
@@ -43,7 +76,7 @@ describe("doctor", () => {
     }) as typeof process.stdout.write;
 
     try {
-      const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
+      const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
 
       expect(code).toBe(0);
       expect(writes[0]).toBe("checking vault and project worktree health...");
@@ -61,7 +94,7 @@ describe("doctor", () => {
     await addProjectWorktree(fx, "alpha");
     await addProjectWorktree(fx, "beta");
 
-    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
 
     expect(code).toBe(0);
     expect(outLines).toContain("OK    2 project worktrees named .agents");
@@ -75,7 +108,7 @@ describe("doctor", () => {
     await git(["worktree", "add", "--orphan", "-b", "misplaced", wrongPath], vaultDir(fx.marrowHome));
     await git(["commit", "--allow-empty", "-q", "-m", "seed"], wrongPath);
 
-    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
     expect(code).toBe(1);
     expect(outLines.some((l) => l.startsWith("FAIL") && l.includes("not named .agents"))).toBe(true);
   });
@@ -87,7 +120,7 @@ describe("doctor", () => {
     );
     expect(addCode).toBe(0);
 
-    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
     expect(outLines.some((l) => l.startsWith("FAIL"))).toBe(false);
     expect(code).toBe(0);
   });
@@ -106,7 +139,7 @@ describe("doctor", () => {
     await git(["worktree", "add", "--orphan", "-b", "leaky", agentsPath], vaultDir(fx.marrowHome));
     await git(["commit", "--allow-empty", "-q", "-m", "seed"], agentsPath);
 
-    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
     expect(code).toBe(1);
     expect(outLines.some((l) => l.startsWith("FAIL") && l.includes("does not ignore"))).toBe(true);
   });
@@ -115,7 +148,7 @@ describe("doctor", () => {
     await addProjectWorktree(fx, "alpha");
     await git(["remote", "remove", "origin"], vaultDir(fx.marrowHome));
 
-    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
     expect(code).toBe(0);
     expect(outLines.some((l) => l.startsWith("WARN") && l.includes("no 'origin' remote"))).toBe(true);
   });
@@ -127,7 +160,7 @@ describe("doctor", () => {
     await git(["push", "-q", "origin", ":alpha"], alphaAgents);
     await git(["push", "-q", "origin", ":beta"], betaAgents);
 
-    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
     const warnings = outLines.filter((l) => l.startsWith("WARN") && l.includes("missing origin refs"));
 
     expect(code).toBe(0);
@@ -151,7 +184,7 @@ describe("doctor", () => {
     // A recent one must not count toward the aggregate.
     await Bun.write(path.join(backupsDir, "fresh-project-today.tar.gz"), "fake");
 
-    const { outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
+    const { outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
     const warnings = outLines.filter((l) => l.startsWith("WARN") && l.includes("older than 30 days"));
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain("2 backups older than 30 days");
@@ -162,7 +195,7 @@ describe("doctor", () => {
     await addProjectWorktree(fx, "alpha");
     await addUnattachedBranch(fx, "beta");
 
-    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
     const line = outLines.find((l) => l.includes("not attached on this machine"));
     expect(line).toBeDefined();
     // Attaching a subset is a deliberate choice, not drift: it is reported,
@@ -179,7 +212,7 @@ describe("doctor", () => {
     await addProjectWorktree(fx, "beta");
     await deleteWorktreeDir(alphaPath);
 
-    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
     expect(code).toBe(0);
     expect(outLines.some((l) => l.startsWith("FAIL"))).toBe(false);
     const line = outLines.find((l) => l.includes("registered worktree missing"));
@@ -192,7 +225,7 @@ describe("doctor", () => {
   test("reports git worktree --orphan support before vault findings", async () => {
     await addProjectWorktree(fx, "alpha");
 
-    const { outLines } = await captureLogs(() => doctorCommand(fx.marrowHome));
+    const { outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
     const line = outLines.find((l) => l.includes("worktree add --orphan"));
     expect(line).toBeDefined();
     expect(line).toStartWith("OK");

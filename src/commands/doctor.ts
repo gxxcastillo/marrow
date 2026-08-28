@@ -3,6 +3,7 @@ import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { MIN_GIT_MAJOR, MIN_GIT_MINOR, aheadBehind, git, gitTooOld, gitVersion, listProjectWorktrees, splitByMissing, vaultDir } from "../git";
 import { clearProgress, countLabel, showProgress } from "../format";
+import { agentsBlockStatus } from "../project";
 import { originUrl, verifyOriginReachable, verifyPrivateVisibility } from "../remote";
 import { unattachedBranches } from "../vault";
 
@@ -14,7 +15,7 @@ function branchList(branches: string[]): string {
   return branches.sort().join(", ");
 }
 
-export async function doctorCommand(marrowHome: string): Promise<number> {
+export async function doctorCommand(marrowHome: string, toolRoot: string): Promise<number> {
   const lines: string[] = [];
   let failed = false;
   let warnings = 0;
@@ -91,6 +92,27 @@ export async function doctorCommand(marrowHome: string): Promise<number> {
   }
   if (ignoredParents === presentWorktrees.length && presentWorktrees.length > 0) {
     ok(`.agents ignored for ${countLabel(presentWorktrees.length, "project parent")}`);
+  }
+
+  // Mirrors the .gitignore check above: `add` plants this note on every attach and
+  // re-verifies it on every re-run, but nothing catches drift (a manual edit, a merge)
+  // between runs short of re-running `add`. WARN, not FAIL — a missing or stale note
+  // doesn't break marrow, it just leaves agents in that project without the pointer.
+  let currentAgentsBlocks = 0;
+  for (const wt of presentWorktrees) {
+    const projectDir = path.dirname(wt.path);
+    const status = await agentsBlockStatus(toolRoot, projectDir, path.basename(projectDir));
+    if (status.kind === "current") {
+      currentAgentsBlocks++;
+    } else if (status.kind === "missing") {
+      warn(`${wt.branch}: no marrow .agents note in AGENTS.md or CLAUDE.md at ${projectDir}; run \`marrow add ${projectDir}\` to add it`);
+    } else {
+      const versions = status.files.map((f) => `${path.basename(f.path)} v${f.note.version}`).join(", ");
+      warn(`${wt.branch}: stale marrow .agents note (${versions} -> v${status.currentVersion}) at ${projectDir}; run \`marrow add ${projectDir}\` to update it`);
+    }
+  }
+  if (currentAgentsBlocks === presentWorktrees.length && presentWorktrees.length > 0) {
+    ok(`marrow .agents note current for ${countLabel(presentWorktrees.length, "project parent")}`);
   }
 
   const url = await originUrl(vault);

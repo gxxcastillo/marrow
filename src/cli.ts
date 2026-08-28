@@ -101,7 +101,7 @@ const COMMANDS: Record<string, Command> = {
   doctor: {
     args: "",
     summary: "check vault + worktree health",
-    run: (_parsed, ctx) => doctorCommand(ctx.marrowHome),
+    run: (_parsed, ctx) => doctorCommand(ctx.marrowHome, ctx.toolRoot),
   },
 
   grep: {

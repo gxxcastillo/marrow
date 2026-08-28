@@ -60,7 +60,7 @@ describe("multi-machine attachment", () => {
     const machineA = await makeProjectRepo(fx, "alpha", "ignored");
     await expectCommandSuccess(() => addCommand(machineA, {}, fx.marrowHome, fx.toolRoot));
     const machineBHome = await cloneVaultForSecondMachine(fx);
-    const { code, outLines } = await captureLogs(() => doctorCommand(machineBHome));
+    const { code, outLines } = await captureLogs(() => doctorCommand(machineBHome, fx.toolRoot));
     expect(code).toBe(0);
     expect(outLines.some((line) => line.includes("has no worktree"))).toBe(false);
   });

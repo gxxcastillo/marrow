@@ -54,13 +54,13 @@ async function parentInstructionFiles(projectDir: string): Promise<{ name: strin
   return files;
 }
 
-type StaleAgentsBlockFile = {
+export type StaleAgentsBlockFile = {
   path: string;
   content: string;
   note: { index: number; length: number; version: string };
 };
 
-type AgentsBlockStatus =
+export type AgentsBlockStatus =
   | { kind: "current" }
   | { kind: "missing" }
   | {
@@ -72,7 +72,7 @@ type AgentsBlockStatus =
 // Recognizes the canonical note by its trailing version tag regardless of wording
 // changes around it, so a template edit doesn't strand every already-adopted project
 // with a permanently "unrecognized" block.
-async function agentsBlockStatus(toolRoot: string, projectDir: string, project: string): Promise<AgentsBlockStatus> {
+export async function agentsBlockStatus(toolRoot: string, projectDir: string, project: string): Promise<AgentsBlockStatus> {
   const block = normalizedBlock(await agentsBlock(toolRoot, project));
   const currentVersion = findAgentsNote(block)?.version;
   const stale: StaleAgentsBlockFile[] = [];
