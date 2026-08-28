@@ -16,9 +16,9 @@ Ownership boundary:
 2. Project instructions identify the authoritative sources for accepted requirements,
    contracts, intended behavior, architecture, operational rules, and team policy when
    those sources are not obvious.
-3. `.agents/` owns private working history, progress, plan lifecycle (status,
-   dependencies, discovered work), investigations, deferred work, working decisions, and
-   resumption context.
+3. `.agents/` owns private working history, progress, plan lifecycle (status, next
+   step, dependencies, discovered work), investigations, deferred work, working
+   decisions, and resumption context.
 4. A task-local decision may remain in `.agents/`. A constraint future contributors
    must honor must be distilled into the appropriate shared source before the work is
    considered complete.
@@ -43,11 +43,15 @@ Ownership boundary:
    itself.
 10. Placement, not only precedence: put a rule in the narrowest shared source that
     everyone who must honor it already reads.
-11. Audience gate for committed placement: a personal, single-dev project may commit a
-    full stateless work plan and designate it authoritative; a project with external
-    consumers or a team commits only the decisions and contracts that audience must
-    honor, keeping sequencing in `.agents/plans/` with embedded decisions promoted
-    individually as they're made.
+11. Audience gate for the stateless half: commit only what the committed doc's actual
+    audience must honor — the same test as the rule above, applied to how much of a
+    plan's content to commit, not just where one rule goes. A solo maintainer is often
+    that whole audience, so the full stateless plan can be committed and designated
+    authoritative (personal-project case). A broader audience — a team, or consumers who
+    never need execution detail — usually gets only the decisions and contracts; work
+    breakdown stays stateless but moves to a narrower shared source (a team doc, the
+    issue tracker) instead of the audience-facing one, with embedded decisions still
+    promoted individually as they're made.
 
 Examples of shared sources: specs, schemas, ADRs, docs, issue trackers, code/tests, and
 project instructions. None is required universally, and no rule here assumes a `spec/`
