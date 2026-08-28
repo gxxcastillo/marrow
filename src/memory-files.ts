@@ -47,15 +47,16 @@ async function writeReadme(toolRoot: string, agentsPath: string, project: string
   await writeFile(readmePath, `${existing}${sep}${rawBlock}`);
 }
 
-async function writeCurrentState(toolRoot: string, agentsPath: string, project: string): Promise<void> {
+export async function ensureCurrentState(toolRoot: string, agentsPath: string, project: string): Promise<boolean> {
   const statePath = path.join(agentsPath, "current-state.md");
-  if (existsSync(statePath)) return;
+  if (existsSync(statePath)) return false;
   const parent = path.dirname(agentsPath);
   const head = await git(["rev-parse", "--short", "HEAD"], parent);
   const parentRevision = head.code === 0 ? head.stdout : "no-HEAD";
   const date = new Date().toISOString().slice(0, 10);
   const content = await renderTemplate(toolRoot, "current-state.md", { project, date, parentRevision });
   await writeFile(statePath, content);
+  return true;
 }
 
 export async function writeMemoryFiles(
@@ -65,5 +66,5 @@ export async function writeMemoryFiles(
   branch: string,
 ): Promise<void> {
   await writeReadme(toolRoot, agentsPath, project, branch);
-  await writeCurrentState(toolRoot, agentsPath, project);
+  await ensureCurrentState(toolRoot, agentsPath, project);
 }

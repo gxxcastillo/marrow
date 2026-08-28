@@ -5,9 +5,9 @@ Canonical structure and maintenance rules for `.agents/` directories. Per-projec
 
 ## Purpose
 
-`.agents/` is private per-project working memory: resumption context, plans, deferred
-work, agent guidance, and research records. It is gitignored by the parent repo and
-backed by the private marrow vault as a git worktree.
+`.agents/` is private per-project working memory: resumption context, plan lifecycle,
+deferred work, agent guidance, and research records. It is gitignored by the parent repo
+and backed by the private marrow vault as a git worktree.
 
 Ownership boundary:
 
@@ -16,25 +16,38 @@ Ownership boundary:
 2. Project instructions identify the authoritative sources for accepted requirements,
    contracts, intended behavior, architecture, operational rules, and team policy when
    those sources are not obvious.
-3. `.agents/` owns private working history, progress, plans, investigations, deferred
-   work, working decisions, and resumption context.
+3. `.agents/` owns private working history, progress, plan lifecycle (status,
+   dependencies, discovered work), investigations, deferred work, working decisions, and
+   resumption context.
 4. A task-local decision may remain in `.agents/`. A constraint future contributors
    must honor must be distilled into the appropriate shared source before the work is
    considered complete.
-5. If `.agents/` conflicts with a designated authority, the designated authority wins.
+5. Route by what landing the work would change, not by what the document is called: if
+   finishing work forces an edit to it — progress, status, next step, in-flight
+   sequencing — it is stateful working memory and belongs in `.agents/` or the tracker;
+   if only a changed decision would force an edit, it is stateless and a candidate for
+   promotion under the rule above. Catching yourself editing a committed document
+   because work finished, not because a decision changed, means the document is
+   misplaced. Stateful memory never goes in git; a committed spec stays canonical.
+6. If `.agents/` conflicts with a designated authority, the designated authority wins.
    If code/tests and a designated authority conflict, treat that as a mismatch to
    reconcile; `.agents/` never adjudicates it.
-6. Link from `.agents/` to authoritative material rather than maintaining a second copy
+7. Link from `.agents/` to authoritative material rather than maintaining a second copy
    when practical.
-7. Working history may remain private. Historical rationale needed by the wider project
+8. Working history may remain private. Historical rationale needed by the wider project
    must be distilled into a shared record. Promotion is never a license to quote private
    notes verbatim.
-8. Project instructions designate that project's authorities; `CONVENTION.md` governs
+9. Project instructions designate that project's authorities; `CONVENTION.md` governs
    `.agents/` structure and maintenance. When the two disagree, the project's
    instructions win on authority designation and `CONVENTION.md` wins on `.agents/`
    itself.
-9. Placement, not only precedence: put a rule in the narrowest shared source that
-   everyone who must honor it already reads.
+10. Placement, not only precedence: put a rule in the narrowest shared source that
+    everyone who must honor it already reads.
+11. Audience gate for committed placement: a personal, single-dev project may commit a
+    full stateless work plan and designate it authoritative; a project with external
+    consumers or a team commits only the decisions and contracts that audience must
+    honor, keeping sequencing in `.agents/plans/` with embedded decisions promoted
+    individually as they're made.
 
 Examples of shared sources: specs, schemas, ADRs, docs, issue trackers, code/tests, and
 project instructions. None is required universally, and no rule here assumes a `spec/`
@@ -44,6 +57,12 @@ Promote a decision or its rationale when future contributors must honor or redis
 it. Future need drives promotion — not every planning decision becomes project
 documentation. A procedure in `agent-notes.md` should become a harness skill when it is
 operational enough to reuse.
+
+A substantial plan is two documents fused: the stateless spec of the work (decisions,
+work breakdown, acceptance criteria) and the stateful state of the work (done, next,
+discovered). Split them on landing the same way — content to the project's designated
+shared source, naming one first if none exists yet for plans; lifecycle to
+`.agents/plans/` or the tracker.
 
 ## Parent instruction block
 
@@ -79,9 +98,11 @@ Other files are project-specific. Common choices are:
   discipline.
 - `deferred-items.md` — accepted limitations and deliberately deferred work, each with
   the reason. Remove items once done, encoded upstream, or dropped.
-- `plans/<slug>-plan.md` — optional. Use only for substantial active work. Delete or
-  collapse it when the work lands and any rationale future contributors need has moved
-  up.
+- `plans/<slug>-plan.md` — optional. Holds a plan's stateful half only: status, next
+  step, dependencies, discovered work. Link to the stateless half (decisions, work
+  breakdown, acceptance criteria) in its designated shared source rather than
+  duplicating it here. Use only for substantial active work. Delete or collapse it when
+  the work lands and any rationale future contributors need has moved up.
 - Optional: `analysis/` for dated reviews; `research/` for private research records and
   tools.
 
@@ -98,6 +119,11 @@ Do not use harness-provided per-user memory for project memory except as a point
 - Stamp freshness. `current-state.md` opens with
   `As of YYYY-MM-DD (<parent repo> @<short-sha>)`, refreshed with every content update.
   Use `@no-HEAD` only when the parent has no commit to name.
+- Anchor regenerable evidence. A plan or research record that treats raw output (a
+  rerun, a report file, a sweep) as disposable because it is cheap to regenerate must
+  still name what it depended on — commit/tree-state, config, or data/fixture version —
+  next to the summarized result. Without that anchor, "just rerun it" stops being a
+  checkable claim once the code has moved on.
 - Repair on read. At session start, check the stamp against `git log` (parent repo and
   `.agents/`) before trusting `current-state.md`; if reality has moved past it, reconcile
   before building on it. A clean branch can still be stale, and `current-state.md`,

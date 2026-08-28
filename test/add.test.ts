@@ -578,6 +578,42 @@ describe("add", () => {
     expect(outLines).toContain("Project settings already up to date.");
   });
 
+  test("re-running add creates a missing current-state.md and pushes it", async () => {
+    const projectDir = await makeProjectRepo(fx, "steady", "ignored");
+    const first = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+    expect(first.code).toBe(0);
+    await rm(path.join(projectDir, ".agents", "current-state.md"));
+    const parentHead = (await git(["rev-parse", "--short", "HEAD"], projectDir)).stdout;
+
+    const { code, outLines } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+
+    expect(code).toBe(0);
+    expect(outLines).toContain("Working memory:");
+    expect(outLines).toContain("  .agents/current-state.md created");
+    expect(outLines).toContain("vault: pushed origin/steady");
+    const currentState = await readFile(path.join(projectDir, ".agents", "current-state.md"), "utf8");
+    expect(currentState).toContain(`(steady @${parentHead})`);
+    const rev = await git(["rev-parse", "HEAD"], path.join(projectDir, ".agents"));
+    const remoteRev = await git(["rev-parse", "origin/steady"], path.join(projectDir, ".agents"));
+    expect(remoteRev.stdout).toBe(rev.stdout);
+  });
+
+  test("dry-run re-running add previews a missing current-state.md repair", async () => {
+    const projectDir = await makeProjectRepo(fx, "steady", "ignored");
+    const first = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+    expect(first.code).toBe(0);
+    const statePath = path.join(projectDir, ".agents", "current-state.md");
+    await rm(statePath);
+
+    const { code, outLines } = await captureLogs(() =>
+      addCommand(projectDir, { dryRun: true }, fx.marrowHome, fx.toolRoot),
+    );
+
+    expect(code).toBe(0);
+    expect(outLines).toContain("  .agents/current-state.md would be created");
+    expect(existsSync(statePath)).toBe(false);
+  });
+
   test("refuses to report false success when the worktree at the target path is missing", async () => {
     const projectDir = await makeProjectRepo(fx, "vanished", "ignored");
     const first = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));

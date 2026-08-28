@@ -1,5 +1,18 @@
+import path from "node:path";
+
 export function countLabel(count: number, noun: string, plural = `${noun}s`): string {
   return `${count} ${count === 1 ? noun : plural}`;
+}
+
+export function displayPath(filePath: string, home = process.env.HOME): string {
+  if (!home) return filePath;
+  const resolvedHome = path.resolve(home);
+  const resolvedPath = path.resolve(filePath);
+  if (resolvedPath === resolvedHome) return "~";
+  if (resolvedPath.startsWith(`${resolvedHome}${path.sep}`)) {
+    return `~${path.sep}${path.relative(resolvedHome, resolvedPath)}`;
+  }
+  return filePath;
 }
 
 // Shared by `doctor` and `status`: both walk every attached worktree with a handful

@@ -324,13 +324,20 @@ changed file using paths relative to `<project-path>`. When no setting needs to 
 it prints `Project settings already up to date.` instead. `--dry-run` prints a matching
 `Would update project settings:` block without writing.
 
+For a project that is already managed, live `add` also creates a missing
+`.agents/current-state.md` from `templates/current-state.md`, commits it to that project's
+vault branch with `<project>: add current-state`, and pushes when the vault has an
+`origin`. Existing `current-state.md` files are never overwritten. `--dry-run` prints the
+same existing-attachment summary plus `.agents/current-state.md would be created` without
+writing.
+
 When live `add` changes any parent project file in the instruction or agent memory config
 steps, it prints one final `marrow did not commit these project files.` reminder after
 those sections.
 
 **Success summary.** Successful add modes identify the managed project with three fields:
 `project` is the absolute parent project path, `location` is the absolute `.agents` path,
-and `key` is the stable marrow identity. A no-op existing attachment starts with
+and `key` is the stable marrow identity. An existing attachment starts with
 `<project> is already managed by marrow`. Attaching an existing branch starts with
 `attached <project> to marrow`.
 
@@ -459,8 +466,8 @@ for every attached project may be summarized as one `OK` line. Per-project `FAIL
 | Every registered worktree's directory still exists on disk                                                                                                                                                                    | WARN per missing worktree, naming the path and `marrow detach <branch>` as the remediation |
 | Project branches in the vault with no worktree on this machine are listed by name                                                                                                                                            | Never fails — reported as an `OK` line. Attaching a subset is a deliberate choice, not drift; it is surfaced only because it bounds what `grep` and `status` can see    |
 | Every project worktree's parent repo ignores `.agents` (`git check-ignore -q -- .agents` in the parent dir). A parent directory that is not a git repository at all passes — there is nothing it could commit `.agents/` into | FAIL                                                                                                                                                                    |
-| Every project worktree's parent `AGENTS.md`/`CLAUDE.md` carries the current marrow `.agents` note, recognized the same way `add`'s parent instruction block check recognizes it                                              | WARN per project missing or carrying a stale note, naming the path and `marrow add <project-dir>` as the remediation                                                   |
-| Every project worktree contains the required `current-state.md` resumption record                                                                                                                                            | WARN per project missing the file, naming its expected path and `marrow sync <project>` after creation                                                                  |
+| Every project worktree's parent `AGENTS.md`/`CLAUDE.md` carries the current marrow `.agents` note, recognized the same way `add`'s parent instruction block check recognizes it                                              | WARN per project missing or carrying a stale note, with `marrow add <project-dir>` as the remediation. Home-directory paths in the command may print with `~`            |
+| Every project worktree contains the required `current-state.md` resumption record                                                                                                                                            | WARN per project missing `.agents/current-state.md`, with `marrow sync <project>` after creation                                                                        |
 | `origin` remote is configured on `<MARROW_HOME>/vault.git`                                                                                                                                                                    | WARN if absent                                                                                                                                                          |
 | `origin` is reachable (`git ls-remote origin`; no `--exit-code`, so a reachable remote with zero refs — e.g. before the first `marrow publish` — is not misreported as unreachable) | FAIL if unreachable                                                                                                                                                     |
 | `origin` refs can be refreshed (`git fetch --prune origin`)                                                                                                                                                                   | FAIL if fetch fails                                                                                                                                                     |

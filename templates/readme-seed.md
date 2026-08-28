@@ -5,10 +5,10 @@ rules: `marrow convention` (canonical; this file does not restate it).
 
 ## Ownership
 
-This directory owns private working history, progress, plans, investigations, deferred
-work, working decisions, and resumption context. The project's designated shared sources
-remain authoritative for accepted requirements, contracts, intended behavior, architecture,
-operational rules, and team policy.
+This directory owns private working history, progress, plan lifecycle, investigations,
+deferred work, working decisions, and resumption context. The project's designated shared
+sources remain authoritative for accepted requirements, contracts, intended behavior,
+architecture, operational rules, and team policy.
 
 ## Start here
 
@@ -19,4 +19,6 @@ Other files are optional. Common choices are:
 
 - `agent-notes.md` — private agent-facing working guidance for this repo.
 - `deferred-items.md` — accepted limitations and deferred work, each with the reason.
-- `plans/` — one focused plan file per substantial line of work.
+- `plans/` — one focused plan file per substantial line of work, holding status/next/
+  discovered only; decisions and work breakdown live in the project's designated shared
+  source.

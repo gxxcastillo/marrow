@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, readFile, realpath, utimes, writeFile } from "node:fs/promises";
+import { mkdir, readFile, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { addCommand } from "../src/commands/add";
 import { doctorCommand } from "../src/commands/doctor";
@@ -33,14 +33,15 @@ describe("doctor", () => {
   });
 
   test("warns when required current-state.md is missing", async () => {
-    const agentsPath = await addProjectWorktree(fx, "alpha");
+    await addProjectWorktree(fx, "alpha");
 
     const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
 
     expect(code).toBe(0);
-    const line = outLines.find((item) => item.includes("missing required current-state.md"));
+    const line = outLines.find((item) => item.includes("missing required .agents/current-state.md"));
     expect(line).toStartWith("WARN");
-    expect(line).toContain(path.join(agentsPath, "current-state.md"));
+    expect(line).toContain("alpha: missing required .agents/current-state.md");
+    expect(line).not.toContain(" at ");
     expect(line).toContain("marrow sync alpha");
   });
 
@@ -56,7 +57,8 @@ describe("doctor", () => {
     expect(line).toBeDefined();
     expect(line).toStartWith("WARN");
     expect(line).toContain("alpha");
-    expect(line).toContain(`marrow add ${await realpath(projectDir)}`);
+    expect(line).not.toContain(" at ");
+    expect(line).toContain("marrow add ");
   });
 
   test("warns when a project's marrow .agents note is stale", async () => {
@@ -73,7 +75,8 @@ describe("doctor", () => {
     expect(line).toBeDefined();
     expect(line).toStartWith("WARN");
     expect(line).toContain(`v0 -> v${await currentAgentsBlockVersion(fx.toolRoot)}`);
-    expect(line).toContain(`marrow add ${await realpath(projectDir)}`);
+    expect(line).not.toContain(" at ");
+    expect(line).toContain("marrow add ");
   });
 
   test("shows transient progress without keeping it in final output", async () => {

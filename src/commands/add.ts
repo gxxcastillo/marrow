@@ -4,7 +4,7 @@ import path from "node:path";
 import { ensureAgentMemoryDisabled } from "../agent-config";
 import { resolveIdentity } from "../identity";
 import { git, hasOrigin, listProjectWorktrees, run, vaultDir } from "../git";
-import { writeMemoryFiles } from "../memory-files";
+import { ensureCurrentState, writeMemoryFiles } from "../memory-files";
 import { ensureAgentsBlock, ensureIgnored, gitignoreState, trackedMessage, type IgnoreState } from "../project";
 
 export interface AddOptions { dryRun?: boolean; id?: string }
@@ -71,6 +71,10 @@ async function commitAndPush(t: Target, subject: string, localNote = ""): Promis
   await git(["add", "-A"], t.agentsPath);
   const commit = await git(["commit", "-m", `${t.name}: ${subject}`], t.agentsPath);
   if (commit.code !== 0) throw new AddAbort(`commit failed: ${commit.stderr}`);
+  return pushBranch(t, localNote);
+}
+
+async function pushBranch(t: Target, localNote = ""): Promise<"pushed" | "not-pushed"> {
   if (!(await hasOrigin(t.agentsPath))) return "not-pushed";
   const push = await git(["push", "-u", "origin", t.branch], t.agentsPath);
   if (push.code !== 0) throw new AddAbort(`push failed (commit is local${localNote}): ${push.stderr}`);
@@ -117,9 +121,6 @@ function planAdd(i: AddInspection): AddPlan {
     if (i.worktreeAtTarget.branch !== t.branch) {
       return { kind: "error", message: `${t.agentsPath} is a worktree for '${i.worktreeAtTarget.branch}', not '${t.branch}'` };
     }
-    // The registration matches, but its directory is gone — reporting
-    // "already attached" here would be a false success: nothing would exist
-    // on disk despite the OK exit. detach already owns clearing this state.
     if (i.worktreeAtTarget.missing) {
       return {
         kind: "error",
@@ -197,11 +198,26 @@ async function attach(t: Target, state: IgnoreState, local: boolean, dryRun: boo
   return 0;
 }
 
+async function alreadyAttached(t: Target, dryRun: boolean): Promise<number> {
+  printTarget(`${t.name} is already managed by marrow`, t);
+  if (existsSync(path.join(t.agentsPath, "current-state.md"))) return 0;
+  console.log("");
+  console.log("Working memory:");
+  if (dryRun) { console.log("  .agents/current-state.md would be created"); return 0; }
+  await ensureCurrentState(t.toolRoot, t.agentsPath, t.name);
+  await git(["add", "--", "current-state.md"], t.agentsPath);
+  const commit = await git(["commit", "-m", `${t.name}: add current-state`], t.agentsPath);
+  if (commit.code !== 0) throw new AddAbort(`commit failed: ${commit.stderr}`);
+  console.log("  .agents/current-state.md created");
+  console.log("");
+  printVaultSync(await pushBranch(t), t.branch);
+  return 0;
+}
+
 async function executePlan(plan: AddPlan, dryRun: boolean): Promise<number> {
   switch (plan.kind) {
     case "already-attached":
-      printTarget(`${plan.target.name} is already managed by marrow`, plan.target);
-      return 0;
+      return alreadyAttached(plan.target, dryRun);
     case "adopt":
       return adopt(plan.target, plan.ignoreState, dryRun);
     case "create":

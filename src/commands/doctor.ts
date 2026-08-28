@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { MIN_GIT_MAJOR, MIN_GIT_MINOR, aheadBehind, git, gitTooOld, gitVersion, listProjectWorktrees, splitByMissing, vaultDir } from "../git";
-import { clearProgress, countLabel, showProgress } from "../format";
+import { clearProgress, countLabel, displayPath, showProgress } from "../format";
 import { agentsBlockStatus } from "../project";
 import { originUrl, verifyOriginReachable, verifyPrivateVisibility } from "../remote";
 import { unattachedBranches } from "../vault";
@@ -105,10 +105,10 @@ export async function doctorCommand(marrowHome: string, toolRoot: string): Promi
     if (status.kind === "current") {
       currentAgentsBlocks++;
     } else if (status.kind === "missing") {
-      warn(`${wt.branch}: no marrow .agents note in AGENTS.md or CLAUDE.md at ${projectDir}; run \`marrow add ${projectDir}\` to add it`);
+      warn(`${wt.branch}: no marrow .agents note in AGENTS.md or CLAUDE.md; run \`marrow add ${displayPath(projectDir)}\` to add it`);
     } else {
       const versions = status.files.map((f) => `${path.basename(f.path)} v${f.note.version}`).join(", ");
-      warn(`${wt.branch}: stale marrow .agents note (${versions} -> v${status.currentVersion}) at ${projectDir}; run \`marrow add ${projectDir}\` to update it`);
+      warn(`${wt.branch}: stale marrow .agents note (${versions} -> v${status.currentVersion}); run \`marrow add ${displayPath(projectDir)}\` to update it`);
     }
   }
   if (currentAgentsBlocks === presentWorktrees.length && presentWorktrees.length > 0) {
@@ -122,7 +122,7 @@ export async function doctorCommand(marrowHome: string, toolRoot: string): Promi
       currentStateFiles++;
     } else {
       warn(
-        `${wt.branch}: missing required current-state.md at ${statePath}; create it with an honest As of stamp, then run \`marrow sync ${wt.branch}\``,
+        `${wt.branch}: missing required .agents/current-state.md; create it with an honest As of stamp, then run \`marrow sync ${wt.branch}\``,
       );
     }
   }
