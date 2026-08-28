@@ -1,4 +1,5 @@
 import path from "node:path";
+import { countLabel } from "../format";
 import { aheadBehind, dirtyCount, git, listProjectWorktrees, matchWorktrees, vaultDir } from "../git";
 
 export interface DetachOptions {
@@ -62,7 +63,7 @@ export async function detachCommand(target: string, opts: DetachOptions, marrowH
     console.error(`marrow detach: could not remove worktree: ${removed.stderr}`);
     return 1;
   }
-  const unpushedNote = ab && ab.ahead > 0 ? `, ${ab.ahead} unpushed commit(s) retained on the branch` : "";
+  const unpushedNote = ab && ab.ahead > 0 ? `, ${countLabel(ab.ahead, "unpushed commit")} retained on the branch` : "";
   console.log(`detached '${name}': removed the worktree at ${wt.path}; branch '${wt.branch}' is retained in the vault${unpushedNote}`);
   return 0;
 }

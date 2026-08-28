@@ -36,7 +36,17 @@ describe("detach", () => {
 
     const { code, outLines } = await captureLogs(() => detachCommand("alpha", {}, fx.marrowHome));
     expect(code).toBe(0);
-    expect(outLines[0]).toContain("1 unpushed commit(s) retained on the branch");
+    expect(outLines[0]).toContain("1 unpushed commit retained on the branch");
+  });
+
+  test("pluralizes multiple retained unpushed commits", async () => {
+    const agentsPath = await addProjectWorktree(fx, "alpha");
+    await git(["commit", "--allow-empty", "-q", "-m", "local only 1"], agentsPath);
+    await git(["commit", "--allow-empty", "-q", "-m", "local only 2"], agentsPath);
+
+    const { code, outLines } = await captureLogs(() => detachCommand("alpha", {}, fx.marrowHome));
+    expect(code).toBe(0);
+    expect(outLines[0]).toContain("2 unpushed commits retained on the branch");
   });
 
   test("refuses a dirty worktree with sync-or-discard remediation, leaving it attached", async () => {

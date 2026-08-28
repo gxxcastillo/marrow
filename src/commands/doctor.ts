@@ -137,7 +137,7 @@ export async function doctorCommand(marrowHome: string): Promise<number> {
     if (ab === null) {
       missingOriginRefs.push(wt.branch);
     } else if (ab.ahead > UNPUSHED_WARN_THRESHOLD) {
-      warn(`${wt.branch}: ${ab.ahead} unpushed commit(s)`);
+      warn(`${wt.branch}: ${countLabel(ab.ahead, "unpushed commit")}`);
       tooFarAhead++;
     }
   }
