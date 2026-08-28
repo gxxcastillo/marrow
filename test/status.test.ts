@@ -146,7 +146,9 @@ describe("status", () => {
     expect(code).toBe(0);
     expect(outLines[0]).toBe("1 project: all clean, all synced");
     expect(outLines.at(-3)).toBe("");
-    expect(outLines.at(-2)).toBe("1 project branch not attached here:");
+    expect(outLines.at(-2)).toBe(
+      "1 project branch not attached on this machine (normal — each machine can attach a different subset):",
+    );
     expect(outLines.at(-1)).toBe("  beta");
   });
 
@@ -156,7 +158,9 @@ describe("status", () => {
 
     const { outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
     expect(outLines[0]).toContain("No projects attached on this machine");
-    expect(outLines[1]).toBe("The vault has 2 project branches not attached here:");
+    expect(outLines[1]).toBe(
+      "The vault has 2 project branches not attached on this machine (normal — each machine can attach a different subset):",
+    );
     expect(outLines[2]).toBe("  beta");
     expect(outLines[3]).toBe("  gamma");
   });

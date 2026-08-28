@@ -168,12 +168,14 @@ missing worktrees, uncommitted projects, and sync work remaining.
 
 The table covers attached worktrees only. When the vault holds project branches with no
 worktree here, a blank line and note follow the table — `2 project branches not attached
-here:` with one branch per following indented line — so a partially attached machine is
-not read as a complete view. With zero project worktrees, prints `No projects attached on this machine.
-Run \`marrow add <project-path>\` to get started.` instead, followed by `The vault has
-<n> project branches not attached here:` and one branch per following indented line when
-any exist — an empty vault and an unattached one are different situations and must not
-print the same thing. Always exits `0`.
+on this machine (normal — each machine can attach a different subset):` with one branch
+per following indented line — so a partially attached machine is not read as a complete
+view. With zero project worktrees, prints `No projects attached on this machine. Run
+\`marrow add <project-path>\` to get started.` instead, followed by `The vault has <n>
+project branches not attached on this machine (normal — each machine can attach a
+different subset):` and one branch per following indented line when any exist — an empty
+vault and an unattached one are different situations and must not print the same thing.
+Always exits `0`.
 
 A registered worktree whose directory no longer exists on disk (deleted out from under the
 registration, rather than detached through marrow) still gets a row: `STATUS` prints

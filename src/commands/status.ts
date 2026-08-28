@@ -84,7 +84,8 @@ export async function statusCommand(marrowHome: string): Promise<number> {
   const unattached = await unattachedBranches(vault, worktrees);
   const unattachedNote = unattached.length === 0
     ? ""
-    : `${countLabel(unattached.length, "project branch", "project branches")} not attached here`;
+    : `${countLabel(unattached.length, "project branch", "project branches")} not attached on this machine ` +
+      "(normal — each machine can attach a different subset)";
 
   if (worktrees.length === 0) {
     clearProgress(progressShown, PROGRESS_LINE);
