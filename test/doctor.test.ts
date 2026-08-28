@@ -5,7 +5,7 @@ import { addCommand } from "../src/commands/add";
 import { doctorCommand } from "../src/commands/doctor";
 import { git, vaultDir } from "../src/git";
 import { addProjectWorktree, addUnattachedBranch, deleteWorktreeDir, makeFixture, makeProjectRepo, type Fixture } from "./fixtures";
-import { captureLogs } from "./helpers";
+import { captureLogs, currentAgentsBlockVersion } from "./helpers";
 
 describe("doctor", () => {
   let fx: Fixture;
@@ -59,7 +59,7 @@ describe("doctor", () => {
     const line = outLines.find((l) => l.includes("stale marrow .agents note"));
     expect(line).toBeDefined();
     expect(line).toStartWith("WARN");
-    expect(line).toContain("v0 -> v1");
+    expect(line).toContain(`v0 -> v${await currentAgentsBlockVersion(fx.toolRoot)}`);
     expect(line).toContain(`marrow add ${await realpath(projectDir)}`);
   });
 

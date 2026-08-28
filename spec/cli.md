@@ -290,11 +290,13 @@ as a precondition failure (see the state table below). A parent that already **t
 **Parent instruction block (successful and dry-run paths).** After any successful add
 mode, including a no-op result for a project marrow already manages, `add` checks
 `<project>/AGENTS.md` and `<project>/CLAUDE.md`. The canonical block ends with a
-right-aligned version tag, a note block that starts with `> [!Note]` followed by
-`Agent memory` text and ends with a line like `> <p align="right">v1</p>`
+right-aligned version tag, a note block that starts with `> [!Note]`, contains a markdown
+link to `.agents/README.md`, and ends with a line like `> <p align="right">v1</p>`
 (case-insensitive `v`, one or more dot-separated numeric groups, so older dotted versions
 like `V2.3.2` are recognized too) — any note matching that shape is recognized regardless
-of the wording around it. A recognized note whose version matches the current
+of the wording around it. Anchoring on the link rather than the headline text means a
+future wording change doesn't need a widened regex. A recognized note whose version
+matches the current
 `templates/agents-block.md` version is left unchanged. A recognized note carrying any
 other version is stale: live `add` replaces just that note in place with the current
 template text, leaving the rest of the file untouched, and prints `Project
@@ -310,8 +312,8 @@ phrasing matching which case applies, without writing.
 
 **Parent agent memory config (successful and dry-run paths).** After any successful add
 mode, including a no-op result for a project marrow already manages, `add` disables
-agent-managed memory in parent project config files so `.agents/` remains the durable
-working-memory channel. It writes `<project>/.codex/config.toml` with
+agent-managed memory in parent project config files so `.agents/` remains the
+marrow-managed persistent working-memory channel. It writes `<project>/.codex/config.toml` with
 `[features] memories = false`, `[memories] use_memories = false`, and
 `[memories] generate_memories = false`. It writes `<project>/.claude/settings.json` with
 `"autoMemoryEnabled": false`. Existing files are updated in place and unrelated keys are

@@ -4,6 +4,9 @@ marrow privately versions and syncs per-project agent working memory without put
 memory in each project's own git history. Adopted projects get a vault-backed worktree
 for their local memory directory, one private branch per project.
 
+marrow preserves private working memory. It does not define or replace a project's
+shared sources of truth.
+
 This repo is the CLI tool. The vault is a separate repo under `MARROW_HOME` (default
 `~/.marrow`) that holds the memory branches and must stay **private**. See
 `spec/architecture.md` → "Two repos: tool and vault" for the full design, including the

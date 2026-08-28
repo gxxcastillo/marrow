@@ -3,10 +3,19 @@
 Purpose: route agents to this project's working memory quickly. Structure and maintenance
 rules: `marrow convention` (canonical; this file does not restate it).
 
+## Ownership
+
+This directory owns private working history, progress, plans, investigations, deferred
+work, working decisions, and resumption context. The project's designated shared sources
+remain authoritative for accepted requirements, contracts, intended behavior, architecture,
+operational rules, and team policy.
+
 ## Start here
+
+Examples established by the default convention — keep what's useful, drop what isn't:
 
 - `current-state.md` — shortest resumption context: what landed most recently, where it
   lives, the next step.
-- `agent-notes.md` — durable agent-facing working guidance for this repo.
+- `agent-notes.md` — private agent-facing working guidance for this repo.
 - `deferred-items.md` — accepted limitations and deferred work, each with the reason.
 - `plans/` — one focused plan file per substantial line of work.

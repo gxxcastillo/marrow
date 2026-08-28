@@ -9,23 +9,43 @@ async function template(toolRoot: string, name: string, substitutions: Record<st
   return content;
 }
 
-// Creates README.md from the seed template if absent, then appends the
-// persistence block (both templates substituted with the project name).
+const FENCED_PERSISTENCE_RE = /<!-- marrow:persistence-block v[\d.]+ -->[\s\S]*?<!-- \/marrow:persistence-block -->\n?/;
+// Predates the fences (`8b15633`); every project adopted before then ends its README
+// with this heading instead. Migrated once, in place, the same as a fenced block.
+const TRAILING_PERSISTENCE_SECTION_RE = /^## Persistence\n[\s\S]*$/m;
+
+function replacePersistenceSection(existing: string, match: RegExpExecArray, block: string): string {
+  const before = existing.slice(0, match.index).replace(/\n+$/, "");
+  const after = existing.slice(match.index + match[0].length).replace(/^\n+/, "");
+  return after.length > 0 ? `${before}\n\n${block}\n\n${after}\n` : `${before}\n\n${block}\n`;
+}
+
+// Creates README.md from the seed template if absent, then writes the persistence
+// block (substituted with the project name). An existing block is replaced in place —
+// a fenced block outright, or a one-time migration of the unfenced trailing
+// `## Persistence` section every project adopted before the fences shipped ends with —
+// rather than appended a second time.
 // `toolRoot` is the running tool's own install location, resolved
 // independently of MARROW_HOME — see spec/architecture.md -> "Env overrides".
 export async function writeReadme(toolRoot: string, agentsPath: string, project: string, branch: string): Promise<void> {
   const substitutions = { project, branch };
-  const block = await template(toolRoot, "persistence-block.md", substitutions);
+  const rawBlock = await template(toolRoot, "persistence-block.md", substitutions);
   const readmePath = path.join(agentsPath, "README.md");
 
   if (!existsSync(readmePath)) {
-    await writeFile(readmePath, `${await template(toolRoot, "readme-seed.md", substitutions)}\n${block}`);
+    await writeFile(readmePath, `${await template(toolRoot, "readme-seed.md", substitutions)}\n${rawBlock}`);
     return;
   }
 
   const existing = await readFile(readmePath, "utf8");
+  const match = FENCED_PERSISTENCE_RE.exec(existing) ?? TRAILING_PERSISTENCE_SECTION_RE.exec(existing);
+  if (match) {
+    await writeFile(readmePath, replacePersistenceSection(existing, match, normalizedBlock(rawBlock)));
+    return;
+  }
+
   const sep = existing.endsWith("\n\n") ? "" : existing.endsWith("\n") ? "\n" : "\n\n";
-  await writeFile(readmePath, `${existing}${sep}${block}`);
+  await writeFile(readmePath, `${existing}${sep}${rawBlock}`);
 }
 
 export async function agentsBlock(toolRoot: string, project: string): Promise<string> {
@@ -36,10 +56,14 @@ function normalizedBlock(content: string): string {
   return content.replaceAll("\r\n", "\n").trim();
 }
 
+// Anchored on the `[!NOTE]` opener, the link to `.agents/README.md`, and the trailing
+// version tag — not on headline bold text, which drifts with wording (v1's "Agent
+// memory" vs v2's "Agent working memory"). The link target is a stable filesystem fact,
+// so prose between the anchors can change freely without stranding recognition.
 const AGENTS_NOTE_RE =
-  /^> \[!note\]\s*\n> \s*\*\*Agent memory:\*\*[\s\S]*?^> <p align="right">v(\d+(?:\.\d+)*)<\/p>\s*$/im;
+  /^> \[!note\][\s\S]*?\[`\.agents\/README\.md`\]\(\.agents\/README\.md\)[\s\S]*?^> <p align="right">v(\d+(?:\.\d+)*)<\/p>\s*$/im;
 
-function findAgentsNote(content: string): { index: number; length: number; version: string } | undefined {
+export function findAgentsNote(content: string): { index: number; length: number; version: string } | undefined {
   const match = AGENTS_NOTE_RE.exec(content);
   return match ? { index: match.index, length: match[0].length, version: match[1] } : undefined;
 }
@@ -69,9 +93,10 @@ export type AgentsBlockStatus =
       files: StaleAgentsBlockFile[];
     };
 
-// Recognizes the canonical note by its trailing version tag regardless of wording
-// changes around it, so a template edit doesn't strand every already-adopted project
-// with a permanently "unrecognized" block.
+// Recognizes the canonical note by its opener, its link to `.agents/README.md`, and its
+// trailing version tag, regardless of prose wording changes elsewhere in the note, so a
+// template edit doesn't strand every already-adopted project with a permanently
+// "unrecognized" block.
 export async function agentsBlockStatus(toolRoot: string, projectDir: string, project: string): Promise<AgentsBlockStatus> {
   const block = normalizedBlock(await agentsBlock(toolRoot, project));
   const currentVersion = findAgentsNote(block)?.version;

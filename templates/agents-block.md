@@ -1,5 +1,5 @@
 > [!NOTE]
-> **Agent memory:** Read [`.agents/README.md`](.agents/README.md) before non-trivial
-> work. It indexes private working notes. Update `.agents/` as plans, findings, and
-> decisions change.
-> <p align="right">v1</p>
+> **Agent working memory:** Read [`.agents/README.md`](.agents/README.md) before
+> non-trivial work and keep it current as the work changes. It holds private working
+> state; it does not replace the project's designated shared sources of truth.
+> <p align="right">v2</p>

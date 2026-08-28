@@ -5,7 +5,7 @@ import path from "node:path";
 import { addCommand } from "../src/commands/add";
 import { git, listProjectWorktrees, vaultDir } from "../src/git";
 import { addProjectWorktree, makeFixture, makeProjectRepo, type Fixture } from "./fixtures";
-import { captureLogs, listFilesRecursive } from "./helpers";
+import { captureLogs, currentAgentsBlockVersion, currentPersistenceBlockVersion, listFilesRecursive } from "./helpers";
 
 const branch = (name: string) => name;
 
@@ -45,7 +45,7 @@ describe("add", () => {
       expect(worktrees.map((w) => w.branch)).toContain(branch("alpha"));
 
       const readme = await readFile(path.join(agentsPath, "README.md"), "utf8");
-      expect(readme).toContain("<!-- marrow:persistence-block v1 -->");
+      expect(readme).toContain(`<!-- marrow:persistence-block v${await currentPersistenceBlockVersion(fx.toolRoot)} -->`);
       expect(readme).toContain("## Persistence");
       expect(readme).toContain(`branch: \`${branch("alpha")}\``);
 
@@ -173,7 +173,7 @@ describe("add", () => {
       expect(output).toContain("AGENTS.md                 1 existing .agents reference found; review for inconsistent guidance");
       expect(outLines.filter((line) => line === "marrow did not commit these project files.")).toHaveLength(1);
       expect(agents).toStartWith("> [!NOTE]");
-      expect(agents).toContain('> <p align="right">v1</p>');
+      expect(agents).toContain(`> <p align="right">v${await currentAgentsBlockVersion(fx.toolRoot)}</p>`);
       expect(agents).toContain("Read .agents/README.md first.");
     });
 
@@ -282,7 +282,7 @@ describe("add", () => {
       await Bun.write(path.join(projectDir, "AGENTS.md"), agentsContent);
       await Bun.write(path.join(projectDir, "CLAUDE.md"), [
         "> [!Note]",
-        "> **Agent memory:** Read `.agents/README.md` before work.",
+        "> **Agent memory:** Read [`.agents/README.md`](.agents/README.md) before work.",
         "> Keep `.agents/` current.",
         "> <p align=\"right\">v10.20.30.40</p>",
         "",
@@ -303,7 +303,7 @@ describe("add", () => {
         true,
       );
       expect(agents).toBe(agentsContent);
-      expect(claude).toContain('> <p align="right">v1</p>');
+      expect(claude).toContain(`> <p align="right">v${await currentAgentsBlockVersion(fx.toolRoot)}</p>`);
       expect(claude).not.toContain("v10.20.30.40");
       expect(claude).toContain("# Claude Guidance");
     });
@@ -325,7 +325,7 @@ describe("add", () => {
       const projectDir = await makeProjectRepo(fx, "old-note-block", "ignored");
       await Bun.write(path.join(projectDir, "AGENTS.md"), [
         "> [!Note]",
-        "> **Agent memory:** Read `.agents/README.md` before work.",
+        "> **Agent memory:** Read [`.agents/README.md`](.agents/README.md) before work.",
         "> Keep `.agents/` current.",
         "> <p align=\"right\">v10.20.30.40</p>",
         "",
@@ -341,7 +341,7 @@ describe("add", () => {
 
       expect(code).toBe(0);
       expect(outLines.join("\n")).toContain("Project instructions:");
-      expect(outLines.join("\n")).toContain("would update marrow .agents note (v10.20.30.40 -> v1)");
+      expect(outLines.join("\n")).toContain(`would update marrow .agents note (v10.20.30.40 -> v${await currentAgentsBlockVersion(fx.toolRoot)})`);
       expect(outLines.join("\n")).toContain("AGENTS.md                 2 existing .agents references found; review for inconsistent guidance");
       expect(agents).toBe(before);
     });
@@ -350,7 +350,7 @@ describe("add", () => {
       const projectDir = await makeProjectRepo(fx, "old-note-block", "ignored");
       await Bun.write(path.join(projectDir, "AGENTS.md"), [
         "> [!Note]",
-        "> **Agent memory:** Read `.agents/README.md` before work.",
+        "> **Agent memory:** Read [`.agents/README.md`](.agents/README.md) before work.",
         "> Keep `.agents/` current.",
         "> <p align=\"right\">v10.20.30.40</p>",
         "",
@@ -362,14 +362,40 @@ describe("add", () => {
         addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
       );
       const agents = await readFile(path.join(projectDir, "AGENTS.md"), "utf8");
+      const currentVersion = await currentAgentsBlockVersion(fx.toolRoot);
 
       expect(code).toBe(0);
       expect(outLines.join("\n")).toContain("Project instructions:");
-      expect(outLines.join("\n")).toContain("marrow .agents note updated (v10.20.30.40 -> v1)");
+      expect(outLines.join("\n")).toContain(`marrow .agents note updated (v10.20.30.40 -> v${currentVersion})`);
       expect(outLines.join("\n")).toContain("AGENTS.md                 2 existing .agents references found; review for inconsistent guidance");
       expect(outLines).toContain("marrow did not commit these project files.");
-      expect(agents).toContain('> <p align="right">v1</p>');
+      expect(agents).toContain(`> <p align="right">v${currentVersion}</p>`);
       expect(agents).not.toContain("v10.20.30.40");
+      expect(agents).toContain("# Existing Guidance");
+    });
+
+    test("upgrades a real historical v1 note to the current version", async () => {
+      const projectDir = await makeProjectRepo(fx, "historical-v1", "ignored");
+      await Bun.write(path.join(projectDir, "AGENTS.md"), [
+        "> [!NOTE]",
+        "> **Agent memory:** Read [`.agents/README.md`](.agents/README.md) before non-trivial",
+        "> work. It indexes private working notes. Update `.agents/` as plans, findings, and",
+        "> decisions change.",
+        "> <p align=\"right\">v1</p>",
+        "",
+        "# Existing Guidance",
+        "",
+      ].join("\n"));
+
+      const { code, outLines } = await captureLogs(() =>
+        addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
+      );
+      const agents = await readFile(path.join(projectDir, "AGENTS.md"), "utf8");
+      const currentVersion = await currentAgentsBlockVersion(fx.toolRoot);
+
+      expect(code).toBe(0);
+      expect(outLines.join("\n")).toContain(`marrow .agents note updated (v1 -> v${currentVersion})`);
+      expect(agents).toContain(`> <p align="right">v${currentVersion}</p>`);
       expect(agents).toContain("# Existing Guidance");
     });
 
@@ -420,8 +446,14 @@ describe("add", () => {
 
       const readme = await readFile(path.join(agentsPath, "README.md"), "utf8");
       expect(readme).toContain("freshproj");
-      expect(readme).toContain("<!-- marrow:persistence-block v1 -->");
+      expect(readme).toContain(`<!-- marrow:persistence-block v${await currentPersistenceBlockVersion(fx.toolRoot)} -->`);
       expect(readme).toContain("## Persistence");
+      expect(readme).toContain("## Ownership");
+      expect(readme).toContain("remain authoritative for accepted requirements");
+
+      const agentsMd = await readFile(path.join(projectDir, "AGENTS.md"), "utf8");
+      expect(agentsMd).toStartWith("> [!NOTE]");
+      expect(agentsMd).toContain(`> <p align="right">v${await currentAgentsBlockVersion(fx.toolRoot)}</p>`);
 
       const worktrees = await listProjectWorktrees(vaultDir(fx.marrowHome));
       expect(worktrees.map((w) => w.branch)).toContain("local/freshproj");

@@ -1,3 +1,9 @@
+> [!NOTE]
+> **Agent working memory:** Read [`.agents/README.md`](.agents/README.md) before
+> non-trivial work and keep it current as the work changes. It holds private working
+> state; it does not replace the project's designated shared sources of truth.
+> <p align="right">v2</p>
+
 # AGENTS.md — orientation for agents working on marrow
 
 Read this first, then `README.md` (what marrow is), then `spec/README.md` for how marrow
@@ -47,11 +53,8 @@ with* marrow, not to marrow's own behavior:
 
 ## Working memory
 
-Project working memory belongs in `.agents/` when that directory is present. Structure and
-maintenance rules are `marrow convention`. Write notes there, not into the tool repo — this
-repo carries code, spec, `CONVENTION.md`, `README.md` and this file, and nothing that
-tracks private status or work in flight. Updating `.agents/` is part of finishing each
-task, not a wrap-up chore: when work lands or a decision is made, update
-`current-state.md` in the same step and run `marrow sync marrow -m "<summary>"`. On
-session start, check that file's `As of` stamp against `git log` and reconcile if stale.
-Do not use a harness-provided per-user memory store for this project.
+Updating `.agents/` is part of finishing each task, not a wrap-up chore: when work lands
+or a decision is made, update `current-state.md` in the same step and run `marrow sync
+marrow -m "<summary>"`. On session start, check that file's `As of` stamp against `git
+log` and reconcile if stale. Do not use a harness-provided per-user memory store for this
+project.
