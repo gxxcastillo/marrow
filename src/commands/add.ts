@@ -4,7 +4,7 @@ import path from "node:path";
 import { ensureAgentMemoryDisabled } from "../agent-config";
 import { resolveIdentity } from "../identity";
 import { git, hasOrigin, listProjectWorktrees, run, vaultDir } from "../git";
-import { ensureCurrentState, writeMemoryFiles } from "../memory-files";
+import { ensureCurrentState, hasCurrentState, writeMemoryFiles } from "../memory-files";
 import { ensureAgentsBlock, ensureIgnored, gitignoreState, trackedMessage, type IgnoreState } from "../project";
 
 export interface AddOptions { dryRun?: boolean; id?: string }
@@ -200,7 +200,7 @@ async function attach(t: Target, state: IgnoreState, local: boolean, dryRun: boo
 
 async function alreadyAttached(t: Target, dryRun: boolean): Promise<number> {
   printTarget(`${t.name} is already managed by marrow`, t);
-  if (existsSync(path.join(t.agentsPath, "current-state.md"))) return 0;
+  if (hasCurrentState(t.agentsPath)) return 0;
   console.log("");
   console.log("Working memory:");
   if (dryRun) { console.log("  .agents/current-state.md would be created"); return 0; }
