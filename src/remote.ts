@@ -38,8 +38,13 @@ export async function configureOriginFetch(vault: string): Promise<void> {
   if (res.code !== 0) throw new Error(`could not configure origin fetch: ${res.stderr}`);
 }
 
+// No `--exit-code`: git defines that flag to exit 2 when the remote has zero refs,
+// which is indistinguishable from unreachable — a freshly created, still-empty
+// remote (exactly what `init --from` points at before the first publish) would
+// otherwise report as unreachable with no elaborating message. Plain `ls-remote`
+// exits non-zero only when the connection itself fails.
 export async function verifyOriginReachable(vault: string): Promise<void> {
-  const res = await run("git", ["ls-remote", "--exit-code", "origin"], vault);
+  const res = await run("git", ["ls-remote", "origin"], vault);
   if (res.code !== 0) throw new Error(`origin is not reachable: ${res.stderr || res.stdout}`);
 }
 

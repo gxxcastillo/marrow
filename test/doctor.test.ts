@@ -144,6 +144,17 @@ describe("doctor", () => {
     expect(outLines.some((l) => l.startsWith("FAIL") && l.includes("does not ignore"))).toBe(true);
   });
 
+  test("passes origin reachability for a configured origin nothing has been pushed to yet", async () => {
+    // fx's vault.git origin (fx.bareOrigin) is a real, reachable bare repo that
+    // makeFixture never pushes to — exactly a freshly created GitHub repo before
+    // the first `marrow publish`. `git ls-remote --exit-code` used to treat its
+    // zero refs as "unreachable"; plain `ls-remote` correctly reports it as fine.
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
+    expect(code).toBe(0);
+    expect(outLines.some((l) => l.startsWith("FAIL"))).toBe(false);
+    expect(outLines).toContain("OK    origin is reachable");
+  });
+
   test("warns when there is no origin remote", async () => {
     await addProjectWorktree(fx, "alpha");
     await git(["remote", "remove", "origin"], vaultDir(fx.marrowHome));

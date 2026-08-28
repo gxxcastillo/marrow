@@ -217,6 +217,22 @@ describe("remote lifecycle", () => {
     expect(await fetchedOriginBranches(vaultDir(fx.marrowHome))).toEqual(["remote"]);
   });
 
+  test("init --from succeeds against a reachable but still-empty remote", async () => {
+    restoreEnv = await hideGhButKeepGit(fx);
+    const freshHome = path.join(fx.root, "fresh-home");
+
+    // fx.bareOrigin is a real, reachable bare repo that nothing has pushed to yet
+    // (e.g. a freshly created GitHub repo before the first `marrow publish`). Plain
+    // `ls-remote` still succeeds against it; only `--exit-code` would misreport this
+    // as unreachable, since it treats "zero matching refs" as failure.
+    const { code, outLines } = await captureLogs(() => initCommand(freshHome, { from: fx.bareOrigin }));
+
+    expect(code).toBe(0);
+    expect(outLines).toContain(`cloned vault from ${fx.bareOrigin}`);
+    expect(outLines).toContain("fetched 0 project branches");
+    expect(await originUrl(vaultDir(freshHome))).toBe(fx.bareOrigin);
+  });
+
   test("init --from refuses existing origin and populated local vaults before mutation", async () => {
     let res = await captureLogs(() => initCommand(fx.marrowHome, { from: fx.bareOrigin }));
     expect(res.code).toBe(1);
