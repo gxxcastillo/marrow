@@ -275,6 +275,49 @@ fresh path appends even when `<project-path>` is not a git repository yet, so th
 as a precondition failure (see the state table below). A parent that already **tracks**
 `.agents/` in its index aborts on either path, with the untracking steps printed.
 
+**Parent instruction block (successful and dry-run paths).** After any successful add
+mode, including a no-op result for a project marrow already manages, `add` checks
+`<project>/AGENTS.md` and `<project>/CLAUDE.md`. The canonical block ends with a
+right-aligned version tag, a note block that starts with `> [!Note]` followed by
+`Agent memory` text and ends with a line like `> <p align="right">v1</p>`
+(case-insensitive `v`, one or more dot-separated numeric groups, so older dotted versions
+like `V2.3.2` are recognized too) — any note matching that shape is recognized regardless
+of the wording around it. A recognized note whose version matches the current
+`templates/agents-block.md` version is left unchanged. A recognized note carrying any
+other version is stale: live `add` replaces just that note in place with the current
+template text, leaving the rest of the file untouched, and prints `Project
+instructions:`, an indented relative path, and `marrow .agents note updated (v<old> ->
+v<new>)`. When neither file has a recognized note at all, live `add` instead prepends the
+current block to `AGENTS.md` when it exists, otherwise to `CLAUDE.md` when it exists,
+otherwise to a new `AGENTS.md`, printing `marrow .agents note added`. If either checked
+file already contains `.agents` references, it prints one count row per file, such as
+`2 existing .agents references found; review for inconsistent guidance`. Arbitrary
+`.agents` prose with no recognized note is never interpreted as an agents block.
+`--dry-run` prints the same target and review note, with `would update`/`would add`
+phrasing matching which case applies, without writing.
+
+**Parent agent memory config (successful and dry-run paths).** After any successful add
+mode, including a no-op result for a project marrow already manages, `add` disables
+agent-managed memory in parent project config files so `.agents/` remains the durable
+working-memory channel. It writes `<project>/.codex/config.toml` with
+`[features] memories = false`, `[memories] use_memories = false`, and
+`[memories] generate_memories = false`. It writes `<project>/.claude/settings.json` with
+`"autoMemoryEnabled": false`. Existing files are updated in place and unrelated keys are
+preserved. The live command prints `Updated project settings:`, one indented line per
+changed file using paths relative to `<project-path>`. When no setting needs to change,
+it prints `Project settings already up to date.` instead. `--dry-run` prints a matching
+`Would update project settings:` block without writing.
+
+When live `add` changes any parent project file in the instruction or agent memory config
+steps, it prints one final `marrow did not commit these project files.` reminder after
+those sections.
+
+**Success summary.** Successful add modes identify the managed project with three fields:
+`project` is the absolute parent project path, `location` is the absolute `.agents` path,
+and `key` is the stable marrow identity. A no-op existing attachment starts with
+`<project> is already managed by marrow`. Attaching an existing branch starts with
+`attached <project> to marrow`.
+
 ### Adopting an existing `.agents/`
 
 **Preconditions** (checked before anything is written; first failure aborts with a message
@@ -294,9 +337,10 @@ on stderr and exit `1`, `--dry-run` included):
 | not a git repository                 | **abort**           | reports that the parent directory isn't a git repo                                                                                                                                                                                |
 
 **`--dry-run`**: runs preconditions and the `.gitignore`-state check (reporting what it
-_would_ append, without writing), then prints the six numbered steps below with resolved
-paths, and exits `0`. Nothing is written to disk in either the project directory or the
-vault — safe to run against a real project.
+_would_ append, without writing), prints `would add <project> to marrow` with `project`,
+`location`, and `key` fields, prints the planned adopt mode, then runs the parent config
+checks described above and exits `0`. Nothing is written to disk in either the project
+directory or the vault — safe to run against a real project.
 
 **Live run**, once preconditions pass:
 
@@ -306,16 +350,21 @@ vault — safe to run against a real project.
 4. **Restore contents.** Every entry under `.agents.pre-marrow/` — including dotfiles — is moved into the new (currently empty) worktree, then `.agents.pre-marrow` is removed.
 5. **README.** `templates/persistence-block.md` (`{{project}}` substituted, read from the tool's own install location) is appended to `.agents/README.md`; if no `README.md` existed, one is created first from `templates/readme-seed.md`.
 6. **Commit and push.** `git add -A`, commit `<project>: adopt into marrow`. If the vault has no `origin` remote, the commit is left local; otherwise `git push -u origin <project>`.
+7. **Parent config.** Update the parent project's Codex and Claude Code memory config
+   files, then the parent instruction block described above. These files are parent-repo
+   changes; marrow prints that the user must commit them.
 
-**Verification.** After the push (or the no-origin notice) succeeds, a recursive file-count/size snapshot of the new
-worktree (excluding `.git`) is compared against the snapshot taken before step 1. If the
-after-count or after-size is _smaller_ than before, the commit (and push, if any) have already
-happened, but the command prints a `WARNING possible content loss` naming the backup
-tarball and exits `1` — a human needs to look. Otherwise it prints the add result with
-before/after counts and sizes, the backup path, then `pushed: origin/<project>` or `not
-pushed: vault has no origin`, and exits `0`. The persistence-block append and README
-creation account for the normal small size increase; the count only decreases in an actual
-loss.
+**Verification.** After the push (or the no-origin notice) succeeds, a recursive
+file-count/size snapshot of the new worktree (excluding `.git`) is compared against the
+snapshot taken before step 1. If the after-count or after-size is _smaller_ than before,
+the commit (and push, if any) have already happened, but the command prints a `WARNING
+possible content loss` naming the backup tarball and exits `1` — a human needs to look.
+Otherwise it prints `added <project> to marrow` with `project`, `location`, and `key`
+fields; an `Adopted existing .agents` block with the backup path, `files: <before>
+before, <after> after`, and `size: <before>B before, <after>B after`; then `vault: pushed
+origin/<project>` or `vault: not pushed (no origin configured)`,
+and exits `0`. The persistence-block append and README creation account for the normal
+small size increase; the count only decreases in an actual loss.
 
 **Exit codes.** `2` (from `marrow` dispatch): missing `<project-path>` argument. `1`: any
 precondition failure, backup failure, worktree-creation failure, commit/push failure, or a
@@ -328,13 +377,15 @@ does not exist. Otherwise: creates the
 project directory if needed, runs the same worktree-creation, README-seeding (from
 `templates/readme-seed.md`, read from the tool's own install location — there is no prior
 README to append to), and commit/push steps as the adopt path (steps 3, 5, 6 above), plus
-the shared `.gitignore` handling described above — which here runs against a directory
-that may have just been created and need not be a git repo at all. The commit message is
-`<project>: init via marrow add`. There is no backup step — there is
+the shared `.gitignore` handling and parent config step described above — which here runs
+against a directory that may have just been created and need not be a git repo at all. The
+commit message is `<project>: init via marrow add`. There is no backup step — there is
 nothing to back up. As with adopt, a missing `origin` remote on the vault leaves the commit
-local and reports `not pushed: vault has no origin` after the add result. `--dry-run`
-reports the `.gitignore` step it would take, then prints the three steps with resolved
-paths, and exits `0` without touching disk. Exit `2` on a missing
+local and reports `vault: not pushed (no origin configured)` after the add result.
+`--dry-run` reports the `.gitignore` and parent config steps it would take, prints the
+same `project`, `location`, and `key` fields with `plan: create new .agents`, then runs
+the parent instruction-block check described above and exits `0` without touching disk.
+Exit `2` on a missing
 `<project-path>` argument, `1` on the branch-exists failure above or a
 worktree/commit/push failure, `0` on success.
 

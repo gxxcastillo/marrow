@@ -1,3 +1,4 @@
+<!-- marrow:persistence-block v1 -->
 ## Persistence
 
 This directory is a git worktree of the private marrow vault (branch: `{{branch}}`).
@@ -10,3 +11,4 @@ It is never committed to the parent repo. Convention: `marrow convention`.
   reconcile before building on stale state.
 - Edit files in place; git history replaces inline correction narrative.
 - `marrow status` shows unsynced changes; `marrow doctor` checks the setup.
+<!-- /marrow:persistence-block -->

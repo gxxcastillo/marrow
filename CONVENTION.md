@@ -21,6 +21,26 @@ fits:
 Promote durable rationale upward when work lands. A procedure in `agent-notes.md` should
 become a harness skill when it is operational enough to reuse.
 
+## Parent instruction block
+
+Every committed parent instruction file that points at `.agents/` uses this canonical
+block. The source template is `templates/agents-block.md`. A material wording change
+updates the template and tests in the same commit.
+
+```markdown
+> [!NOTE]
+> **Agent memory:** Read [`.agents/README.md`](.agents/README.md) before non-trivial
+> work. It indexes private working notes. Update `.agents/` as plans, findings, and
+> decisions change.
+> <p align="right">v1</p>
+```
+
+This text is strict-verbatim; project-specific policy lives outside this block. The
+version tag on the last line is what `add` keys off: a note ending in the current version
+is left alone, a note ending in any other version is stale and gets replaced in place with
+the current text, and prose with no recognizable note at all is treated as missing.
+Bump the version whenever the wording changes.
+
 ## Files
 
 - `README.md` — routing guide only, plus the Persistence block.
@@ -60,6 +80,7 @@ Do not use harness-provided per-user memory for project memory except as a point
 Every `.agents/README.md` ends with this block, substituting the project name:
 
 ```markdown
+<!-- marrow:persistence-block v1 -->
 ## Persistence
 
 This directory is a git worktree of the private marrow vault (branch: `<project>`).
@@ -72,4 +93,5 @@ It is never committed to the parent repo. Convention: `marrow convention`.
   reconcile before building on stale state.
 - Edit files in place; git history replaces inline correction narrative.
 - `marrow status` shows unsynced changes; `marrow doctor` checks the setup.
+<!-- /marrow:persistence-block -->
 ```

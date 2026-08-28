@@ -110,7 +110,7 @@ export async function hasOrigin(cwd: string): Promise<boolean> {
 // `git worktree add --orphan` — the mechanism behind every adopted project
 // (`commands/add.ts`, `vault.ts`) — landed in git 2.42. Older git runs `init`
 // fine and then fails on the first `add`, so this is checked up front by
-// `bin/install` and re-checked by `doctor`.
+// `bin/setup` and re-checked by `doctor`.
 export const MIN_GIT_MAJOR = 2;
 export const MIN_GIT_MINOR = 42;
 

@@ -15,8 +15,21 @@ This repo is the CLI tool. The vault is a separate repo under `MARROW_HOME` (def
 
 ## Install
 
+Without a local checkout:
+
 ```
-bin/install
+curl -fsSL https://raw.githubusercontent.com/gxxcastillo/marrow/main/bin/install | bash
+```
+
+Clones the tool to `~/.local/share/marrow`, then runs the step below. Safe to re-run —
+it updates the existing clone in place. `bin/uninstall` reverses it: removes the clone
+and its `~/.local/bin/marrow` symlink, but leaves the vault (your project data)
+untouched.
+
+With a local checkout:
+
+```
+bin/setup
 ```
 
 Symlinks `bin/marrow` onto `~/.local/bin` and creates the vault at `MARROW_HOME`

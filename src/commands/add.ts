@@ -1,9 +1,10 @@
 import { existsSync } from "node:fs";
 import { mkdir, readdir, rename, rmdir, stat } from "node:fs/promises";
 import path from "node:path";
+import { ensureAgentMemoryDisabled } from "../agent-config";
 import { resolveIdentity } from "../identity";
 import { git, hasOrigin, listProjectWorktrees, run, vaultDir } from "../git";
-import { ensureIgnored, gitignoreState, trackedMessage, writeReadme, type IgnoreState } from "../project";
+import { ensureAgentsBlock, ensureIgnored, gitignoreState, trackedMessage, writeReadme, type IgnoreState } from "../project";
 
 export interface AddOptions { dryRun?: boolean; id?: string }
 class AddAbort extends Error {}
@@ -25,6 +26,17 @@ type AddPlan =
   | { kind: "create"; target: Target; ignoreState: IgnoreState }
   | { kind: "attach"; target: Target; ignoreState: IgnoreState; localBranch: boolean }
   | { kind: "error"; message: string };
+
+function printTarget(heading: string, t: Target): void {
+  console.log(heading);
+  console.log(`  project:  ${t.projectDir}`);
+  console.log(`  location: ${t.agentsPath}`);
+  console.log(`  key:      ${t.branch}`);
+}
+
+function printVaultSync(pushed: "pushed" | "not-pushed", branch: string): void {
+  console.log(pushed === "pushed" ? `vault: pushed origin/${branch}` : "vault: not pushed (no origin configured)");
+}
 
 async function walk(dir: string, excludeGit = false): Promise<{ count: number; size: number }> {
   let count = 0, size = 0;
@@ -138,7 +150,7 @@ function planAdd(i: AddInspection): AddPlan {
 
 async function adopt(t: Target, state: IgnoreState, dryRun: boolean): Promise<number> {
   await ensureIgnored(t.projectDir, state, dryRun);
-  if (dryRun) { console.log(`dry run for '${t.name}' (adopting existing .agents/ into ${t.branch}):`); return 0; }
+  if (dryRun) { printTarget(`would add ${t.name} to marrow`, t); console.log("plan: adopt existing .agents"); return 0; }
   const before = await walk(t.agentsPath), tarball = await backup(t), moved = `${t.agentsPath}.pre-marrow`;
   await rename(t.agentsPath, moved);
   const worktree = await git(["worktree", "add", "--orphan", "-b", t.branch, t.agentsPath], t.vault);
@@ -146,40 +158,48 @@ async function adopt(t: Target, state: IgnoreState, dryRun: boolean): Promise<nu
   for (const entry of await readdir(moved, { withFileTypes: true })) await rename(path.join(moved, entry.name), path.join(t.agentsPath, entry.name));
   await rmdir(moved);
   const pushed = await commitAndPush(t, "adopt into marrow", `, backup at ${tarball}`), after = await walk(t.agentsPath, true);
-  console.log(`added '${t.name}': adopted existing .agents (${before.count} file(s)/${before.size}B → ${after.count} file(s)/${after.size}B)`);
-  console.log(`backup: ${tarball}`);
-  console.log(pushed === "pushed" ? `pushed: origin/${t.branch}` : "not pushed: vault has no origin");
+  printTarget(`added ${t.name} to marrow`, t);
+  console.log("");
+  console.log("Adopted existing .agents");
+  console.log(`  backup: ${tarball}`);
+  console.log(`  files:  ${before.count} before, ${after.count} after`);
+  console.log(`  size:   ${before.size}B before, ${after.size}B after`);
+  console.log("");
+  printVaultSync(pushed, t.branch);
   if (after.count < before.count || after.size < before.size) { console.error(`marrow add: WARNING possible content loss — verify against ${tarball}`); return 1; }
   return 0;
 }
 async function create(t: Target, state: IgnoreState, dryRun: boolean): Promise<number> {
   if (!dryRun) await mkdir(t.projectDir, { recursive: true });
   await ensureIgnored(t.projectDir, state, dryRun);
-  if (dryRun) { console.log(`dry run for '${t.name}' (fresh .agents/ on ${t.branch}):`); return 0; }
+  if (dryRun) { printTarget(`would add ${t.name} to marrow`, t); console.log("plan: create new .agents"); return 0; }
   const worktree = await git(["worktree", "add", "--orphan", "-b", t.branch, t.agentsPath], t.vault);
   if (worktree.code !== 0) throw new AddAbort(`git worktree add failed: ${worktree.stderr}`);
   const pushed = await commitAndPush(t, "init via marrow add");
-  console.log(`added '${t.name}': created .agents at ${t.agentsPath}`);
-  console.log(pushed === "pushed" ? `pushed: origin/${t.branch}` : "not pushed: vault has no origin");
+  printTarget(`added ${t.name} to marrow`, t);
+  console.log("");
+  console.log("created new .agents");
+  console.log("");
+  printVaultSync(pushed, t.branch);
   return 0;
 }
 async function attach(t: Target, state: IgnoreState, local: boolean, dryRun: boolean): Promise<number> {
   await ensureIgnored(t.projectDir, state, dryRun);
-  if (dryRun) { console.log(`dry run for '${t.name}' (attaching ${t.branch} at ${t.agentsPath})`); return 0; }
+  if (dryRun) { printTarget(`would attach ${t.name} to marrow`, t); return 0; }
   if (!local) {
     const made = await git(["branch", "--track", t.branch, `origin/${t.branch}`], t.vault);
     if (made.code !== 0) throw new AddAbort(`could not create local branch for ${t.branch}: ${made.stderr}`);
   }
   const worktree = await git(["worktree", "add", t.agentsPath, t.branch], t.vault);
   if (worktree.code !== 0) throw new AddAbort(`could not attach ${t.branch}: ${worktree.stderr}`);
-  console.log(`added '${t.name}': attached ${t.branch} at ${t.agentsPath}`);
+  printTarget(`attached ${t.name} to marrow`, t);
   return 0;
 }
 
 async function executePlan(plan: AddPlan, dryRun: boolean): Promise<number> {
   switch (plan.kind) {
     case "already-attached":
-      console.log(`added '${plan.target.name}': already attached ${plan.target.branch}`);
+      printTarget(`${plan.target.name} is already managed by marrow`, plan.target);
       return 0;
     case "adopt":
       return adopt(plan.target, plan.ignoreState, dryRun);
@@ -195,7 +215,17 @@ async function executePlan(plan: AddPlan, dryRun: boolean): Promise<number> {
 export async function addCommand(projectArg: string, opts: AddOptions, marrowHome: string, toolRoot: string): Promise<number> {
   try {
     const inspection = await inspectAdd(projectArg, opts, marrowHome, toolRoot);
-    return await executePlan(planAdd(inspection), opts.dryRun === true);
+    const dryRun = opts.dryRun === true;
+    const code = await executePlan(planAdd(inspection), dryRun);
+    if (code === 0) {
+      const settingsChanged = await ensureAgentMemoryDisabled(inspection.target.projectDir, dryRun);
+      const instructionsChanged = await ensureAgentsBlock(toolRoot, inspection.target.projectDir, inspection.target.name, dryRun);
+      if (settingsChanged || instructionsChanged) {
+        console.log("");
+        console.log("marrow did not commit these project files.");
+      }
+    }
+    return code;
   } catch (err) {
     console.error(`marrow add: ${err instanceof Error ? err.message : String(err)}`);
     return 1;

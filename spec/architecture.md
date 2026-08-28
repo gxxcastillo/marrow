@@ -100,6 +100,7 @@ marrow/
 ├── CONVENTION.md            # canonical .agents/ content convention
 ├── spec/                    # this directory
 ├── templates/
+│   ├── agents-block.md      # parent instruction block printed by `marrow add`
 │   ├── readme-seed.md       # seeds a fresh `marrow add`; {{project}} substituted
 │   └── persistence-block.md # appended to every adopted/created README.md
 ├── src/
@@ -111,23 +112,38 @@ marrow/
 ├── test/                     # bun test; fixtures build a throwaway tool root + vault
 ├── bin/
 │   ├── marrow                # `#!/usr/bin/env bun` shim; exports run() from cli.ts
-│   └── install               # one-time setup: symlinks bin/marrow onto PATH, inits the vault
+│   ├── setup                 # one-time local setup: symlinks bin/marrow onto PATH, inits the vault
+│   ├── install               # no-checkout bootstrap: clones the tool repo, then runs setup
+│   └── uninstall              # reverses install: removes the clone and its PATH symlink
 ├── package.json               # name, bin entry; no runtime dependencies
 └── .gitignore                 # node_modules/, .agents/
 ```
 
 The orphan-branch-per-project mechanism sets the tool's only hard version floor: `git
-worktree add --orphan` requires git 2.42+. `bin/install` refuses to proceed below it and
+worktree add --orphan` requires git 2.42+. `bin/setup` refuses to proceed below it and
 `doctor` re-checks, because `init` itself does not use `--orphan` — without the check,
-install would succeed and the first `add` would fail on an unknown option. The floor
-lives in `src/git.ts` (`MIN_GIT_MAJOR`/`MIN_GIT_MINOR`) and is mirrored in `bin/install`,
+setup would succeed and the first `add` would fail on an unknown option. The floor
+lives in `src/git.ts` (`MIN_GIT_MAJOR`/`MIN_GIT_MINOR`) and is mirrored in `bin/setup`,
 which cannot import it.
 
-Install: `bin/install` symlinks `bin/marrow` onto `PATH`, then runs `marrow init` (see
+Setup: `bin/setup` symlinks `bin/marrow` onto `PATH`, then runs `marrow init` (see
 `cli.md` → `init`) to create the local vault's bare repo; both steps are idempotent and
 neither touches the vault's GitHub remote. Remote lifecycle is explicit: `marrow
 publish <owner>/<repo>` creates a new private GitHub vault remote, while `marrow init
 --from <vault-url>` attaches a machine to an existing private vault remote.
+
+`bin/setup` assumes a local checkout of the tool repo already exists. `bin/install`
+covers the case where it doesn't: it clones the tool repo to a fixed path
+(`~/.local/share/marrow`), then runs that checkout's `bin/setup`. It is meant to be run
+via `curl | bash` against the raw file, and it is idempotent — re-running it updates the
+existing managed clone (fetch + hard reset to the tracked branch) instead of re-cloning,
+and it refuses to touch a `~/.local/share/marrow` that isn't a checkout of this repo's
+`origin`. The clone is sparse: `test/` is excluded (dev-only, not needed to run
+marrow), and the sparse pattern persists across the update path's fetch + reset since
+it's stored in the clone's own git config. `bin/uninstall` reverses it: it removes the
+managed clone and the `~/.local/bin/marrow` symlink only when each still points at what
+`install` created, and never touches the vault — deleting real project data is never an
+automatic side effect of removing the tool.
 
 **Vault** (`~/.marrow` by default, project branches plus a minimal `main` landing branch):
 
@@ -148,7 +164,7 @@ to gitignore, since there's no enclosing repo to accidentally track it into.
   on what's written there.
 - **No CLI framework, no runtime dependencies.** Argument handling is a command table in
   `src/cli.ts` over `node:util`'s `parseArgs`. Seven commands and three flags do not earn
-  commander or yargs, and a runtime dependency would cost the install story: `bin/install`
+  commander or yargs, and a runtime dependency would cost the install story: `bin/setup`
   is a symlink onto `PATH` plus `marrow init`, with no `bun install` step at the
   install location. `grep`'s verbatim `rg` pass-through is also easier with no parser in
   the way: its arguments are never parsed by marrow at all.

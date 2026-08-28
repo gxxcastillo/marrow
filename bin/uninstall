@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Reverses install: removes the managed tool checkout (~/.local/share/marrow) and its
+# ~/.local/bin/marrow symlink, but only when they still point at a checkout this script
+# recognizes as its own. Never touches the vault (MARROW_HOME, default ~/.marrow) — that
+# holds real project data; remove it by hand if you actually want it gone.
+set -euo pipefail
+
+repo_url="https://github.com/gxxcastillo/marrow.git"
+clone_dir="$HOME/.local/share/marrow"
+link="$HOME/.local/bin/marrow"
+
+removed_something=0
+
+if [ -L "$link" ] && [ "$(readlink "$link")" = "$clone_dir/bin/marrow" ]; then
+  rm "$link"
+  echo "uninstall: removed $link"
+  removed_something=1
+elif [ -e "$link" ] || [ -L "$link" ]; then
+  echo "uninstall: leaving $link alone (does not point at a checkout managed by install)" >&2
+fi
+
+if [ -d "$clone_dir/.git" ] && \
+   [ "$(git -C "$clone_dir" remote get-url origin 2>/dev/null)" = "$repo_url" ]; then
+  rm -rf "$clone_dir"
+  echo "uninstall: removed $clone_dir"
+  removed_something=1
+elif [ -e "$clone_dir" ]; then
+  echo "uninstall: leaving $clone_dir alone (not a checkout managed by install)" >&2
+fi
+
+if [ "$removed_something" -eq 0 ]; then
+  echo "uninstall: nothing to remove — marrow was not installed via install"
+fi
+
+vault_home="${MARROW_HOME:-$HOME/.marrow}"
+if [ -e "$vault_home" ]; then
+  echo "uninstall: vault left in place at $vault_home (holds your project data) — remove it yourself with 'rm -rf $vault_home' if you really want it gone"
+fi
