@@ -104,6 +104,28 @@ describe("doctor", () => {
     expect(line).toContain("marrow add ");
   });
 
+  test("warns with 'not verbatim' when a project's note wording drifted at the current version", async () => {
+    const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
+    const { code: adoptCode } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+    expect(adoptCode).toBe(0);
+    const agentsMdPath = path.join(projectDir, "AGENTS.md");
+    const original = await readFile(agentsMdPath, "utf8");
+    const drifted = original
+      .split("\n")
+      .filter((line) => line.trim() !== ">")
+      .join("\n");
+    expect(drifted).not.toBe(original);
+    await writeFile(agentsMdPath, drifted);
+
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
+    expect(code).toBe(0);
+    const line = outLines.find((l) => l.includes("stale marrow .agents note"));
+    expect(line).toBeDefined();
+    const currentVersion = await currentAgentsBlockVersion(fx.toolRoot);
+    expect(line).toContain(`v${currentVersion}, not verbatim`);
+    expect(line).not.toContain(`v${currentVersion} -> v${currentVersion}`);
+  });
+
   test("shows transient progress without keeping it in final output", async () => {
     await addProjectWorktree(fx, "alpha");
 

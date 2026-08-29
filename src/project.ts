@@ -58,7 +58,11 @@ export type AgentsBlockStatus =
 // Recognizes the canonical note by its opener, its link to `.agents/README.md`, and its
 // trailing version tag, regardless of prose wording changes elsewhere in the note, so a
 // template edit doesn't strand every already-adopted project with a permanently
-// "unrecognized" block.
+// "unrecognized" block. Recognition is not acceptance: only text matching the template
+// exactly is current. Any other recognized note is stale, including one whose version tag
+// already matches — same-version wording drift is the ordinary result of a template fix,
+// and treating it as current is what let four projects carry one banner shape and five
+// another while all nine claimed v2.
 export async function agentsBlockStatus(toolRoot: string, projectDir: string, project: string): Promise<AgentsBlockStatus> {
   const block = normalizedBlock(await agentsBlock(toolRoot, project));
   const currentVersion = findAgentsNote(block)?.version;
@@ -79,10 +83,6 @@ export async function agentsBlockStatus(toolRoot: string, projectDir: string, pr
     // must not silently rewrite a CRLF file's line endings to LF.
     const note = findAgentsNote(file.content);
     if (!note) continue;
-    if (note.version === currentVersion) {
-      current = true;
-      continue;
-    }
     stale.push({ path: file.path, content: file.content, note });
   }
   if (stale.length > 0) return { kind: "stale", currentVersion, files: stale };
@@ -115,6 +115,12 @@ async function agentsBlockTarget(projectDir: string): Promise<string> {
   return existsSync(claude) ? claude : agents;
 }
 
+// A version bump is a migration; an unchanged tag means only the wording drifted. Naming
+// the difference keeps `v2 -> v2` out of the output.
+export function updateLabel(from: string, to: string): string {
+  return from === to ? `v${to}, not verbatim` : `v${from} -> v${to}`;
+}
+
 function reviewNotes(counts: { name: string; count: number }[]): string[] {
   return counts.map(
     ({ name, count }) =>
@@ -140,7 +146,7 @@ export async function ensureAgentsBlock(toolRoot: string, projectDir: string, pr
       console.log("Project instructions:");
       for (const file of status.files) {
         const relativeTarget = path.relative(projectDir, file.path);
-        const label = `v${file.note.version} -> v${status.currentVersion}`;
+        const label = updateLabel(file.note.version, status.currentVersion);
         console.log(`  ${relativeTarget.padEnd(25)} would update marrow .agents note (${label})`);
       }
       for (const note of reviewNotes(mentionCounts)) console.log(note);
@@ -151,7 +157,7 @@ export async function ensureAgentsBlock(toolRoot: string, projectDir: string, pr
     console.log("Project instructions:");
     for (const file of status.files) {
       const relativeTarget = path.relative(projectDir, file.path);
-      const label = `v${file.note.version} -> v${status.currentVersion}`;
+      const label = updateLabel(file.note.version, status.currentVersion);
       const before = file.content.slice(0, file.note.index);
       const after = file.content.slice(file.note.index + file.note.length);
       await writeFile(file.path, before + joinWithBlankLine(block, after));

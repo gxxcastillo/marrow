@@ -4,7 +4,7 @@ import path from "node:path";
 import { MIN_GIT_MAJOR, MIN_GIT_MINOR, aheadBehind, git, gitTooOld, gitVersion, listProjectWorktrees, splitByMissing, vaultDir } from "../git";
 import { clearProgress, countLabel, displayPath, showProgress } from "../format";
 import { hasCurrentState } from "../memory-files";
-import { PARENT_INSTRUCTION_FILENAMES, agentsBlockStatus } from "../project";
+import { PARENT_INSTRUCTION_FILENAMES, agentsBlockStatus, updateLabel } from "../project";
 import { originUrl, verifyOriginReachable, verifyPrivateVisibility } from "../remote";
 import { unattachedBranches } from "../vault";
 
@@ -113,8 +113,8 @@ export async function doctorCommand(marrowHome: string, toolRoot: string, opts: 
     } else if (status.kind === "missing") {
       warn(`${wt.branch}: no marrow .agents note in ${PARENT_INSTRUCTION_FILENAMES.join(" or ")}; run \`marrow add ${displayPath(projectDir)}\` to add it`);
     } else {
-      const versions = status.files.map((f) => `${path.basename(f.path)} v${f.note.version}`).join(", ");
-      warn(`${wt.branch}: stale marrow .agents note (${versions} -> v${status.currentVersion}); run \`marrow add ${displayPath(projectDir)}\` to update it`);
+      const versions = status.files.map((f) => `${path.basename(f.path)} ${updateLabel(f.note.version, status.currentVersion)}`).join(", ");
+      warn(`${wt.branch}: stale marrow .agents note (${versions}); run \`marrow add ${displayPath(projectDir)}\` to update it`);
     }
 
     if (hasCurrentState(wt.path)) {

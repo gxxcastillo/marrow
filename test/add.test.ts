@@ -446,6 +446,27 @@ describe("add", () => {
       expect(agents).toBe(agentsContent);
     });
 
+    test("repairs a current-version note whose wording drifted from the template", async () => {
+      const projectDir = await makeProjectRepo(fx, "drifted-note-block", "ignored");
+      const block = await readFile(path.join(fx.toolRoot, "templates", "agents-block.md"), "utf8");
+      const currentVersion = await currentAgentsBlockVersion(fx.toolRoot);
+      // Same version tag, one line of wording removed: the shape that let four projects
+      // carry one banner and five another while all nine claimed the same version.
+      const drifted = block.trim().split("\n").filter((line) => line.trim() !== ">").join("\n");
+      expect(drifted).not.toBe(block.trim());
+      await Bun.write(path.join(projectDir, "AGENTS.md"), `${drifted}\n\n# Existing Guidance\n`);
+
+      const { code, outLines } = await captureLogs(() =>
+        addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
+      );
+      const agents = await readFile(path.join(projectDir, "AGENTS.md"), "utf8");
+
+      expect(code).toBe(0);
+      expect(outLines.join("\n")).toContain(`marrow .agents note updated (v${currentVersion}, not verbatim)`);
+      expect(agents).toContain(block.trim());
+      expect(agents).toContain("# Existing Guidance");
+    });
+
     test("adopts a project at an explicit path", async () => {
       const projectDir = await makeProjectRepo(fx, "alpha", "ignored", path.join(fx.root, "elsewhere"));
       const { code } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));

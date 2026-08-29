@@ -295,13 +295,13 @@ link to `.agents/README.md`, and ends with a line like `> <p align="right">v1</p
 (case-insensitive `v`, one or more dot-separated numeric groups, so older dotted versions
 like `V2.3.2` are recognized too) — any note matching that shape is recognized regardless
 of the wording around it. Anchoring on the link rather than the headline text means a
-future wording change doesn't need a widened regex. A recognized note whose version
-matches the current
-`templates/agents-block.md` version is left unchanged. A recognized note carrying any
-other version is stale: live `add` replaces just that note in place with the current
-template text, leaving the rest of the file untouched, and prints `Project
-instructions:`, an indented relative path, and `marrow .agents note updated (v<old> ->
-v<new>)`. When neither file has a recognized note at all, live `add` instead prepends the
+future wording change doesn't need a widened regex. A recognized note whose text matches
+`templates/agents-block.md` exactly is left unchanged. Any other recognized note is stale,
+whether its version tag differs or only its wording does: live `add` replaces just that
+note in place with the current template text, leaving the rest of the file untouched, and
+prints `Project instructions:`, an indented relative path, and `marrow .agents note updated
+(v<old> -> v<new>)` — or `(v<version>, not verbatim)` when the tag already matches and only
+the wording drifted, since `v2 -> v2` would say nothing. When neither file has a recognized note at all, live `add` instead prepends the
 current block to `AGENTS.md` when it exists, otherwise to `CLAUDE.md` when it exists,
 otherwise to a new `AGENTS.md`, printing `marrow .agents note added`. If either checked
 file contains `.agents` references outside a recognized marrow note, it prints one count

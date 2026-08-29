@@ -79,14 +79,19 @@ updates the template and tests in the same commit.
 > **Agent working memory:** Read [`.agents/README.md`](.agents/README.md) before
 > non-trivial work and keep it current as the work changes. It holds private working
 > state; it does not replace the project's designated shared sources of truth.
+>
 > <p align="right">v2</p>
 ```
 
-This text is strict-verbatim; project-specific policy lives outside this block. The
-version tag on the last line is what `add` keys off: a note ending in the current version
-is left alone, a note ending in any other version is stale and gets replaced in place with
-the current text, and prose with no recognizable note at all is treated as missing.
-Bump the version whenever the wording changes.
+This text is strict-verbatim; project-specific policy lives outside this block. `add` keys
+off the text itself: a note matching the template exactly is left alone, any recognized note
+that differs is replaced in place with the current text, and prose with no recognizable note
+at all is treated as missing. A note is recognized by its opener, its link to
+`.agents/README.md`, and a trailing version tag, so wording may drift without stranding it.
+The version tag records which wording a note was written against and labels the repair; it
+does not decide whether one happens, so a template fix reaches every adopted project on its
+next `add` without a version bump. Bump the version when the meaning changes, not for every
+edit.
 
 ## Files
 
@@ -105,13 +110,43 @@ Other files are project-specific. Common choices are:
 - `plans/<slug>-plan.md` — optional. Holds a plan's stateful half only: status, next
   step, dependencies, discovered work. Link to the stateless half (decisions, work
   breakdown, acceptance criteria) in its designated shared source rather than
-  duplicating it here. Use only for substantial active work. Delete or collapse it when
-  the work lands and any rationale future contributors need has moved up.
+  duplicating it here. Use only for substantial active work. A plan waiting on the user
+  also carries the blocked-on-you line below. Delete or collapse it when the work lands and any
+  rationale future contributors need has moved up.
 - Optional: `analysis/` for dated reviews; `research/` for private research records and
   tools.
 
 Do not use harness-provided per-user memory for project memory except as a pointer to
 `.agents/`.
+
+## Blocked-on-you line
+
+A plan whose next action belongs to the user, not to an agent, carries one line directly
+under its title:
+
+```
+Blocked on you: <what is needed, one line> (YYYY-MM-DD)
+```
+
+`Blocked on you:` is strict-verbatim so the line stays greppable across projects. The rest
+is free text and may wrap, but keep the essential ask on the first physical line, since that
+is what a grep prints. The date is when the line was written. It is a separate line from any
+`Status:` the plan already keeps — a plan can be in progress and blocked at once, and
+overwriting a substantive status to record a blocker loses state. This convention does not
+standardize `Status:` itself.
+
+Use the line only when the next action is the user's: it needs credentials or authority
+they alone hold, needs physical or judgment verification, or waits on their review. A plan
+that merely runs attended does not qualify — being present while an agent works is an
+execution mode, not a handoff. Neither does work that is paused, unstarted, or blocked on
+something other than the user.
+
+Say what is actually needed. A line the user cannot act on without reconstructing context
+is not finished. If the ask is self-contained, the line is enough; if it is not, the line
+names the phase or section holding the steps, and that phase is written for the person who
+has to run them: what to do, what to expect, what to report back. Delete the line when the
+work resumes, leaving any `Status:` line alone. While it stands, `current-state.md`'s next step
+names the plan.
 
 ## Maintenance
 
@@ -132,6 +167,13 @@ Do not use harness-provided per-user memory for project memory except as a point
   `.agents/`) before trusting `current-state.md`; if reality has moved past it, reconcile
   before building on it. A clean branch can still be stale, and `current-state.md`,
   active plans, and `deferred-items.md` must agree with the latest user decision.
+- Apply conventions on touch, not on sight. A `.agents/` directory that predates a rule
+  is not out of compliance. When you edit a file the rule governs, bring that file into
+  line in the same step — you have already done the reasoning the rule needs. Do not
+  sweep a directory to conform it: retrofitting a judgment-bearing rule across files you
+  have not reasoned about invents state. Mechanical conformance — canonical blocks,
+  required files, stamp format — is `add`'s and `doctor`'s job, not a reading agent's. A
+  deliberate migration is a plan, run attended.
 - Edit in place. Git history replaces inline correction ledgers.
 - Collapse progress logs when work lands. Keep final state, not round-by-round history.
 - Do not leave `.agents/` as the sole copy of a rule future contributors must honor —
