@@ -48,6 +48,24 @@ jobs:
             exit 1
           fi
 
+      - name: Install ripgrep (required by marrow grep, and by its tests)
+        run: |
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            sudo apt-get update && sudo apt-get install -y ripgrep
+          else
+            brew install ripgrep
+          fi
+
+      # doctor's "marrow on PATH" check (spec/architecture.md → doctor) reads
+      # the real PATH, not anything fixture-scoped — symlink it here the same
+      # way a real install would, so the test suite exercises that check the
+      # way it's meant to be exercised instead of only ever seeing it absent.
+      - name: Put marrow on PATH
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          ln -sf "$PWD/bin/marrow" "$HOME/.local/bin/marrow"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 

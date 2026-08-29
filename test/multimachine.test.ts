@@ -28,6 +28,12 @@ async function cloneVaultForSecondMachine(fx: Fixture): Promise<string> {
   await mkdir(machineBHome, { recursive: true });
   const clone = await git(["clone", "--bare", fx.bareOrigin, vaultDir(machineBHome)], machineBHome);
   expect(clone.code).toBe(0);
+  // A clone doesn't inherit the source repo's local user.name/user.email —
+  // set them here too, for the same reason makeFixture sets them on the
+  // first machine's vault (worktrees created off this bare repo need an
+  // identity that doesn't depend on the running machine's global git config).
+  await git(["config", "user.email", "test@example.com"], vaultDir(machineBHome));
+  await git(["config", "user.name", "marrow test"], vaultDir(machineBHome));
   await git(["config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"], vaultDir(machineBHome));
   const fetch = await git(["fetch", "--prune", "origin"], vaultDir(machineBHome));
   expect(fetch.code).toBe(0);

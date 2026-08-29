@@ -50,6 +50,12 @@ export async function makeFixture(): Promise<Fixture> {
   const vault = vaultDir(marrowHome);
   await mkdir(vault, { recursive: true });
   await git(["init", "-q", "--bare", "-b", "main"], vault);
+  // Worktrees created from this bare repo (by test helpers and by addCommand
+  // itself) inherit its config when they have none of their own. Set an
+  // identity here so commits never fall back to the running machine's global
+  // git config, which a fresh CI runner doesn't have.
+  await git(["config", "user.email", "test@example.com"], vault);
+  await git(["config", "user.name", "marrow test"], vault);
 
   await git(["init", "-q", "--bare", "-b", "main", bareOrigin], root);
   await git(["remote", "add", "origin", bareOrigin], vault);
