@@ -10,6 +10,7 @@ import { initCommand } from "./commands/init";
 import { publishCommand } from "./commands/publish";
 import { statusCommand } from "./commands/status";
 import { syncCommand } from "./commands/sync";
+import { updateCommand } from "./commands/update";
 import { vaultDir } from "./git";
 
 interface Context {
@@ -26,6 +27,7 @@ interface Command {
   summary: string;
   options?: Record<string, { type: "string" | "boolean"; short?: string; default?: string | boolean; desc?: string }>;
   minArgs?: number; // required positionals; fewer prints usage and exits 2
+  maxArgs?: number; // upper bound on positionals; more prints usage and exits 2 (default: unlimited)
   raw?: boolean; // skip parsing — args reach the command verbatim (grep -> rg)
   // Opt-out, not opt-in: every command needs the vault to exist except the
   // two that set up don't. Defaulting to required is the fail-safe direction
@@ -121,6 +123,17 @@ const COMMANDS: Record<string, Command> = {
     skipVaultCheck: true,
     run: (_parsed, ctx) => conventionCommand(ctx.toolRoot),
   },
+
+  update: {
+    args: "",
+    summary: "update the managed install to the latest release",
+    skipVaultCheck: true,
+    maxArgs: 0,
+    help:
+      "Re-runs the managed install's own updater (bin/install). Refuses to run from a local\n" +
+      "development checkout — update that with git instead. Does not require a vault.",
+    run: (_parsed, ctx) => updateCommand(ctx.toolRoot),
+  },
 };
 
 function invocation(name: string): string {
@@ -211,7 +224,7 @@ export async function main(argv: string[], marrowHome: string, toolRoot: string)
     }
   }
 
-  if (parsed.positionals.length < (cmd.minArgs ?? 0)) {
+  if (parsed.positionals.length < (cmd.minArgs ?? 0) || parsed.positionals.length > (cmd.maxArgs ?? Infinity)) {
     console.error(`usage: marrow ${invocation(name)}`);
     return 2;
   }

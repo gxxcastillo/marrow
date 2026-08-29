@@ -367,7 +367,7 @@ directory or the vault — safe to run against a real project.
 
 **Live run**, once preconditions pass:
 
-1. **Backup.** `tar -czf <MARROW_HOME>/backups/<project>-<ISO-date>.tar.gz -C <project> .agents`. The tarball's size and `tar -tzf` listing are both checked; any failure aborts before anything is moved.
+1. **Backup.** `tar -czf <MARROW_HOME>/backups/<project>-<UTC-timestamp>-<uuid>.tar.gz -C <project> .agents`, where `<UTC-timestamp>` is a sub-second ISO timestamp (colons and the decimal point replaced with `-`) and `<uuid>` is a random UUID — collision-proof across same-basename projects, explicit `--id` values, and repeated or concurrent adoptions on the same day. The generated path is checked against disk before `tar` runs, and the tarball's size and `tar -tzf` listing are both checked after; any failure aborts before anything is moved.
 2. **Move aside.** `<project>/.agents` → `<project>/.agents.pre-marrow` (rename, same volume — not a copy).
 3. **Create the worktree.** `git worktree add --orphan -b <identity> <project>/.agents` runs against `<MARROW_HOME>/vault.git`. On failure, step 2 is undone (`.agents.pre-marrow` renamed back to `.agents`) before erroring out — the project directory is never left without a `.agents/`.
 4. **Restore contents.** Every entry under `.agents.pre-marrow/` — including dotfiles — is moved into the new (currently empty) worktree, then `.agents.pre-marrow` is removed.
@@ -549,6 +549,41 @@ Reads and prints `CONVENTION.md` verbatim from the tool's own install location (
 `MARROW_HOME` — see the top-of-file caveat). Exits `0`, or crashes with an uncaught error
 if the file is missing.
 
+## `update`
+
+```
+marrow update
+```
+
+Updates the managed install (the checkout `bin/install` creates at
+`~/.local/share/marrow`) to the latest commit on its tracked `main` branch. Takes no
+arguments or options, and does not require a vault (`skipVaultCheck`).
+
+There is one updater implementation: `update` locates the managed checkout, then spawns
+that checkout's own `bin/install` with inherited stdout/stderr and returns its exit code.
+It never re-implements the fetch/reset logic in TypeScript.
+
+`toolRoot` (the currently running checkout, physically resolved) is compared against the
+expected managed-checkout path `$HOME/.local/share/marrow`, itself physically resolved so
+a symlinked `$HOME` is still recognized — the same handling `bin/setup`/`bin/uninstall`
+use. Two outcomes:
+
+- **Running from the managed checkout:** spawns `<managed>/bin/install`.
+- **Running from a local development checkout, or any other checkout:** refuses, prints
+  that this is a local checkout and must be updated with git, and exits `1` without
+  touching anything.
+
+`bin/install` itself remains authoritative for the origin check, the dirty-checkout
+refusal, the fetch, and re-running `bin/setup` — `update` surfaces whatever it reports.
+Missing `HOME`, a managed checkout with no `bin/install`, or the installer's own failure
+(wrong origin, dirty checkout, fetch failure, setup failure) all exit nonzero with one
+actionable message.
+
+**Exit codes.** `2` (from `marrow` dispatch): an unexpected extra argument. `1`: `HOME`
+unset, not the managed checkout, missing installer, or the installer's own nonzero exit.
+`0`: the installer ran and reported success — either `already up to date` or `updated
+<old-short-sha> -> <new-short-sha>`.
+
 ## Typical workflow
 
 ```bash
@@ -565,4 +600,5 @@ marrow detach old-project               # stop tracking it here; branch stays in
 marrow doctor                          # health check after any of the above
 marrow grep "TODO" -C2                 # cross-project search, rg flags pass through
 marrow convention                      # what should be inside .agents/
+marrow update                          # update the managed install (refuses a dev checkout)
 ```

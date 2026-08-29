@@ -2,6 +2,7 @@
   "name": "marrow",
   "version": "0.1.0",
   "description": "Versions each project's working memory in a private git vault, one branch per project.",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "bin": {

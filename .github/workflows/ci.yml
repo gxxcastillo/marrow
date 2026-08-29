@@ -1,0 +1,64 @@
+# Actions pinned to their current major-version tag (not a full SHA) — the
+# project's chosen maintenance policy: low-friction, trusts the publisher's
+# major-version compatibility promise. Bump the major tag deliberately, not
+# automatically.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      # The preinstalled Xcode git on macOS runners is not guaranteed to meet
+      # marrow's 2.42+ floor (git worktree add --orphan); provision a current
+      # one deterministically instead of trusting the image's default.
+      - name: Install a current git (macOS)
+        if: runner.os == 'macOS'
+        run: brew install git
+
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Print tool versions
+        run: |
+          git --version
+          bun --version
+
+      - name: Enforce the git 2.42+ floor
+        run: |
+          version="$(git --version | sed -n 's/^git version \([0-9][0-9]*\)\.\([0-9][0-9]*\).*/\1 \2/p')"
+          major="${version%% *}"
+          minor="${version##* }"
+          if [ -z "$major" ] || [ -z "$minor" ]; then
+            echo "::error::could not parse '$(git --version)'; marrow needs git 2.42+ for 'git worktree add --orphan'"
+            exit 1
+          fi
+          if [ "$major" -lt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -lt 42 ]; }; then
+            echo "::error::git $major.$minor found; marrow requires git 2.42+ for 'git worktree add --orphan'"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Shell syntax check
+        run: bash -n bin/install bin/setup bin/uninstall
+
+      - name: Test
+        run: bun test
+
+      - name: Typecheck
+        run: bunx tsc --noEmit
+
+      - name: Diff whitespace check
+        run: git diff --check

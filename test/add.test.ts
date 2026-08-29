@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, realpath, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { addCommand } from "../src/commands/add";
-import { git, listProjectWorktrees, vaultDir } from "../src/git";
+import { git, listProjectWorktrees, run, vaultDir } from "../src/git";
 import { addProjectWorktree, makeFixture, makeProjectRepo, type Fixture } from "./fixtures";
 import { captureLogs, currentAgentsBlockVersion, currentPersistenceBlockVersion, listFilesRecursive } from "./helpers";
 
@@ -62,6 +62,39 @@ describe("add", () => {
       const entries = await readdir(backupsDir);
       expect(entries.length).toBe(1);
       expect((await stat(path.join(backupsDir, entries[0]))).size).toBeGreaterThan(0);
+    });
+
+    test("collision-proof backups: same directory basename, different --id, neither overwrites the other", async () => {
+      const orgA = path.join(fx.projectsRoot, "org-a");
+      const orgB = path.join(fx.projectsRoot, "org-b");
+      await mkdir(orgA, { recursive: true });
+      await mkdir(orgB, { recursive: true });
+      const projectA = await makeProjectRepo(fx, "widget", "ignored", orgA);
+      const projectB = await makeProjectRepo(fx, "widget", "ignored", orgB);
+      await Bun.write(path.join(projectA, ".agents", "sentinel.md"), "sentinel-A\n");
+      await Bun.write(path.join(projectB, ".agents", "sentinel.md"), "sentinel-B\n");
+
+      const resultA = await captureLogs(() => addCommand(projectA, { id: "org-a/widget" }, fx.marrowHome, fx.toolRoot));
+      const resultB = await captureLogs(() => addCommand(projectB, { id: "org-b/widget" }, fx.marrowHome, fx.toolRoot));
+      expect(resultA.code).toBe(0);
+      expect(resultB.code).toBe(0);
+
+      const backupsDir = path.join(fx.marrowHome, "backups");
+      const entries = (await readdir(backupsDir)).filter((f) => f.startsWith("widget-"));
+      expect(entries.length).toBe(2);
+      expect(entries[0]).not.toBe(entries[1]);
+
+      for (const entry of entries) {
+        const full = path.join(backupsDir, entry);
+        expect((await stat(full)).size).toBeGreaterThan(0);
+        const listed = await run("tar", ["-tzf", full], backupsDir);
+        expect(listed.code).toBe(0);
+        expect(listed.stdout).toContain(".agents/sentinel.md");
+      }
+
+      const readSentinel = async (entry: string) => (await run("tar", ["-xzOf", path.join(backupsDir, entry), ".agents/sentinel.md"], backupsDir)).stdout;
+      const [sentinelForA, sentinelForB] = await Promise.all(entries.map(readSentinel));
+      expect([sentinelForA, sentinelForB].sort()).toEqual(["sentinel-A", "sentinel-B"]);
     });
 
     test("creates required current-state.md with the parent HEAD when adopting without one", async () => {

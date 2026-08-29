@@ -25,9 +25,15 @@ if [ -e "$clone_dir" ]; then
       echo "install: refusing to update $clone_dir — it has local changes (inspect with 'git -C $clone_dir status', or remove the directory to reinstall cleanly)" >&2
       exit 1
     fi
-    echo "install: updating existing checkout at $clone_dir"
+    old_sha="$(git -C "$clone_dir" rev-parse --short HEAD)"
     git -C "$clone_dir" fetch --depth 1 origin "$default_branch"
-    git -C "$clone_dir" reset --hard "origin/$default_branch"
+    new_sha="$(git -C "$clone_dir" rev-parse --short "origin/$default_branch")"
+    if [ "$old_sha" = "$new_sha" ]; then
+      echo "install: $clone_dir already up to date ($new_sha)"
+    else
+      git -C "$clone_dir" reset --hard "origin/$default_branch"
+      echo "install: updated $clone_dir: $old_sha -> $new_sha"
+    fi
   else
     echo "install: refusing to overwrite existing $clone_dir (not a checkout managed by this script)" >&2
     exit 1

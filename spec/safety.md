@@ -44,7 +44,11 @@ from disk, and leaves the branch itself untouched in the vault.
 When `add` is adopting an existing `.agents/`, its first live action is always a tar
 backup of the project's current `.agents/`, written under `<MARROW_HOME>/backups/`,
 verified non-empty and listable before anything else happens (`cli.md` → `add`, step 1).
-If the backup can't be produced or verified, `add` aborts before touching the project
+Each backup's filename carries a sub-second UTC timestamp and a random UUID suffix, so
+two adoptions of projects sharing a directory basename, two explicit `--id` values,
+concurrent attempts, and repeated same-day attempts can never collide or overwrite a
+prior tarball; a generated path is also checked against disk before `tar` runs. If the
+backup can't be produced or verified, `add` aborts before touching the project
 directory at all. The original content is only
 ever **moved**, never deleted outright: it goes through a same-volume rename to
 `.agents.pre-marrow`, and that staging directory is only removed once its contents have

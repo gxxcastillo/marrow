@@ -139,13 +139,31 @@ covers the case where it doesn't: it clones the tool repo to a fixed path
 (`~/.local/share/marrow`), then runs that checkout's `bin/setup`. It is meant to be run
 via `curl | bash` against the raw file, and it is idempotent — re-running it updates the
 existing managed clone (fetch + hard reset to the tracked branch) instead of re-cloning,
-and it refuses to touch a `~/.local/share/marrow` that isn't a checkout of this repo's
-`origin`. The clone is sparse: `test/` is excluded (dev-only, not needed to run
-marrow), and the sparse pattern persists across the update path's fetch + reset since
-it's stored in the clone's own git config. `bin/uninstall` reverses it: it removes the
-managed clone and the `~/.local/bin/marrow` symlink only when each still points at what
-`install` created, and never touches the vault — deleting real project data is never an
-automatic side effect of removing the tool.
+reporting `already up to date (<sha>)` or `updated <old-sha> -> <new-sha>`, and it refuses
+to touch a `~/.local/share/marrow` that isn't a checkout of this repo's `origin`. The
+clone is sparse: `test/` is excluded (dev-only, not needed to run marrow), and the sparse
+pattern persists across the update path's fetch + reset since it's stored in the clone's
+own git config. `bin/uninstall` reverses it: it removes the managed clone and the
+`~/.local/bin/marrow` symlink only when each still points at what `install` created, and
+never touches the vault — deleting real project data is never an automatic side effect of
+removing the tool.
+
+`marrow update` (`cli.md` → `update`) gives the managed install a first-party update path
+that doesn't require a local checkout of the tool repo at all: it locates
+`~/.local/share/marrow` (physical-path resolved, so a symlinked `$HOME` is still
+recognized), confirms the currently running checkout *is* that managed one, and spawns its
+`bin/install`. There is one updater implementation — `update` never reimplements the
+fetch/reset logic in TypeScript. Run from a local development checkout, it refuses and
+points at git instead; it never resets a development checkout. It does not require a vault
+to exist and has no `--dry-run` — the underlying `bin/install` is idempotent and safe to
+preview by reading, not by a flagged dry mode.
+
+The managed checkout at `~/.local/share/marrow` (and its `~/.local/bin/marrow` symlink)
+intentionally live outside `MARROW_HOME`. The tool checkout is disposable and replaceable
+— `marrow update`/`bin/install` freely fetch and hard-reset it — while `MARROW_HOME` holds
+irreplaceable user data (the vault, tarball backups). Keeping them on separate deletion
+boundaries means `bin/uninstall` can freely remove the former and never risks the latter;
+it is a safety property, not a filesystem convention.
 
 **Vault** (`~/.marrow` by default, project branches plus a minimal `main` landing branch):
 

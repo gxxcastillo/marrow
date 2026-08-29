@@ -3,7 +3,7 @@ import path from "node:path";
 import { main } from "../src/cli";
 import { vaultDir } from "../src/git";
 import { FIXTURE_VERSION, installGhStub, makeFixture, type Fixture } from "./fixtures";
-import { captureLogs } from "./helpers";
+import { captureLogs, withEnv } from "./helpers";
 
 describe("cli dispatch", () => {
   let fx: Fixture;
@@ -23,7 +23,7 @@ describe("cli dispatch", () => {
     expect(code).toBe(0);
     expect(errLines).toEqual([]);
     const usage = outLines.join("\n");
-    for (const name of ["init", "publish", "status", "sync", "add", "doctor", "grep", "convention"]) {
+    for (const name of ["init", "publish", "status", "sync", "add", "doctor", "grep", "convention", "update"]) {
       expect(usage).toContain(name);
     }
   });
@@ -60,6 +60,13 @@ describe("cli dispatch", () => {
     const { code, errLines } = await call(["sync", "-m"]);
     expect(code).toBe(2);
     expect(errLines.join("\n")).toContain("usage: marrow sync");
+  });
+
+  test("update rejects an extra argument (it takes none)", async () => {
+    const { code, outLines, errLines } = await call(["update", "extra"]);
+    expect(code).toBe(2);
+    expect(outLines).toEqual([]);
+    expect(errLines).toEqual(["usage: marrow update"]);
   });
 
   test.each([
@@ -164,5 +171,18 @@ describe("first-run guard (no vault yet)", () => {
     const noVaultHome = path.join(fx.root, "no-vault-home");
     const { code } = await captureLogs(() => main([command, ...(command === "init" ? ["--dry-run"] : [])], noVaultHome, fx.toolRoot));
     expect(code).toBe(0);
+  });
+
+  test("update does not require a vault either — it reaches its own checkout check, not the vault gate", async () => {
+    const noVaultHome = path.join(fx.root, "no-vault-home");
+    const fakeHome = path.join(fx.root, "fake-home-for-update");
+    const { code, errLines } = await withEnv({ HOME: fakeHome }, () =>
+      captureLogs(() => main(["update"], noVaultHome, fx.toolRoot)),
+    );
+    // fx.toolRoot is never the managed checkout under fakeHome, so this fails
+    // for update's own reason — proof the vault gate never ran.
+    expect(code).toBe(1);
+    expect(errLines.join("\n")).not.toContain("no vault at");
+    expect(errLines.join("\n")).toContain("local checkout");
   });
 });

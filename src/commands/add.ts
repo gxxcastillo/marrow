@@ -3,7 +3,8 @@ import { mkdir, readdir, rename, rmdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { ensureAgentMemoryDisabled } from "../agent-config";
 import { resolveIdentity } from "../identity";
-import { git, hasOrigin, listProjectWorktrees, run, vaultDir } from "../git";
+import { backupAgents } from "../backup";
+import { git, hasOrigin, listProjectWorktrees, vaultDir } from "../git";
 import { ensureCurrentState, hasCurrentState, writeMemoryFiles } from "../memory-files";
 import { ensureAgentsBlock, ensureIgnored, gitignoreState, trackedMessage, type IgnoreState } from "../project";
 
@@ -49,8 +50,6 @@ async function walk(dir: string, excludeGit = false): Promise<{ count: number; s
   }
   return { count, size };
 }
-function isoDate(): string { return new Date().toISOString().slice(0, 10); }
-
 async function fetchVault(t: Target): Promise<void> {
   if (!(await hasOrigin(t.vault))) return;
   const res = await git(["fetch", "--prune", "origin"], t.vault);
@@ -80,17 +79,6 @@ async function pushBranch(t: Target, localNote = ""): Promise<"pushed" | "not-pu
   if (push.code !== 0) throw new AddAbort(`push failed (commit is local${localNote}): ${push.stderr}`);
   return "pushed";
 }
-async function backup(t: Target): Promise<string> {
-  const backups = path.join(t.marrowHome, "backups");
-  await mkdir(backups, { recursive: true });
-  const tarball = path.join(backups, `${t.name}-${isoDate()}.tar.gz`);
-  const made = await run("tar", ["-czf", tarball, "-C", t.projectDir, ".agents"], t.marrowHome);
-  if (made.code !== 0 || (await stat(tarball)).size === 0) throw new AddAbort(`backup failed, aborting: ${made.stderr}`);
-  const listed = await run("tar", ["-tzf", tarball], t.marrowHome);
-  if (listed.code !== 0 || listed.stdout === "") throw new AddAbort("backup tarball failed to list, aborting");
-  return tarball;
-}
-
 async function inspectAdd(projectArg: string, opts: AddOptions, marrowHome: string, toolRoot: string): Promise<AddInspection> {
   const identity = await resolveIdentity(projectArg, opts.id);
   const target: Target = {
@@ -153,7 +141,7 @@ function planAdd(i: AddInspection): AddPlan {
 async function adopt(t: Target, state: IgnoreState, dryRun: boolean): Promise<number> {
   await ensureIgnored(t.projectDir, state, dryRun);
   if (dryRun) { printTarget(`would add ${t.name} to marrow`, t); console.log("plan: adopt existing .agents"); return 0; }
-  const before = await walk(t.agentsPath), tarball = await backup(t), moved = `${t.agentsPath}.pre-marrow`;
+  const before = await walk(t.agentsPath), tarball = await backupAgents(t.projectDir, t.name, t.marrowHome), moved = `${t.agentsPath}.pre-marrow`;
   await rename(t.agentsPath, moved);
   const worktree = await git(["worktree", "add", "--orphan", "-b", t.branch, t.agentsPath], t.vault);
   if (worktree.code !== 0) { await rename(moved, t.agentsPath); throw new AddAbort(`git worktree add failed, rolled back: ${worktree.stderr}`); }
