@@ -24,6 +24,13 @@ function guardNotReal(candidate: string, real: string, label: string): void {
   }
 }
 
+// Sets a fixed git identity in `dir` so commits never fall back to the
+// running machine's global git config, which a fresh CI runner doesn't have.
+export async function setTestIdentity(dir: string): Promise<void> {
+  await git(["config", "user.email", "test@example.com"], dir);
+  await git(["config", "user.name", "marrow test"], dir);
+}
+
 // Builds throwaway stand-ins for both repos in the two-repo design: a fake
 // tool root (for templates/CONVENTION.md resolution) and a fake bare vault
 // (MARROW_HOME) with its own file://-backed bare origin, plus explicit project
@@ -51,11 +58,8 @@ export async function makeFixture(): Promise<Fixture> {
   await mkdir(vault, { recursive: true });
   await git(["init", "-q", "--bare", "-b", "main"], vault);
   // Worktrees created from this bare repo (by test helpers and by addCommand
-  // itself) inherit its config when they have none of their own. Set an
-  // identity here so commits never fall back to the running machine's global
-  // git config, which a fresh CI runner doesn't have.
-  await git(["config", "user.email", "test@example.com"], vault);
-  await git(["config", "user.name", "marrow test"], vault);
+  // itself) inherit its config when they have none of their own.
+  await setTestIdentity(vault);
 
   await git(["init", "-q", "--bare", "-b", "main", bareOrigin], root);
   await git(["remote", "add", "origin", bareOrigin], vault);
@@ -80,8 +84,7 @@ export async function addProjectWorktree(fx: Fixture, project: string, branch = 
   const wt = await git(["worktree", "add", "--orphan", "-b", branch, agentsPath], vaultDir(fx.marrowHome));
   if (wt.code !== 0) throw new Error(`worktree add failed: ${wt.stderr}`);
 
-  await git(["config", "user.email", "test@example.com"], agentsPath);
-  await git(["config", "user.name", "marrow test"], agentsPath);
+  await setTestIdentity(agentsPath);
   await Bun.write(path.join(agentsPath, "README.md"), `# ${project}\n`);
   await git(["add", "-A"], agentsPath);
   await git(["commit", "-q", "-m", `${project}: seed`], agentsPath);
@@ -110,8 +113,7 @@ export async function makeProjectRepo(
   await Bun.write(path.join(agentsPath, ".hidden"), "dotfile\n");
 
   await git(["init", "-q", "-b", "main"], projectDir);
-  await git(["config", "user.email", "test@example.com"], projectDir);
-  await git(["config", "user.name", "marrow test"], projectDir);
+  await setTestIdentity(projectDir);
   await git(["remote", "add", "origin", `https://github.com/test/${name}.git`], projectDir);
   await Bun.write(path.join(projectDir, "package.json"), "{}\n");
 

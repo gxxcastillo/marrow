@@ -6,7 +6,7 @@ import { publishCommand } from "../src/commands/publish";
 import { git, vaultDir } from "../src/git";
 import { fetchedOriginBranches, originUrl } from "../src/remote";
 import { VAULT_README } from "../src/vault";
-import { addProjectWorktree, installGhStub, makeFixture, type Fixture } from "./fixtures";
+import { addProjectWorktree, installGhStub, makeFixture, setTestIdentity, type Fixture } from "./fixtures";
 import { captureLogs } from "./helpers";
 
 async function removeVaultOrigin(fx: Fixture): Promise<void> {
@@ -17,8 +17,7 @@ async function seedRemoteBranch(fx: Fixture, branch = "remote"): Promise<void> {
   const repo = path.join(fx.root, `seed-${branch.replaceAll("/", "-")}`);
   await mkdir(repo, { recursive: true });
   await git(["init", "-q", "-b", "main"], repo);
-  await git(["config", "user.email", "test@example.com"], repo);
-  await git(["config", "user.name", "marrow test"], repo);
+  await setTestIdentity(repo);
   await Bun.write(path.join(repo, "README.md"), "seed\n");
   await git(["add", "README.md"], repo);
   await git(["commit", "-q", "-m", "seed"], repo);

@@ -11,6 +11,7 @@ import {
   installGhStub,
   makeFixture,
   makeProjectRepo,
+  setTestIdentity,
   type Fixture,
 } from "./fixtures";
 import { captureLogs, currentAgentsBlockVersion } from "./helpers";
@@ -192,8 +193,7 @@ describe("doctor", () => {
     const projectDir = path.join(fx.projectsRoot, "leaky");
     await mkdir(projectDir, { recursive: true });
     await git(["init", "-q", "-b", "main"], projectDir);
-    await git(["config", "user.email", "test@example.com"], projectDir);
-    await git(["config", "user.name", "marrow test"], projectDir);
+    await setTestIdentity(projectDir);
     await Bun.write(path.join(projectDir, "package.json"), "{}\n");
     await git(["add", "package.json"], projectDir);
     await git(["commit", "-q", "-m", "init"], projectDir);

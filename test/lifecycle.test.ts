@@ -10,6 +10,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { git, run } from "../src/git";
+import { setTestIdentity } from "./fixtures";
 import { withEnv } from "./helpers";
 
 const REAL_TOOL_ROOT = path.join(import.meta.dir, "..");
@@ -107,8 +108,7 @@ describe("install -> update -> uninstall lifecycle", () => {
 
     seedDir = path.join(root, "seed");
     await run("git", ["clone", "-q", originDir, seedDir], root);
-    await git(["config", "user.email", "test@example.com"], seedDir);
-    await git(["config", "user.name", "marrow test"], seedDir);
+    await setTestIdentity(seedDir);
     await seedToolContent(seedDir, "9.9.9-fixture-v1");
     await git(["add", "-A"], seedDir);
     await git(["commit", "-q", "-m", "v1"], seedDir);

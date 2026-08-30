@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import path from "node:path";
 import { aheadBehind, dirtyCount, git, gitTooOld, gitVersion, hasOrigin, lastCommit, listProjectWorktrees, vaultDir } from "../src/git";
-import { addProjectWorktree, makeFixture, type Fixture } from "./fixtures";
+import { addProjectWorktree, makeFixture, setTestIdentity, type Fixture } from "./fixtures";
 
 describe("git.ts", () => {
   let fx: Fixture;
@@ -45,8 +45,7 @@ describe("git.ts", () => {
     const projectDir = path.join(fx.projectsRoot, "no-push");
     const agentsPath = path.join(projectDir, ".agents");
     await git(["worktree", "add", "--orphan", "-b", "no-push", agentsPath], vaultDir(fx.marrowHome));
-    await git(["config", "user.email", "test@example.com"], agentsPath);
-    await git(["config", "user.name", "marrow test"], agentsPath);
+    await setTestIdentity(agentsPath);
     await git(["commit", "--allow-empty", "-q", "-m", "seed"], agentsPath);
 
     expect(await aheadBehind(agentsPath, "no-push")).toBeNull();

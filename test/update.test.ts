@@ -6,6 +6,7 @@ import path from "node:path";
 import { main } from "../src/cli";
 import { updateCommand } from "../src/commands/update";
 import { git, run } from "../src/git";
+import { setTestIdentity } from "./fixtures";
 import { withEnv } from "./helpers";
 
 const REAL_TOOL_ROOT = path.join(import.meta.dir, "..");
@@ -182,8 +183,7 @@ set -euo pipefail
 
     seedDir = path.join(root, "seed");
     await run("git", ["clone", "-q", originDir, seedDir], root);
-    await git(["config", "user.email", "test@example.com"], seedDir);
-    await git(["config", "user.name", "marrow test"], seedDir);
+    await setTestIdentity(seedDir);
     await mkdir(path.join(seedDir, "bin"), { recursive: true });
     await writeFile(path.join(seedDir, "bin", "setup"), STUB_SETUP);
     await chmod(path.join(seedDir, "bin", "setup"), 0o755);

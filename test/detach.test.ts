@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import path from "node:path";
 import { detachCommand } from "../src/commands/detach";
 import { git, listProjectWorktrees, vaultDir } from "../src/git";
-import { addProjectWorktree, deleteWorktreeDir, makeFixture, type Fixture } from "./fixtures";
+import { addProjectWorktree, deleteWorktreeDir, makeFixture, setTestIdentity, type Fixture } from "./fixtures";
 import { captureLogs } from "./helpers";
 
 describe("detach", () => {
@@ -89,8 +89,7 @@ describe("detach", () => {
     for (const [agentsPath, branch] of [[agentsA, "shared-a"], [agentsB, "shared-b"]] as const) {
       const wt = await git(["worktree", "add", "--orphan", "-b", branch, agentsPath], vault);
       expect(wt.code).toBe(0);
-      await git(["config", "user.email", "test@example.com"], agentsPath);
-      await git(["config", "user.name", "marrow test"], agentsPath);
+      await setTestIdentity(agentsPath);
       await git(["commit", "--allow-empty", "-q", "-m", "seed"], agentsPath);
     }
 

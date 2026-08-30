@@ -5,7 +5,7 @@ import { addCommand } from "../src/commands/add";
 import { doctorCommand } from "../src/commands/doctor";
 import { syncCommand } from "../src/commands/sync";
 import { git, listProjectWorktrees, vaultDir } from "../src/git";
-import { makeFixture, makeProjectRepo, type Fixture } from "./fixtures";
+import { makeFixture, makeProjectRepo, setTestIdentity, type Fixture } from "./fixtures";
 import { captureLogs } from "./helpers";
 
 const BRANCH = "alpha";
@@ -14,8 +14,7 @@ async function secondProject(fx: Fixture, name: string): Promise<string> {
   const dir = path.join(fx.root, "machine-b", "elsewhere", name);
   await mkdir(dir, { recursive: true });
   await git(["init", "-q", "-b", "main"], dir);
-  await git(["config", "user.email", "test@example.com"], dir);
-  await git(["config", "user.name", "marrow test"], dir);
+  await setTestIdentity(dir);
   await git(["remote", "add", "origin", `https://github.com/test/${name}.git`], dir);
   await Bun.write(path.join(dir, ".gitignore"), ".agents/\n");
   await git(["add", ".gitignore"], dir);
@@ -32,8 +31,7 @@ async function cloneVaultForSecondMachine(fx: Fixture): Promise<string> {
   // set them here too, for the same reason makeFixture sets them on the
   // first machine's vault (worktrees created off this bare repo need an
   // identity that doesn't depend on the running machine's global git config).
-  await git(["config", "user.email", "test@example.com"], vaultDir(machineBHome));
-  await git(["config", "user.name", "marrow test"], vaultDir(machineBHome));
+  await setTestIdentity(vaultDir(machineBHome));
   await git(["config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"], vaultDir(machineBHome));
   const fetch = await git(["fetch", "--prune", "origin"], vaultDir(machineBHome));
   expect(fetch.code).toBe(0);
