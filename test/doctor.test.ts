@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, readFile, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { addCommand } from "../src/commands/add";
+import { attachCommand } from "../src/commands/attach";
 import { doctorCommand } from "../src/commands/doctor";
 import { git, vaultDir } from "../src/git";
 import {
@@ -30,7 +30,7 @@ describe("doctor", () => {
   test("passes for a properly adopted project (ignored parent, pushed)", async () => {
     const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
     const { code: adoptCode } = await captureLogs(() =>
-      addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
+      attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
     );
     expect(adoptCode).toBe(0);
 
@@ -46,7 +46,7 @@ describe("doctor", () => {
     try {
       const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
       const { code: adoptCode } = await captureLogs(() =>
-        addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
+        attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
       );
       expect(adoptCode).toBe(0);
 
@@ -86,7 +86,7 @@ describe("doctor", () => {
 
   test("warns when a project's AGENTS.md has no marrow .agents note", async () => {
     const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
-    const { code: adoptCode } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+    const { code: adoptCode } = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
     expect(adoptCode).toBe(0);
     await writeFile(path.join(projectDir, "AGENTS.md"), "# alpha\n");
 
@@ -97,12 +97,12 @@ describe("doctor", () => {
     expect(line).toStartWith("WARN");
     expect(line).toContain("alpha");
     expect(line).not.toContain(" at ");
-    expect(line).toContain("marrow add ");
+    expect(line).toContain("marrow attach ");
   });
 
   test("warns when a project's marrow .agents note is stale", async () => {
     const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
-    const { code: adoptCode } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+    const { code: adoptCode } = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
     expect(adoptCode).toBe(0);
     const agentsMdPath = path.join(projectDir, "AGENTS.md");
     const stale = (await readFile(agentsMdPath, "utf8")).replace(/<p align="right">v\d+<\/p>/, '<p align="right">v0</p>');
@@ -115,12 +115,12 @@ describe("doctor", () => {
     expect(line).toStartWith("WARN");
     expect(line).toContain(`v0 -> v${await currentAgentsBlockVersion(fx.toolRoot)}`);
     expect(line).not.toContain(" at ");
-    expect(line).toContain("marrow add ");
+    expect(line).toContain("marrow attach ");
   });
 
   test("warns with 'not verbatim' when a project's note wording drifted at the current version", async () => {
     const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
-    const { code: adoptCode } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+    const { code: adoptCode } = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
     expect(adoptCode).toBe(0);
     const agentsMdPath = path.join(projectDir, "AGENTS.md");
     const original = await readFile(agentsMdPath, "utf8");
@@ -193,7 +193,7 @@ describe("doctor", () => {
   test("does not fail a project whose parent directory is not a git repo", async () => {
     const projectDir = path.join(fx.root, "elsewhere", "plaindir");
     const { code: addCode } = await captureLogs(() =>
-      addCommand(projectDir, { id: "local/plaindir" }, fx.marrowHome, fx.toolRoot),
+      attachCommand(projectDir, { id: "local/plaindir" }, fx.marrowHome, fx.toolRoot),
     );
     expect(addCode).toBe(0);
 
@@ -316,7 +316,7 @@ describe("doctor", () => {
     const line = outLines.find((l) => l.includes("worktree add --orphan"));
     expect(line).toBeDefined();
     expect(line).toStartWith("OK");
-    // It gates `add` and `publish` entirely, so it must precede vault checks.
+    // It gates `attach` and `publish` entirely, so it must precede vault checks.
     expect(outLines.indexOf(line!)).toBe(0);
   });
 });

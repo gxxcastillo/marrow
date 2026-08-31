@@ -57,7 +57,7 @@ export async function makeFixture(): Promise<Fixture> {
   const vault = vaultDir(marrowHome);
   await mkdir(vault, { recursive: true });
   await git(["init", "-q", "--bare", "-b", "main"], vault);
-  // Worktrees created from this bare repo (by test helpers and by addCommand
+  // Worktrees created from this bare repo (by test helpers and by attachCommand
   // itself) inherit its config when they have none of their own.
   await setTestIdentity(vault);
 
@@ -74,7 +74,7 @@ export async function makeFixture(): Promise<Fixture> {
   };
 }
 
-// Adds an orphan project worktree (mirrors `marrow add`'s adopt-mode step 4 onward) and
+// Adds an orphan project worktree (mirrors `marrow attach`'s adopt-mode step 4 onward) and
 // gives it one seed commit, pushed to origin.
 export async function addProjectWorktree(fx: Fixture, project: string, branch = project): Promise<string> {
   const projectDir = path.join(fx.projectsRoot, project);
@@ -96,7 +96,7 @@ export async function addProjectWorktree(fx: Fixture, project: string, branch = 
 export type IgnoreState = "ignored" | "untracked" | "tracked";
 
 // Builds a standalone parent project repo (distinct from the marrow vault)
-// with a populated .agents/ dir, in one of the three gitignore states `add`'s
+// with a populated .agents/ dir, in one of the three gitignore states `attach`'s
 // adopt mode must handle.
 export async function makeProjectRepo(
   fx: Fixture,

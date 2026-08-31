@@ -61,7 +61,7 @@ describe("identity: GitHub origin parsing", () => {
 
   test("the same repo name under different owners collapses to one id", () => {
     // Deliberate trade: readable branch names over collision-proof identity.
-    // `add` catches the collision rather than merging — see spec/cli.md -> add.
+    // `attach` catches the collision rather than merging — see spec/cli.md -> attach.
     expect(githubProjectId("git@github.com:alice/notes.git")).toBe("notes");
     expect(githubProjectId("git@github.com:bob/notes.git")).toBe("notes");
   });
@@ -122,7 +122,7 @@ describe("identity: resolveIdentity", () => {
 
   test("an explicit id on a path that doesn't exist yet keeps the literal path (fresh create)", async () => {
     const dir = path.join(fx.root, "identity", "brand-new", "nested");
-    // Deliberately not created: this is the `marrow add <new-path> --id <id>`
+    // Deliberately not created: this is the `marrow attach <new-path> --id <id>`
     // fresh-create case, where spawning git against a nonexistent cwd must
     // not crash.
     const identity = await resolveIdentity(dir, "local-fresh");

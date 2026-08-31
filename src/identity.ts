@@ -39,7 +39,7 @@ export async function resolveIdentity(projectArg: string, explicitId?: string): 
   let dir = path.resolve(projectArg);
   // Toplevel resolution runs whenever the path is inside a git repo, --id or
   // not — `cli.md` says the path always resolves to the parent repo's root.
-  // `existsSync` guards the fresh-create case (`marrow add <new-path> --id
+  // `existsSync` guards the fresh-create case (`marrow attach <new-path> --id
   // <id>`): the directory may not exist on disk yet, and spawning git against
   // a nonexistent cwd throws instead of failing gracefully.
   const exists = existsSync(dir);

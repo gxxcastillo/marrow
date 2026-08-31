@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import { parentFreshness, parseCurrentStateStamp } from "../src/memory-files";
+import { parentFreshness, parseCurrentStateStamp, withoutPersistenceSection } from "../src/memory-files";
 import { git } from "../src/git";
 import { makeFixture, setTestIdentity, type Fixture } from "./fixtures";
 
@@ -32,6 +32,16 @@ describe("memory files", () => {
     expect(parseCurrentStateStamp("  As of 2026-08-31 (marrow @a108f6a)\n")).toBeNull();
     expect(parseCurrentStateStamp("As of 2026-02-31 (marrow @a108f6a)\n")).toBeNull();
     expect(parseCurrentStateStamp("As of 2026-08-31 (marrow @not-a-sha)\n")).toBeNull();
+  });
+
+  test("removes fenced and legacy persistence sections without disturbing adjacent prose", () => {
+    const fenced = "# Notes\n\n<!-- marrow:persistence-block v2 -->\n## Persistence\nmanaged\n<!-- /marrow:persistence-block -->\n\n## Work\nkeep\n";
+    expect(withoutPersistenceSection(fenced)).toBe("# Notes\n\n## Work\nkeep\n");
+    const legacy = "# Notes\n\n## Persistence\n\nThis directory is a git worktree of the private `marrow` repo (branch: `notes`).\nold block\n\n## Work\nkeep\n";
+    expect(withoutPersistenceSection(legacy)).toBe("# Notes\n\n## Work\nkeep\n");
+    const userAuthored = "# Notes\n\n## Persistence\n\nKeep these notes after leaving this tool.\n\n## Work\nkeep\n";
+    expect(withoutPersistenceSection(userAuthored)).toBeNull();
+    expect(withoutPersistenceSection("# Notes\n")).toBeNull();
   });
 
   test("compares a stamp with parent history and reports unmeasurable divergence", async () => {

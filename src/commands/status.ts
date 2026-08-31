@@ -93,7 +93,7 @@ export async function statusCommand(marrowHome: string): Promise<number> {
 
   if (worktrees.length === 0) {
     clearProgress(progressShown, PROGRESS_LINE);
-    console.log("No projects attached on this machine. Run `marrow add <project-path>` to get started.");
+    console.log("No projects attached on this machine. Run `marrow attach <project-path>` to get started.");
     if (unattachedNote) printBranchList(`The vault has ${unattachedNote}`, unattached);
     return 0;
   }

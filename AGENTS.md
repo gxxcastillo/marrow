@@ -42,10 +42,10 @@ private-remote requirement, rollback/verification contract — are canonical in
 with* marrow, not to marrow's own behavior:
 
 - Adopting a real project's existing `.agents/` is **attended only**. Never run
-  `marrow add` live against existing project memory autonomously. `marrow add
+  `marrow attach` live against existing project memory autonomously. `marrow attach
   <project-path> --dry-run` is safe to run unattended; the live command is not.
 - Some projects still track `.agents/` in their parent repo and need an attended untracking
-  step before `add` will accept them. Project-specific inventories belong in `.agents/`,
+  step before `attach` will accept them. Project-specific inventories belong in `.agents/`,
   not here.
 - Creating the vault's private GitHub remote with `marrow publish <owner>/<repo>`
   requires explicit user go-ahead — never do it on your own initiative.

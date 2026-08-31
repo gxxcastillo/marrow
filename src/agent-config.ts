@@ -202,7 +202,7 @@ export async function ensureAgentMemoryDisabled(projectDir: string, dryRun: bool
     } catch (err) {
       // An unrelated pre-existing file the project already has (e.g. hand-edited,
       // invalid JSON) must not turn a successful attach into a reported failure —
-      // skip just this file and let the rest of `add` finish normally.
+      // skip just this file and let the rest of `attach` finish normally.
       skipped.push(`  ${path.relative(projectDir, change.path).padEnd(25)} could not update: ${err instanceof Error ? err.message : String(err)}`);
       continue;
     }

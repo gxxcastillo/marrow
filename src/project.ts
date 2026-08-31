@@ -189,7 +189,7 @@ export async function ensureAgentsBlock(toolRoot: string, projectDir: string, pr
 
 // --- Parent-repo `.agents/` ignore handling -------------------------------
 // `.agents/` must end up ignored by the project's own repo: `doctor` checks it
-// on every run and the persistence block promises it. See spec/cli.md -> `add`.
+// on every run and the persistence block promises it. See spec/cli.md -> `attach`.
 
 export type IgnoreState = "ignored" | "untracked" | "tracked" | "no-repo";
 
@@ -232,6 +232,6 @@ export function trackedMessage(projectDir: string): string {
     `  echo '.agents/' >> .gitignore\n` +
     `  git add .gitignore\n` +
     `  git commit -m "untrack .agents"\n` +
-    `Then re-run: marrow add ${projectDir}`
+    `Then re-run: marrow attach ${projectDir}`
   );
 }

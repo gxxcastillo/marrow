@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, realpath, rm, stat } from "node:fs/promises";
 import path from "node:path";
-import { addCommand } from "../src/commands/add";
+import { attachCommand } from "../src/commands/attach";
 import { git, listProjectWorktrees, run, vaultDir } from "../src/git";
 import { addProjectWorktree, makeFixture, makeProjectRepo, type Fixture } from "./fixtures";
 import { captureLogs, currentAgentsBlockVersion, currentPersistenceBlockVersion, listFilesRecursive } from "./helpers";
 
 const branch = (name: string) => name;
 
-describe("add", () => {
+describe("attach", () => {
   let fx: Fixture;
 
   beforeEach(async () => {
@@ -29,9 +29,9 @@ describe("add", () => {
       const before = await listFilesRecursive(agentsPath);
       expect(before).toContain(".hidden");
 
-      const { code, outLines } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+      const { code, outLines } = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
       expect(code).toBe(0);
-      expect(outLines).toContain("added alpha to marrow");
+      expect(outLines).toContain("attached alpha to marrow");
       expect(outLines).toContain(`  project:  ${resolvedProjectDir}`);
       expect(outLines).toContain(`  location: ${resolvedAgentsPath}`);
       expect(outLines).toContain(`  key:      ${branch("alpha")}`);
@@ -56,7 +56,7 @@ describe("add", () => {
 
     test("backup tarball is created and non-empty", async () => {
       const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
-      await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+      await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
 
       const backupsDir = path.join(fx.marrowHome, "backups");
       const entries = await readdir(backupsDir);
@@ -68,7 +68,7 @@ describe("add", () => {
       const projectDir = await makeProjectRepo(fx, "alpha", "untracked");
       await Bun.write(path.join(fx.marrowHome, "backups"), "not a directory\n");
 
-      const { code } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+      const { code } = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
 
       expect(code).toBe(1);
       expect(existsSync(path.join(projectDir, ".gitignore"))).toBe(false);
@@ -85,8 +85,8 @@ describe("add", () => {
       await Bun.write(path.join(projectA, ".agents", "sentinel.md"), "sentinel-A\n");
       await Bun.write(path.join(projectB, ".agents", "sentinel.md"), "sentinel-B\n");
 
-      const resultA = await captureLogs(() => addCommand(projectA, { id: "org-a/widget" }, fx.marrowHome, fx.toolRoot));
-      const resultB = await captureLogs(() => addCommand(projectB, { id: "org-b/widget" }, fx.marrowHome, fx.toolRoot));
+      const resultA = await captureLogs(() => attachCommand(projectA, { id: "org-a/widget" }, fx.marrowHome, fx.toolRoot));
+      const resultB = await captureLogs(() => attachCommand(projectB, { id: "org-b/widget" }, fx.marrowHome, fx.toolRoot));
       expect(resultA.code).toBe(0);
       expect(resultB.code).toBe(0);
 
@@ -113,20 +113,20 @@ describe("add", () => {
       await rm(path.join(projectDir, ".agents", "current-state.md"));
       const parentHead = (await git(["rev-parse", "--short", "HEAD"], projectDir)).stdout;
 
-      const { code } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+      const { code } = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
 
       expect(code).toBe(0);
       const currentState = await readFile(path.join(projectDir, ".agents", "current-state.md"), "utf8");
       expect(currentState).toContain(`(alpha @${parentHead})`);
     });
 
-    test("reports a local-only add after the result when the vault has no origin", async () => {
+    test("reports a local-only attach after the result when the vault has no origin", async () => {
       const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
       await git(["remote", "remove", "origin"], vaultDir(fx.marrowHome));
 
-      const { code, outLines } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+      const { code, outLines } = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
       expect(code).toBe(0);
-      expect(outLines).toContain("added alpha to marrow");
+      expect(outLines).toContain("attached alpha to marrow");
       expect(outLines.join("\n")).toContain("Adopted existing .agents\n  backup:");
       expect(outLines.join("\n")).toContain("  files:  4 before, 4 after");
       expect(outLines.join("\n")).toContain("  size:   89B before,");
@@ -135,7 +135,7 @@ describe("add", () => {
 
     test("appends .agents/ to parent .gitignore when untracked-not-ignored", async () => {
       const projectDir = await makeProjectRepo(fx, "beta", "untracked");
-      const { code } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+      const { code } = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
       expect(code).toBe(0);
       const gitignore = await readFile(path.join(projectDir, ".gitignore"), "utf8");
       expect(gitignore).toContain(".agents/");
@@ -143,7 +143,7 @@ describe("add", () => {
 
     test("aborts when .agents is tracked by the parent repo, without touching it", async () => {
       const projectDir = await makeProjectRepo(fx, "tracked-project", "tracked");
-      const { code, errLines } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+      const { code, errLines } = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
       expect(code).toBe(1);
       expect(errLines.join("\n")).toContain("tracked");
       expect(existsSync(path.join(projectDir, ".agents", ".git"))).toBe(false);
@@ -156,7 +156,7 @@ describe("add", () => {
       // An orphan branch has no ref until its first commit ("unborn branch").
       await git(["commit", "--allow-empty", "-q", "-m", "seed"], otherAgents);
 
-      const { code, errLines } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+      const { code, errLines } = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
       expect(code).toBe(1);
       expect(errLines.join("\n")).toContain("already attached");
     });
@@ -168,7 +168,7 @@ describe("add", () => {
       await mkdir(agentsPath, { recursive: true });
       await Bun.write(path.join(agentsPath, ".git"), "gitdir: /somewhere\n");
 
-      const { code, errLines } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+      const { code, errLines } = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
       expect(code).toBe(1);
       expect(errLines.join("\n")).toContain("already a git worktree");
     });
@@ -178,7 +178,7 @@ describe("add", () => {
       const agentsPath = path.join(projectDir, ".agents");
       const before = await listFilesRecursive(agentsPath);
 
-      const { code } = await captureLogs(() => addCommand(projectDir, { dryRun: true }, fx.marrowHome, fx.toolRoot));
+      const { code } = await captureLogs(() => attachCommand(projectDir, { dryRun: true }, fx.marrowHome, fx.toolRoot));
       expect(code).toBe(0);
 
       expect(existsSync(path.join(agentsPath, ".git"))).toBe(false);
@@ -189,7 +189,7 @@ describe("add", () => {
     test("--dry-run against an untracked project reports the .gitignore step without writing it", async () => {
       const projectDir = await makeProjectRepo(fx, "beta", "untracked");
       const { code, outLines } = await captureLogs(() =>
-        addCommand(projectDir, { dryRun: true }, fx.marrowHome, fx.toolRoot),
+        attachCommand(projectDir, { dryRun: true }, fx.marrowHome, fx.toolRoot),
       );
       expect(code).toBe(0);
       expect(outLines.join("\n")).toContain("would append");
@@ -201,7 +201,7 @@ describe("add", () => {
       await Bun.write(path.join(projectDir, "AGENTS.md"), "Read .agents/README.md first.\n");
 
       const { code, outLines } = await captureLogs(() =>
-        addCommand(projectDir, { dryRun: true }, fx.marrowHome, fx.toolRoot),
+        attachCommand(projectDir, { dryRun: true }, fx.marrowHome, fx.toolRoot),
       );
 
       const output = outLines.join("\n");
@@ -213,12 +213,12 @@ describe("add", () => {
       expect(existsSync(path.join(projectDir, ".agents", ".git"))).toBe(false);
     });
 
-    test("live add prepends the parent instruction block to AGENTS.md when it is missing", async () => {
+    test("live attach prepends the parent instruction block to AGENTS.md when it is missing", async () => {
       const projectDir = await makeProjectRepo(fx, "prepend-block", "ignored");
       await Bun.write(path.join(projectDir, "AGENTS.md"), "Read .agents/README.md first.\n");
 
       const { code, outLines } = await captureLogs(() =>
-        addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
+        attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
       );
 
       const output = outLines.join("\n");
@@ -233,11 +233,11 @@ describe("add", () => {
       expect(agents).toContain("Read .agents/README.md first.");
     });
 
-    test("live add disables Codex and Claude Code built-in memory for the parent project", async () => {
+    test("live attach disables Codex and Claude Code built-in memory for the parent project", async () => {
       const projectDir = await makeProjectRepo(fx, "disable-memory", "ignored");
 
       const { code, outLines } = await captureLogs(() =>
-        addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
+        attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
       );
 
       expect(code).toBe(0);
@@ -260,7 +260,7 @@ describe("add", () => {
       });
     });
 
-    test("live add updates existing agent memory configs without replacing unrelated settings", async () => {
+    test("live attach updates existing agent memory configs without replacing unrelated settings", async () => {
       const projectDir = await makeProjectRepo(fx, "update-memory-config", "ignored");
       await mkdir(path.join(projectDir, ".codex"), { recursive: true });
       await mkdir(path.join(projectDir, ".claude"), { recursive: true });
@@ -277,7 +277,7 @@ describe("add", () => {
       await Bun.write(path.join(projectDir, ".claude", "settings.json"), JSON.stringify({ model: "claude-sonnet-5" }));
 
       const { code } = await captureLogs(() =>
-        addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
+        attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
       );
 
       const codex = await readFile(path.join(projectDir, ".codex", "config.toml"), "utf8");
@@ -291,13 +291,13 @@ describe("add", () => {
       expect(claude.autoMemoryEnabled).toBe(false);
     });
 
-    test("live add still succeeds when an existing .claude/settings.json is not valid JSON", async () => {
+    test("live attach still succeeds when an existing .claude/settings.json is not valid JSON", async () => {
       const projectDir = await makeProjectRepo(fx, "bad-claude-settings", "ignored");
       await mkdir(path.join(projectDir, ".claude"), { recursive: true });
       await Bun.write(path.join(projectDir, ".claude", "settings.json"), "{ not valid json,, }");
 
       const { code, outLines } = await captureLogs(() =>
-        addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
+        attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
       );
 
       expect(code).toBe(0);
@@ -322,7 +322,7 @@ describe("add", () => {
       ].join("\n"));
 
       const { code } = await captureLogs(() =>
-        addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
+        attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
       );
 
       const codex = await readFile(path.join(projectDir, ".codex", "config.toml"), "utf8");
@@ -339,7 +339,7 @@ describe("add", () => {
       await Bun.write(path.join(projectDir, "CLAUDE.md"), `Project notes.\n\n${block}`);
 
       const { code, outLines } = await captureLogs(() =>
-        addCommand(projectDir, { dryRun: true }, fx.marrowHome, fx.toolRoot),
+        attachCommand(projectDir, { dryRun: true }, fx.marrowHome, fx.toolRoot),
       );
 
       expect(code).toBe(0);
@@ -362,7 +362,7 @@ describe("add", () => {
       ].join("\n"));
 
       const { code, outLines } = await captureLogs(() =>
-        addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
+        attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
       );
 
       const output = outLines.join("\n");
@@ -384,7 +384,7 @@ describe("add", () => {
       await Bun.write(path.join(projectDir, "AGENTS.md"), "Read .agents/README.md, then continue.\n");
 
       const { code, outLines } = await captureLogs(() =>
-        addCommand(projectDir, { dryRun: true }, fx.marrowHome, fx.toolRoot),
+        attachCommand(projectDir, { dryRun: true }, fx.marrowHome, fx.toolRoot),
       );
 
       expect(code).toBe(0);
@@ -406,7 +406,7 @@ describe("add", () => {
       const before = await readFile(path.join(projectDir, "AGENTS.md"), "utf8");
 
       const { code, outLines } = await captureLogs(() =>
-        addCommand(projectDir, { dryRun: true }, fx.marrowHome, fx.toolRoot),
+        attachCommand(projectDir, { dryRun: true }, fx.marrowHome, fx.toolRoot),
       );
       const agents = await readFile(path.join(projectDir, "AGENTS.md"), "utf8");
 
@@ -417,7 +417,7 @@ describe("add", () => {
       expect(agents).toBe(before);
     });
 
-    test("live add replaces a stale versioned note in place, keeping the rest of the file", async () => {
+    test("live attach replaces a stale versioned note in place, keeping the rest of the file", async () => {
       const projectDir = await makeProjectRepo(fx, "old-note-block", "ignored");
       await Bun.write(path.join(projectDir, "AGENTS.md"), [
         "> [!Note]",
@@ -432,7 +432,7 @@ describe("add", () => {
       ].join("\n"));
 
       const { code, outLines } = await captureLogs(() =>
-        addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
+        attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
       );
       const agents = await readFile(path.join(projectDir, "AGENTS.md"), "utf8");
       const currentVersion = await currentAgentsBlockVersion(fx.toolRoot);
@@ -462,7 +462,7 @@ describe("add", () => {
       ].join("\n"));
 
       const { code, outLines } = await captureLogs(() =>
-        addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
+        attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
       );
       const agents = await readFile(path.join(projectDir, "AGENTS.md"), "utf8");
       const currentVersion = await currentAgentsBlockVersion(fx.toolRoot);
@@ -481,7 +481,7 @@ describe("add", () => {
       await Bun.write(path.join(projectDir, "AGENTS.md"), agentsContent);
 
       const { code, outLines } = await captureLogs(() =>
-        addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
+        attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
       );
       const agents = await readFile(path.join(projectDir, "AGENTS.md"), "utf8");
 
@@ -501,7 +501,7 @@ describe("add", () => {
       await Bun.write(path.join(projectDir, "AGENTS.md"), `${drifted}\n\n# Existing Guidance\n`);
 
       const { code, outLines } = await captureLogs(() =>
-        addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
+        attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
       );
       const agents = await readFile(path.join(projectDir, "AGENTS.md"), "utf8");
 
@@ -513,7 +513,7 @@ describe("add", () => {
 
     test("adopts a project at an explicit path", async () => {
       const projectDir = await makeProjectRepo(fx, "alpha", "ignored", path.join(fx.root, "elsewhere"));
-      const { code } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+      const { code } = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
       expect(code).toBe(0);
       const worktrees = await listProjectWorktrees(vaultDir(fx.marrowHome));
       expect(worktrees.map((w) => w.branch)).toContain(branch("alpha"));
@@ -524,7 +524,7 @@ describe("add", () => {
       const nested = path.join(projectDir, "packages", "sub");
       await mkdir(nested, { recursive: true });
 
-      const { code } = await captureLogs(() => addCommand(nested, { id: "custom/nested-repo" }, fx.marrowHome, fx.toolRoot));
+      const { code } = await captureLogs(() => attachCommand(nested, { id: "custom/nested-repo" }, fx.marrowHome, fx.toolRoot));
       expect(code).toBe(0);
       expect(existsSync(path.join(projectDir, ".agents", ".git"))).toBe(true);
       expect(existsSync(path.join(nested, ".agents"))).toBe(false);
@@ -534,7 +534,7 @@ describe("add", () => {
   describe("creating a fresh .agents/", () => {
     test("creates a fresh .agents worktree seeded from the README template", async () => {
       const projectDir = path.join(fx.root, "elsewhere", "freshproj");
-      const { code } = await captureLogs(() => addCommand(projectDir, { id: "local/freshproj" }, fx.marrowHome, fx.toolRoot));
+      const { code } = await captureLogs(() => attachCommand(projectDir, { id: "local/freshproj" }, fx.marrowHome, fx.toolRoot));
       expect(code).toBe(0);
 
       const agentsPath = path.join(projectDir, ".agents");
@@ -567,10 +567,10 @@ describe("add", () => {
     test("--dry-run makes no changes when there is nothing to adopt", async () => {
       const projectDir = path.join(fx.root, "elsewhere", "freshproj");
       const { code, outLines } = await captureLogs(() =>
-        addCommand(projectDir, { dryRun: true, id: "local/freshproj" }, fx.marrowHome, fx.toolRoot),
+        attachCommand(projectDir, { dryRun: true, id: "local/freshproj" }, fx.marrowHome, fx.toolRoot),
       );
       expect(code).toBe(0);
-      expect(outLines).toContain("would add freshproj to marrow");
+      expect(outLines).toContain("would attach freshproj to marrow");
       expect(outLines).toContain(`  project:  ${projectDir}`);
       expect(outLines).toContain(`  location: ${path.join(projectDir, ".agents")}`);
       expect(outLines).toContain("  key:      local/freshproj");
@@ -585,7 +585,7 @@ describe("add", () => {
       await git(["init", "-q", "-b", "main"], projectDir);
 
       await git(["remote", "add", "origin", "https://github.com/test/freshrepo.git"], projectDir);
-      const { code } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+      const { code } = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
       expect(code).toBe(0);
       expect(await readFile(path.join(projectDir, ".gitignore"), "utf8")).toContain(".agents/");
       expect((await git(["check-ignore", "-q", "--", ".agents"], projectDir)).code).toBe(0);
@@ -595,7 +595,7 @@ describe("add", () => {
       // Nothing to ignore into today, but a later `git init` here must not pick
       // .agents/ up.
       const projectDir = path.join(fx.root, "elsewhere", "notarepo");
-      const { code } = await captureLogs(() => addCommand(projectDir, { id: "local/notarepo" }, fx.marrowHome, fx.toolRoot));
+      const { code } = await captureLogs(() => attachCommand(projectDir, { id: "local/notarepo" }, fx.marrowHome, fx.toolRoot));
       expect(code).toBe(0);
       expect(await readFile(path.join(projectDir, ".gitignore"), "utf8")).toContain(".agents/");
     });
@@ -606,7 +606,7 @@ describe("add", () => {
       await git(["init", "-q", "-b", "main"], projectDir);
 
       const { code, outLines } = await captureLogs(() =>
-        addCommand(projectDir, { dryRun: true, id: "local/freshdry" }, fx.marrowHome, fx.toolRoot),
+        attachCommand(projectDir, { dryRun: true, id: "local/freshdry" }, fx.marrowHome, fx.toolRoot),
       );
       expect(code).toBe(0);
       expect(outLines.join("\n")).toContain("would append");
@@ -622,7 +622,7 @@ describe("add", () => {
       await git(["commit", "--allow-empty", "-q", "-m", "seed"], otherAgents);
 
       const { code, errLines } = await captureLogs(() =>
-        addCommand(path.join(fx.projectsRoot, "dupbranch"), { id: "local/dupbranch" }, fx.marrowHome, fx.toolRoot),
+        attachCommand(path.join(fx.projectsRoot, "dupbranch"), { id: "local/dupbranch" }, fx.marrowHome, fx.toolRoot),
       );
       expect(code).toBe(1);
       expect(errLines.join("\n")).toContain("already attached");
@@ -635,7 +635,7 @@ describe("add", () => {
       await rm(otherAgents, { recursive: true, force: true });
 
       const { code, errLines } = await captureLogs(() =>
-        addCommand(path.join(fx.projectsRoot, "dupbranch-missing"), { id: "local/dupbranch-missing" }, fx.marrowHome, fx.toolRoot),
+        attachCommand(path.join(fx.projectsRoot, "dupbranch-missing"), { id: "local/dupbranch-missing" }, fx.marrowHome, fx.toolRoot),
       );
       expect(code).toBe(1);
       expect(errLines.join("\n")).toContain("already attached");
@@ -643,13 +643,13 @@ describe("add", () => {
     });
   });
 
-  test("re-running add on an unchanged, present worktree succeeds without changing it", async () => {
+  test("re-running attach on an unchanged, present worktree succeeds without changing it", async () => {
     const projectDir = await makeProjectRepo(fx, "steady", "ignored");
     const resolvedProjectDir = await realpath(projectDir);
-    const first = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+    const first = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
     expect(first.code).toBe(0);
 
-    const { code, outLines } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+    const { code, outLines } = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
     expect(code).toBe(0);
     expect(outLines).toContain("steady is already managed by marrow");
     expect(outLines).toContain(`  project:  ${resolvedProjectDir}`);
@@ -658,14 +658,14 @@ describe("add", () => {
     expect(outLines).toContain("Project settings already up to date.");
   });
 
-  test("re-running add creates a missing current-state.md and pushes it", async () => {
+  test("re-running attach creates a missing current-state.md and pushes it", async () => {
     const projectDir = await makeProjectRepo(fx, "steady", "ignored");
-    const first = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+    const first = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
     expect(first.code).toBe(0);
     await rm(path.join(projectDir, ".agents", "current-state.md"));
     const parentHead = (await git(["rev-parse", "--short", "HEAD"], projectDir)).stdout;
 
-    const { code, outLines } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+    const { code, outLines } = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
 
     expect(code).toBe(0);
     expect(outLines).toContain("Working memory:");
@@ -678,15 +678,15 @@ describe("add", () => {
     expect(remoteRev.stdout).toBe(rev.stdout);
   });
 
-  test("dry-run re-running add previews a missing current-state.md repair", async () => {
+  test("dry-run re-running attach previews a missing current-state.md repair", async () => {
     const projectDir = await makeProjectRepo(fx, "steady", "ignored");
-    const first = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+    const first = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
     expect(first.code).toBe(0);
     const statePath = path.join(projectDir, ".agents", "current-state.md");
     await rm(statePath);
 
     const { code, outLines } = await captureLogs(() =>
-      addCommand(projectDir, { dryRun: true }, fx.marrowHome, fx.toolRoot),
+      attachCommand(projectDir, { dryRun: true }, fx.marrowHome, fx.toolRoot),
     );
 
     expect(code).toBe(0);
@@ -696,11 +696,11 @@ describe("add", () => {
 
   test("refuses to report false success when the worktree at the target path is missing", async () => {
     const projectDir = await makeProjectRepo(fx, "vanished", "ignored");
-    const first = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+    const first = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
     expect(first.code).toBe(0);
     await rm(path.join(projectDir, ".agents"), { recursive: true, force: true });
 
-    const { code, errLines } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+    const { code, errLines } = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
     expect(code).toBe(1);
     expect(errLines.join("\n")).toContain("worktree directory is missing");
     expect(errLines.join("\n")).toContain("marrow detach vanished");
@@ -714,7 +714,7 @@ describe("add", () => {
     await mkdir(projectDir, { recursive: true });
 
     const { code, outLines } = await captureLogs(() =>
-      addCommand(projectDir, { id: "local/attach" }, fx.marrowHome, fx.toolRoot),
+      attachCommand(projectDir, { id: "local/attach" }, fx.marrowHome, fx.toolRoot),
     );
 
     expect(code).toBe(0);
@@ -728,7 +728,7 @@ describe("add", () => {
   test("plans conflict precedence without mutating rejected targets", async () => {
     const cases: {
       name: string;
-      setup: () => Promise<{ projectDir: string; opts?: Parameters<typeof addCommand>[1]; unchangedPath: string }>;
+      setup: () => Promise<{ projectDir: string; opts?: Parameters<typeof attachCommand>[1]; unchangedPath: string }>;
       expected: string;
     }[] = [
       {
@@ -770,7 +770,7 @@ describe("add", () => {
     for (const c of cases) {
       const { projectDir, opts = {}, unchangedPath } = await c.setup();
       const before = await listFilesRecursive(unchangedPath);
-      const { code, errLines } = await captureLogs(() => addCommand(projectDir, opts, fx.marrowHome, fx.toolRoot));
+      const { code, errLines } = await captureLogs(() => attachCommand(projectDir, opts, fx.marrowHome, fx.toolRoot));
 
       expect(code, c.name).toBe(1);
       expect(errLines.join("\n"), c.name).toContain(c.expected);

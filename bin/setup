@@ -15,9 +15,9 @@ if ! command -v bun >/dev/null 2>&1; then
   echo "setup: bun is required (to run marrow) but not found on PATH" >&2
   exit 1
 fi
-# `git worktree add --orphan`, which every `marrow add` depends on, landed in
+# `git worktree add --orphan`, which every `marrow attach` depends on, landed in
 # git 2.42. `marrow init` does not use it, so without this check install would
-# report success and the first `marrow add` would fail on an unknown option.
+# report success and the first `marrow attach` would fail on an unknown option.
 # Keep the floor in step with MIN_GIT_MAJOR/MIN_GIT_MINOR in src/git.ts.
 git_major="$(git --version | sed -n 's/^git version \([0-9][0-9]*\)\..*/\1/p')"
 git_minor="$(git --version | sed -n 's/^git version [0-9][0-9]*\.\([0-9][0-9]*\).*/\1/p')"

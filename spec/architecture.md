@@ -53,7 +53,7 @@ as the remediation — it clears the registration without touching the branch.
 **Project identity is independent of checkout path.** A GitHub project's default identity
 is its normalized repository name from the parent-repo `origin`; SSH and HTTPS forms
 resolve to the same repo name. Its vault branch is exactly that identity (`notes`,
-`docs`, `marrow`). `add --id <id>` supplies the identity for a project without a supported origin,
+`docs`, `marrow`). `attach --id <id>` supplies the identity for a project without a supported origin,
 or for a GitHub project that needs a non-default name. A directory basename is a local
 display label only. This lets `/work/notes` and `/other/notes` attach the same branch.
 
@@ -80,10 +80,10 @@ Persistence block appended to every adopted `.agents/README.md`). Automation
 There is no env var for the tool's own location. `templates/`, `CONVENTION.md`, and
 `package.json` are resolved relative to wherever the running `marrow` install lives —
 independent of `MARROW_HOME` — so version output, `marrow convention`, and the
-working-memory and parent-instruction steps of `add` work correctly regardless of where
+working-memory and parent-instruction steps of `attach` work correctly regardless of where
 the vault is configured to be. This is
 one fewer thing to configure, not a gap: the tool's own location is never ambiguous to
-code that's already running from it. There is no projects-root setting either: `add`
+code that's already running from it. There is no projects-root setting either: `attach`
 takes a project path, and registered worktree paths come from the vault.
 
 `MARROW_HOME` exists primarily so `bun test` can point at a throwaway vault. Test project
@@ -101,9 +101,9 @@ marrow/
 ├── CONVENTION.md            # canonical .agents/ content convention
 ├── spec/                    # this directory
 ├── templates/
-│   ├── agents-block.md      # parent instruction block printed by `marrow add`
+│   ├── agents-block.md      # parent instruction block printed by `marrow attach`
 │   ├── current-state.md     # required resumption-context seed
-│   ├── readme-seed.md       # seeds a fresh `marrow add`; {{project}} substituted
+│   ├── readme-seed.md       # seeds a fresh `marrow attach`; {{project}} substituted
 │   └── persistence-block.md # appended to every adopted/created README.md
 ├── src/
 │   ├── cli.ts               # entry, command table, arg parsing, dispatch
@@ -117,7 +117,7 @@ marrow/
 │   ├── remote.ts            # origin configuration and safety checks
 │   ├── vault.ts             # vault initialization and landing branch
 │   └── commands/
-│       ├── init.ts, publish.ts, status.ts, sync.ts, add.ts
+│       ├── init.ts, publish.ts, status.ts, sync.ts, attach.ts
 │       └── detach.ts, doctor.ts, grep.ts, convention.ts, update.ts
 ├── test/                     # bun test; fixtures build a throwaway tool root + vault
 ├── bin/
@@ -132,7 +132,7 @@ marrow/
 The orphan-branch-per-project mechanism sets the tool's only hard version floor: `git
 worktree add --orphan` requires git 2.42+. `bin/setup` refuses to proceed below it and
 `doctor` re-checks, because `init` itself does not use `--orphan` — without the check,
-setup would succeed and the first `add` would fail on an unknown option. The floor
+setup would succeed and the first `attach` would fail on an unknown option. The floor
 lives in `src/git.ts` (`MIN_GIT_MAJOR`/`MIN_GIT_MINOR`) and is mirrored in `bin/setup`,
 which cannot import it.
 
@@ -178,7 +178,7 @@ it is a safety property, not a filesystem convention.
 ```
 .marrow/
 ├── vault.git/                 # bare repo; project branches plus GitHub landing main
-└── backups/                   # tarballs made by `add` when adopting — never auto-deleted
+└── backups/                   # tarballs made by `attach` when adopting — never auto-deleted
 ```
 
 `backups/` sits outside `vault.git/` and outside any git working tree — there is nothing

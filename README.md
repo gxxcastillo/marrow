@@ -71,13 +71,13 @@ second machine). Nothing in first adoption requires it.
 Preview before touching a real project:
 
 ```
-marrow add /path/to/project --dry-run
+marrow attach /path/to/project --dry-run
 ```
 
 Then for real:
 
 ```
-marrow add /path/to/project
+marrow attach /path/to/project
 ```
 
 If the project has no existing `.agents/`, this creates one fresh — no mutation of
@@ -95,7 +95,7 @@ output; don't script or automate that step (`spec/safety.md` → "Attended opera
 ### Everyday commands
 
 ```
-marrow add /path/to/project            # adopt a project into the vault
+marrow attach /path/to/project         # adopt a project into the vault
 marrow status                          # attached memory needing attention
 marrow sync                            # commit + push everything dirty
 marrow grep "TODO" -C2                 # search across every adopted project
@@ -103,6 +103,28 @@ marrow doctor                          # verify marrow's setup and safety
 marrow update                          # update the managed install (refuses a dev checkout)
 marrow --help                          # command list; <command> --help for one
 ```
+
+### Getting out
+
+Detach one project while keeping its `.agents/` files:
+
+```
+marrow detach <project>
+```
+
+The directory becomes ordinary files and the vault branch is retained. marrow removes
+its persistence block from `.agents/README.md`. It leaves the parent repo's `.gitignore`,
+agent instruction note, and `.codex`/`.claude` memory settings unchanged and prints how
+to remove or reverse each one.
+
+To park clean memory in the vault and remove its local `.agents/` checkout instead:
+
+```
+marrow detach <project> --vault-only
+```
+
+That mode refuses uncommitted changes and preserves the reattach round trip. `bin/uninstall`
+removes the managed tool checkout and PATH symlink, but never removes the vault.
 
 Full command reference, including multi-machine and remote setup: `spec/cli.md`. Design:
 `spec/architecture.md`. Safety guarantees: `spec/safety.md`. Working-memory convention:

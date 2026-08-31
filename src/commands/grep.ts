@@ -12,7 +12,7 @@ function reportPartial(searched: number, unattached: string[]): void {
     : `searched ${searched} of ${searched + unattached.length} project branches`;
   console.error(
     `marrow grep: ${scope}; ${countLabel(unattached.length, "branch", "branches")} in the vault not attached on this machine ` +
-      `(attach with \`marrow add <project-path>\`): ${unattached.join(", ")}`,
+      `(attach with \`marrow attach <project-path>\`): ${unattached.join(", ")}`,
   );
 }
 

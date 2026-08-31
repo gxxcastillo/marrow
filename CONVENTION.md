@@ -83,14 +83,14 @@ updates the template and tests in the same commit.
 > <p align="right">v2</p>
 ```
 
-This text is strict-verbatim; project-specific policy lives outside this block. `add` keys
+This text is strict-verbatim; project-specific policy lives outside this block. `attach` keys
 off the text itself: a note matching the template exactly is left alone, any recognized note
 that differs is replaced in place with the current text, and prose with no recognizable note
 at all is treated as missing. A note is recognized by its opener, its link to
 `.agents/README.md`, and a trailing version tag, so wording may drift without stranding it.
 The version tag records which wording a note was written against and labels the repair; it
 does not decide whether one happens, so a template fix reaches every adopted project on its
-next `add` without a version bump. Bump the version when the meaning changes, not for every
+next `attach` without a version bump. Bump the version when the meaning changes, not for every
 edit.
 
 ## Files
@@ -172,7 +172,7 @@ names the plan.
   line in the same step — you have already done the reasoning the rule needs. Do not
   sweep a directory to conform it: retrofitting a judgment-bearing rule across files you
   have not reasoned about invents state. Mechanical conformance — canonical blocks,
-  required files, stamp format — is `add`'s and `doctor`'s job, not a reading agent's. A
+  required files, stamp format — is `attach`'s and `doctor`'s job, not a reading agent's. A
   deliberate migration is a plan, run attended.
 - Edit in place. Git history replaces inline correction ledgers.
 - Collapse progress logs when work lands. Keep final state, not round-by-round history.

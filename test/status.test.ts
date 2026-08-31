@@ -27,7 +27,7 @@ describe("status", () => {
   test("reports no project worktrees for a fresh vault", async () => {
     const { code, outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
     expect(code).toBe(0);
-    expect(outLines).toEqual(["No projects attached on this machine. Run `marrow add <project-path>` to get started."]);
+    expect(outLines).toEqual(["No projects attached on this machine. Run `marrow attach <project-path>` to get started."]);
   });
 
   test("lists clean pushed projects and summarizes", async () => {

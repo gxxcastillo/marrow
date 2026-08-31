@@ -43,6 +43,20 @@ if [ "$removed_something" -eq 0 ]; then
 fi
 
 vault_home="${MARROW_HOME:-$HOME/.marrow}"
+vault_repo="$vault_home/vault.git"
+if [ -d "$vault_repo" ]; then
+  attached=""
+  if attached="$(git -C "$vault_repo" worktree list --porcelain 2>/dev/null | awk '
+    /^worktree / { path = substr($0, 10) }
+    /^branch refs\/heads\// { print substr($0, 19) "\t" path }
+  ')" && [ -n "$attached" ]; then
+    echo "uninstall: projects are still attached; reinstall marrow and detach each one if you want ordinary files:"
+    while IFS=$'\t' read -r branch worktree; do
+      echo "  marrow detach '$branch'  # $worktree"
+    done <<< "$attached"
+  fi
+fi
+
 if [ -e "$vault_home" ]; then
   echo "uninstall: vault left in place at $vault_home (holds your project data) — remove it yourself with 'rm -rf $vault_home' if you really want it gone"
 fi

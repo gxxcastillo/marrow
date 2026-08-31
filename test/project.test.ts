@@ -112,6 +112,19 @@ describe("project", () => {
       expect(content).toContain("<!-- marrow:persistence-block");
     });
 
+    test("preserves a user-authored Persistence section and appends the managed block", async () => {
+      const { dir, readmePath } = await readmeFixture("user-persistence");
+      const original = "# custom routing guide\n\n## Persistence\n\nKeep this user-authored policy.\n";
+      await Bun.write(readmePath, original);
+
+      await writeMemoryFiles(fx.toolRoot, dir, "widget", "widget");
+      const content = await readFile(readmePath, "utf8");
+
+      expect(content).toStartWith(original);
+      expect(content).toContain("Keep this user-authored policy.");
+      expect(content).toContain("<!-- marrow:persistence-block");
+    });
+
     test("creates required current-state.md without overwriting an existing one", async () => {
       const { dir } = await readmeFixture("current-state");
 

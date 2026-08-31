@@ -8,13 +8,13 @@ import { git, hasOrigin, listProjectWorktrees, vaultDir } from "../git";
 import { ensureCurrentState, hasCurrentState, writeMemoryFiles } from "../memory-files";
 import { ensureAgentsBlock, ensureIgnored, gitignoreState, trackedMessage, type IgnoreState } from "../project";
 
-export interface AddOptions { dryRun?: boolean; id?: string }
-class AddAbort extends Error {}
+export interface AttachOptions { dryRun?: boolean; id?: string }
+class AttachAbort extends Error {}
 interface Target { branch: string; name: string; projectDir: string; agentsPath: string; vault: string; marrowHome: string; toolRoot: string }
 interface Worktree { path: string; branch: string; missing: boolean }
 type BranchState = "missing" | "local" | "remote";
 type AgentsState = "missing" | "directory" | "worktree" | "not-directory";
-interface AddInspection {
+interface AttachInspection {
   target: Target;
   branchState: BranchState;
   agentsState: AgentsState;
@@ -22,11 +22,11 @@ interface AddInspection {
   worktreeAtTarget?: Worktree;
   worktreeForBranch?: Worktree;
 }
-type AddPlan =
+type AttachPlan =
   | { kind: "already-attached"; target: Target }
   | { kind: "adopt"; target: Target; ignoreState: IgnoreState }
   | { kind: "create"; target: Target; ignoreState: IgnoreState }
-  | { kind: "attach"; target: Target; ignoreState: IgnoreState; localBranch: boolean }
+  | { kind: "reattach"; target: Target; ignoreState: IgnoreState; localBranch: boolean }
   | { kind: "error"; message: string };
 
 function printTarget(heading: string, t: Target): void {
@@ -53,7 +53,7 @@ async function walk(dir: string, excludeGit = false): Promise<{ count: number; s
 async function fetchVault(t: Target): Promise<void> {
   if (!(await hasOrigin(t.vault))) return;
   const res = await git(["fetch", "--prune", "origin"], t.vault);
-  if (res.code !== 0) throw new AddAbort(`could not fetch vault origin: ${res.stderr}`);
+  if (res.code !== 0) throw new AttachAbort(`could not fetch vault origin: ${res.stderr}`);
 }
 async function branchState(t: Target): Promise<BranchState> {
   if ((await git(["show-ref", "--verify", "--quiet", `refs/heads/${t.branch}`], t.vault)).code === 0) return "local";
@@ -69,17 +69,17 @@ async function commitAndPush(t: Target, subject: string, localNote = ""): Promis
   await writeMemoryFiles(t.toolRoot, t.agentsPath, t.name, t.branch);
   await git(["add", "-A"], t.agentsPath);
   const commit = await git(["commit", "-m", `${t.name}: ${subject}`], t.agentsPath);
-  if (commit.code !== 0) throw new AddAbort(`commit failed: ${commit.stderr}`);
+  if (commit.code !== 0) throw new AttachAbort(`commit failed: ${commit.stderr}`);
   return pushBranch(t, localNote);
 }
 
 async function pushBranch(t: Target, localNote = ""): Promise<"pushed" | "not-pushed"> {
   if (!(await hasOrigin(t.agentsPath))) return "not-pushed";
   const push = await git(["push", "-u", "origin", t.branch], t.agentsPath);
-  if (push.code !== 0) throw new AddAbort(`push failed (commit is local${localNote}): ${push.stderr}`);
+  if (push.code !== 0) throw new AttachAbort(`push failed (commit is local${localNote}): ${push.stderr}`);
   return "pushed";
 }
-async function inspectAdd(projectArg: string, opts: AddOptions, marrowHome: string, toolRoot: string): Promise<AddInspection> {
+async function inspectAttach(projectArg: string, opts: AttachOptions, marrowHome: string, toolRoot: string): Promise<AttachInspection> {
   const identity = await resolveIdentity(projectArg, opts.id);
   const target: Target = {
     branch: identity.id,
@@ -103,7 +103,7 @@ async function inspectAdd(projectArg: string, opts: AddOptions, marrowHome: stri
   };
 }
 
-function planAdd(i: AddInspection): AddPlan {
+function planAttach(i: AttachInspection): AttachPlan {
   const t = i.target;
   if (i.worktreeAtTarget) {
     if (i.worktreeAtTarget.branch !== t.branch) {
@@ -112,14 +112,14 @@ function planAdd(i: AddInspection): AddPlan {
     if (i.worktreeAtTarget.missing) {
       return {
         kind: "error",
-        message: `${t.agentsPath} is registered for '${t.branch}' but its worktree directory is missing; run \`marrow detach ${t.branch}\` first, then re-run add`,
+        message: `${t.agentsPath} is registered for '${t.branch}' but its worktree directory is missing; run \`marrow detach ${t.branch}\` first, then re-run attach`,
       };
     }
     return { kind: "already-attached", target: t };
   }
   if (i.worktreeForBranch) {
     const remediation = i.worktreeForBranch.missing
-      ? ` but its worktree directory is missing; run \`marrow detach ${t.branch}\` first, then re-run add`
+      ? ` but its worktree directory is missing; run \`marrow detach ${t.branch}\` first, then re-run attach`
       : "";
     return { kind: "error", message: `${t.branch} is already attached at ${i.worktreeForBranch.path}${remediation}` };
   }
@@ -135,13 +135,13 @@ function planAdd(i: AddInspection): AddPlan {
   }
   return i.branchState === "missing"
     ? { kind: "create", target: t, ignoreState: i.ignoreState }
-    : { kind: "attach", target: t, ignoreState: i.ignoreState, localBranch: i.branchState === "local" };
+    : { kind: "reattach", target: t, ignoreState: i.ignoreState, localBranch: i.branchState === "local" };
 }
 
 async function adopt(t: Target, state: IgnoreState, dryRun: boolean): Promise<number> {
   if (dryRun) {
     await ensureIgnored(t.projectDir, state, true);
-    printTarget(`would add ${t.name} to marrow`, t);
+    printTarget(`would attach ${t.name} to marrow`, t);
     console.log("plan: adopt existing .agents");
     return 0;
   }
@@ -149,11 +149,11 @@ async function adopt(t: Target, state: IgnoreState, dryRun: boolean): Promise<nu
   await ensureIgnored(t.projectDir, state, false);
   await rename(t.agentsPath, moved);
   const worktree = await git(["worktree", "add", "--orphan", "-b", t.branch, t.agentsPath], t.vault);
-  if (worktree.code !== 0) { await rename(moved, t.agentsPath); throw new AddAbort(`git worktree add failed, rolled back: ${worktree.stderr}`); }
+  if (worktree.code !== 0) { await rename(moved, t.agentsPath); throw new AttachAbort(`git worktree add failed, rolled back: ${worktree.stderr}`); }
   for (const entry of await readdir(moved, { withFileTypes: true })) await rename(path.join(moved, entry.name), path.join(t.agentsPath, entry.name));
   await rmdir(moved);
   const pushed = await commitAndPush(t, "adopt into marrow", `, backup at ${tarball}`), after = await walk(t.agentsPath, true);
-  printTarget(`added ${t.name} to marrow`, t);
+  printTarget(`attached ${t.name} to marrow`, t);
   console.log("");
   console.log("Adopted existing .agents");
   console.log(`  backup: ${tarball}`);
@@ -161,32 +161,32 @@ async function adopt(t: Target, state: IgnoreState, dryRun: boolean): Promise<nu
   console.log(`  size:   ${before.size}B before, ${after.size}B after`);
   console.log("");
   printVaultSync(pushed, t.branch);
-  if (after.count < before.count || after.size < before.size) { console.error(`marrow add: WARNING possible content loss — verify against ${tarball}`); return 1; }
+  if (after.count < before.count || after.size < before.size) { console.error(`marrow attach: WARNING possible content loss — verify against ${tarball}`); return 1; }
   return 0;
 }
 async function create(t: Target, state: IgnoreState, dryRun: boolean): Promise<number> {
   if (!dryRun) await mkdir(t.projectDir, { recursive: true });
   await ensureIgnored(t.projectDir, state, dryRun);
-  if (dryRun) { printTarget(`would add ${t.name} to marrow`, t); console.log("plan: create new .agents"); return 0; }
+  if (dryRun) { printTarget(`would attach ${t.name} to marrow`, t); console.log("plan: create new .agents"); return 0; }
   const worktree = await git(["worktree", "add", "--orphan", "-b", t.branch, t.agentsPath], t.vault);
-  if (worktree.code !== 0) throw new AddAbort(`git worktree add failed: ${worktree.stderr}`);
-  const pushed = await commitAndPush(t, "init via marrow add");
-  printTarget(`added ${t.name} to marrow`, t);
+  if (worktree.code !== 0) throw new AttachAbort(`git worktree add failed: ${worktree.stderr}`);
+  const pushed = await commitAndPush(t, "init via marrow attach");
+  printTarget(`attached ${t.name} to marrow`, t);
   console.log("");
   console.log("created new .agents");
   console.log("");
   printVaultSync(pushed, t.branch);
   return 0;
 }
-async function attach(t: Target, state: IgnoreState, local: boolean, dryRun: boolean): Promise<number> {
+async function reattach(t: Target, state: IgnoreState, local: boolean, dryRun: boolean): Promise<number> {
   await ensureIgnored(t.projectDir, state, dryRun);
   if (dryRun) { printTarget(`would attach ${t.name} to marrow`, t); return 0; }
   if (!local) {
     const made = await git(["branch", "--track", t.branch, `origin/${t.branch}`], t.vault);
-    if (made.code !== 0) throw new AddAbort(`could not create local branch for ${t.branch}: ${made.stderr}`);
+    if (made.code !== 0) throw new AttachAbort(`could not create local branch for ${t.branch}: ${made.stderr}`);
   }
   const worktree = await git(["worktree", "add", t.agentsPath, t.branch], t.vault);
-  if (worktree.code !== 0) throw new AddAbort(`could not attach ${t.branch}: ${worktree.stderr}`);
+  if (worktree.code !== 0) throw new AttachAbort(`could not attach ${t.branch}: ${worktree.stderr}`);
   printTarget(`attached ${t.name} to marrow`, t);
   return 0;
 }
@@ -200,14 +200,14 @@ async function alreadyAttached(t: Target, dryRun: boolean): Promise<number> {
   await ensureCurrentState(t.toolRoot, t.agentsPath, t.name);
   await git(["add", "--", "current-state.md"], t.agentsPath);
   const commit = await git(["commit", "-m", `${t.name}: add current-state`], t.agentsPath);
-  if (commit.code !== 0) throw new AddAbort(`commit failed: ${commit.stderr}`);
+  if (commit.code !== 0) throw new AttachAbort(`commit failed: ${commit.stderr}`);
   console.log("  .agents/current-state.md created");
   console.log("");
   printVaultSync(await pushBranch(t), t.branch);
   return 0;
 }
 
-async function executePlan(plan: AddPlan, dryRun: boolean): Promise<number> {
+async function executePlan(plan: AttachPlan, dryRun: boolean): Promise<number> {
   switch (plan.kind) {
     case "already-attached":
       return alreadyAttached(plan.target, dryRun);
@@ -215,18 +215,18 @@ async function executePlan(plan: AddPlan, dryRun: boolean): Promise<number> {
       return adopt(plan.target, plan.ignoreState, dryRun);
     case "create":
       return create(plan.target, plan.ignoreState, dryRun);
-    case "attach":
-      return attach(plan.target, plan.ignoreState, plan.localBranch, dryRun);
+    case "reattach":
+      return reattach(plan.target, plan.ignoreState, plan.localBranch, dryRun);
     case "error":
-      throw new AddAbort(plan.message);
+      throw new AttachAbort(plan.message);
   }
 }
 
-export async function addCommand(projectArg: string, opts: AddOptions, marrowHome: string, toolRoot: string): Promise<number> {
+export async function attachCommand(projectArg: string, opts: AttachOptions, marrowHome: string, toolRoot: string): Promise<number> {
   try {
-    const inspection = await inspectAdd(projectArg, opts, marrowHome, toolRoot);
+    const inspection = await inspectAttach(projectArg, opts, marrowHome, toolRoot);
     const dryRun = opts.dryRun === true;
-    const code = await executePlan(planAdd(inspection), dryRun);
+    const code = await executePlan(planAttach(inspection), dryRun);
     if (code === 0) {
       const settingsChanged = await ensureAgentMemoryDisabled(inspection.target.projectDir, dryRun);
       const instructionsChanged = await ensureAgentsBlock(toolRoot, inspection.target.projectDir, inspection.target.name, dryRun);
@@ -237,7 +237,7 @@ export async function addCommand(projectArg: string, opts: AddOptions, marrowHom
     }
     return code;
   } catch (err) {
-    console.error(`marrow add: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(`marrow attach: ${err instanceof Error ? err.message : String(err)}`);
     return 1;
   }
 }

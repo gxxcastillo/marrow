@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { parseArgs } from "node:util";
 import path from "node:path";
-import { addCommand } from "./commands/add";
+import { attachCommand } from "./commands/attach";
 import { conventionCommand } from "./commands/convention";
 import { detachCommand } from "./commands/detach";
 import { doctorCommand } from "./commands/doctor";
@@ -73,7 +73,7 @@ const COMMANDS: Record<string, Command> = {
       syncCommand(positionals, { message: values.message as string | undefined }, ctx.marrowHome),
   },
 
-  add: {
+  attach: {
     args: "<project-path> [--id <stable-id>] [--dry-run]",
     summary: "make a project's .agents/ available under marrow",
     options: {
@@ -86,16 +86,21 @@ const COMMANDS: Record<string, Command> = {
       "doesn't, or creates a fresh .agents otherwise. Run with --dry-run first — it previews every mode without\n" +
       "changing the project or vault project branches. Adopting an existing .agents is an attended-only operation.",
     run: ({ values, positionals }, ctx) =>
-      addCommand(positionals[0], { dryRun: values["dry-run"] as boolean, id: values.id as string | undefined }, ctx.marrowHome, ctx.toolRoot),
+      attachCommand(positionals[0], { dryRun: values["dry-run"] as boolean, id: values.id as string | undefined }, ctx.marrowHome, ctx.toolRoot),
   },
 
   detach: {
-    args: "<project> [--dry-run]",
-    summary: "remove a project's worktree, keeping its branch in the vault",
-    options: { "dry-run": { type: "boolean", default: false, desc: "preview without touching the worktree" } },
+    args: "<project> [--vault-only] [--dry-run]",
+    summary: "detach a project, keeping its files by default",
+    options: {
+      "vault-only": { type: "boolean", default: false, desc: "remove the local files after confirming the worktree is clean" },
+      "dry-run": { type: "boolean", default: false, desc: "preview without touching the worktree" },
+    },
     minArgs: 1, maxArgs: 1,
     run: ({ values, positionals }, ctx) =>
-      detachCommand(positionals[0], { dryRun: values["dry-run"] as boolean }, ctx.marrowHome),
+      detachCommand(positionals[0], {
+        dryRun: values["dry-run"] as boolean, vaultOnly: values["vault-only"] as boolean,
+      }, ctx.marrowHome),
   },
 
   doctor: {

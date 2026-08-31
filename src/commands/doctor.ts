@@ -41,13 +41,13 @@ export async function doctorCommand(marrowHome: string, toolRoot: string, opts: 
   const progressShown = showProgress(PROGRESS_LINE);
 
   // Checked before anything else: without `worktree add --orphan` neither
-  // `add` nor `publish` can run at all, so it outranks every vault finding.
+  // `attach` nor `publish` can run at all, so it outranks every vault finding.
   const version = await gitVersion();
   const minGit = `${MIN_GIT_MAJOR}.${MIN_GIT_MINOR}`;
   if (!version) {
     warn(`could not determine the git version; marrow needs git ${minGit}+ for \`git worktree add --orphan\``);
   } else if (gitTooOld(version)) {
-    fail(`git ${minGit}+ is required by \`marrow add\` and \`marrow publish\` (found ${version.major}.${version.minor})`);
+    fail(`git ${minGit}+ is required by \`marrow attach\` and \`marrow publish\` (found ${version.major}.${version.minor})`);
   } else {
     ok(`git ${version.major}.${version.minor} supports \`worktree add --orphan\``);
   }
@@ -92,7 +92,7 @@ export async function doctorCommand(marrowHome: string, toolRoot: string, opts: 
   for (const wt of presentWorktrees) {
     const projectDir = path.dirname(wt.path);
 
-    // `add` supports creating a fresh worktree in a plain directory; a parent
+    // `attach` supports creating a fresh worktree in a plain directory; a parent
     // that is not a git repo has nothing to ignore .agents into.
     const inRepo = await git(["rev-parse", "--is-inside-work-tree"], projectDir);
     if (inRepo.code !== 0) {
@@ -103,18 +103,18 @@ export async function doctorCommand(marrowHome: string, toolRoot: string, opts: 
       else fail(`${wt.branch}: parent repo (${projectDir}) does not ignore .agents`);
     }
 
-    // `add` plants this note on every attach and re-verifies it on every re-run, but
+    // `attach` plants this note on every attach and re-verifies it on every re-run, but
     // nothing catches drift (a manual edit, a merge) between runs short of re-running
-    // `add`. WARN, not FAIL — a missing or stale note doesn't break marrow, it just
+    // `attach`. WARN, not FAIL — a missing or stale note doesn't break marrow, it just
     // leaves agents in that project without the pointer.
     const status = await agentsBlockStatus(toolRoot, projectDir, path.basename(projectDir));
     if (status.kind === "current") {
       currentAgentsBlocks++;
     } else if (status.kind === "missing") {
-      warn(`${wt.branch}: no marrow .agents note in ${PARENT_INSTRUCTION_FILENAMES.join(" or ")}; run \`marrow add ${displayPath(projectDir)}\` to add it`);
+      warn(`${wt.branch}: no marrow .agents note in ${PARENT_INSTRUCTION_FILENAMES.join(" or ")}; run \`marrow attach ${displayPath(projectDir)}\` to add it`);
     } else {
       const versions = status.files.map((f) => `${path.basename(f.path)} ${updateLabel(f.note.version, status.currentVersion)}`).join(", ");
-      warn(`${wt.branch}: stale marrow .agents note (${versions}); run \`marrow add ${displayPath(projectDir)}\` to update it`);
+      warn(`${wt.branch}: stale marrow .agents note (${versions}); run \`marrow attach ${displayPath(projectDir)}\` to update it`);
     }
 
     const currentState = await readCurrentState(wt.path);

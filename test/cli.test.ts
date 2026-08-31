@@ -23,7 +23,7 @@ describe("cli dispatch", () => {
     expect(code).toBe(0);
     expect(errLines).toEqual([]);
     const usage = outLines.join("\n");
-    for (const name of ["init", "publish", "status", "sync", "add", "detach", "doctor", "grep", "convention", "update"]) {
+    for (const name of ["init", "publish", "status", "sync", "attach", "detach", "doctor", "grep", "convention", "update"]) {
       expect(usage).toContain(name);
     }
   });
@@ -73,8 +73,8 @@ describe("cli dispatch", () => {
     { command: "init", args: ["extra"], expected: "usage: marrow init [--from <vault-url>] [--dry-run]" },
     { command: "publish", args: ["owner/repo", "extra"], expected: "usage: marrow publish <owner>/<repo> [--dry-run]" },
     { command: "status", args: ["extra"], expected: "usage: marrow status" },
-    { command: "add", args: ["/tmp/project", "extra"], expected: "usage: marrow add <project-path> [--id <stable-id>] [--dry-run]" },
-    { command: "detach", args: ["project", "extra"], expected: "usage: marrow detach <project> [--dry-run]" },
+    { command: "attach", args: ["/tmp/project", "extra"], expected: "usage: marrow attach <project-path> [--id <stable-id>] [--dry-run]" },
+    { command: "detach", args: ["project", "extra"], expected: "usage: marrow detach <project> [--vault-only] [--dry-run]" },
     { command: "doctor", args: ["extra"], expected: "usage: marrow doctor [--verbose]" },
     { command: "convention", args: ["extra"], expected: "usage: marrow convention" },
   ])("$command rejects extra positional arguments", async ({ command, args, expected }) => {
@@ -86,7 +86,7 @@ describe("cli dispatch", () => {
 
   test.each([
     ["publish", "usage: marrow publish <owner>/<repo> [--dry-run]"],
-    ["add", "usage: marrow add <project-path> [--id <stable-id>] [--dry-run]"],
+    ["attach", "usage: marrow attach <project-path> [--id <stable-id>] [--dry-run]"],
     ["grep", "usage: marrow grep <pattern> [rg-args...]"],
   ])("%s without its required argument exits 2", async (command, expected) => {
     const { code, outLines, errLines } = await call([command]);
@@ -96,11 +96,11 @@ describe("cli dispatch", () => {
   });
 
   test("per-command --help documents every option and prints the command's help paragraph", async () => {
-    const { code, outLines, errLines } = await call(["add", "--help"]);
+    const { code, outLines, errLines } = await call(["attach", "--help"]);
     expect(code).toBe(0);
     expect(errLines).toEqual([]);
     const help = outLines.join("\n");
-    expect(help).toContain("usage: marrow add <project-path> [--id <stable-id>] [--dry-run]");
+    expect(help).toContain("usage: marrow attach <project-path> [--id <stable-id>] [--dry-run]");
     expect(help).toContain("Options:");
     expect(help).toContain("--dry-run");
     expect(help).toContain("preview without changing the project or vault project branches");
@@ -114,6 +114,14 @@ describe("cli dispatch", () => {
     const help = outLines.join("\n");
     expect(help).toContain("--message, -m");
     expect(help).toContain("commit message text");
+  });
+
+  test("detach help documents both file dispositions", async () => {
+    const { outLines } = await call(["detach", "--help"]);
+    const help = outLines.join("\n");
+    expect(help).toContain("usage: marrow detach <project> [--vault-only] [--dry-run]");
+    expect(help).toContain("--vault-only");
+    expect(help).toContain("keeping its files by default");
   });
 
   test("a command with no documented options prints no Options section", async () => {
@@ -141,7 +149,7 @@ describe("cli dispatch", () => {
   test("dispatch reaches the command implementation", async () => {
     const { code, outLines } = await call(["status"]);
     expect(code).toBe(0);
-    expect(outLines).toEqual(["No projects attached on this machine. Run `marrow add <project-path>` to get started."]);
+    expect(outLines).toEqual(["No projects attached on this machine. Run `marrow attach <project-path>` to get started."]);
   });
 
   test("doctor prints only the summary by default; --verbose and -v both print every passing check", async () => {
@@ -178,7 +186,7 @@ describe("first-run guard (no vault yet)", () => {
   test.each([
     ["status", []],
     ["sync", []],
-    ["add", ["/tmp/whatever"]],
+    ["attach", ["/tmp/whatever"]],
     ["doctor", []],
     ["grep", ["pattern"]],
     ["detach", ["whatever"]],

@@ -173,15 +173,26 @@ describe("install -> update -> uninstall lifecycle", () => {
     expect(dirtyUpdate.stderr).toContain("local changes");
     await rm(path.join(managedClone, "dirty.txt"));
 
-    // 6. Uninstall.
+    // 6. Leave one fixture project attached so uninstall can enumerate it without
+    // mutating it. The project and vault are both inside this test's temp root.
+    const attachedPath = path.join(root, "attached", ".agents");
+    await mkdir(path.dirname(attachedPath), { recursive: true });
+    const attached = await git(["worktree", "add", "--orphan", "-b", "attached", attachedPath], path.join(marrowHome, "vault.git"));
+    expect(attached.code).toBe(0);
+    await setTestIdentity(attachedPath);
+    await git(["commit", "--allow-empty", "-q", "-m", "attached: seed"], attachedPath);
+
+    // 7. Uninstall.
     const uninstalled = await withFixtureEnv(fakeHome, {}, () => run("bash", [BIN_UNINSTALL], root));
     expect(uninstalled.code).toBe(0);
+    expect(uninstalled.stdout).toContain("marrow detach 'attached'");
+    expect(existsSync(attachedPath)).toBe(true);
 
-    // 7. The managed clone and symlink are removed.
+    // 8. The managed clone and symlink are removed.
     expect(existsSync(managedClone)).toBe(false);
     expect(existsSync(binMarrow)).toBe(false);
 
-    // 8. A sentinel under temporary MARROW_HOME survives uninstall.
+    // 9. A sentinel under temporary MARROW_HOME survives uninstall.
     expect(existsSync(sentinel)).toBe(true);
     expect(await readFile(sentinel, "utf8")).toBe("keep me\n");
     // uninstall never removed anything outside .local/{bin,share}/marrow.
@@ -216,5 +227,22 @@ describe("install -> update -> uninstall lifecycle", () => {
     // the (now-empty-of-marrow) real home, are both still present.
     expect(existsSync(root)).toBe(true);
     expect(existsSync(realHomeTarget)).toBe(true);
+  });
+
+  test("continues when attached-project enumeration cannot run", async () => {
+    const vault = path.join(marrowHome, "vault.git");
+    await mkdir(vault, { recursive: true });
+    await writeFile(path.join(vault, "HEAD"), "not a git repository\n");
+    const emptyPath = path.join(root, "empty-path");
+    await mkdir(emptyPath);
+    const bash = Bun.which("bash");
+    if (!bash) throw new Error("bash not found on PATH");
+
+    const uninstalled = await withFixtureEnv(fakeHome, { PATH: emptyPath }, () => run(bash, [BIN_UNINSTALL], root));
+
+    expect(uninstalled.code).toBe(0);
+    expect(uninstalled.stdout).toContain("nothing to remove");
+    expect(uninstalled.stdout).toContain(`vault left in place at ${marrowHome}`);
+    expect(existsSync(vault)).toBe(true);
   });
 });

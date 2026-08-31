@@ -97,6 +97,17 @@ const FENCED_PERSISTENCE_RE = /<!-- marrow:persistence-block v[\d.]+ -->[\s\S]*?
 // Stops at the next heading (or true end-of-string) rather than devouring the rest of the
 // file — an old-style README may have content of the user's own after this section.
 const TRAILING_PERSISTENCE_SECTION_RE = /^## Persistence\r?\n[\s\S]*?(?=\r?\n#{1,6}[ \t]|(?![\s\S]))/m;
+// Fences are authoritative. The older unfenced format is recognized only by the
+// identifying sentence emitted by marrow before fences shipped; a user's unrelated
+// `## Persistence` section must never be treated as managed content.
+const LEGACY_MARROW_PERSISTENCE_RE = /^This directory is a git worktree of the private (?:`marrow` repo|marrow vault) \(branch: `[^`\r\n]+`\)\.\r?$/m;
+
+function persistenceSection(existing: string): RegExpExecArray | null {
+  const fenced = FENCED_PERSISTENCE_RE.exec(existing);
+  if (fenced) return fenced;
+  const legacy = TRAILING_PERSISTENCE_SECTION_RE.exec(existing);
+  return legacy && LEGACY_MARROW_PERSISTENCE_RE.test(legacy[0]) ? legacy : null;
+}
 
 function normalized(content: string): string {
   return content.replaceAll("\r\n", "\n").trim();
@@ -106,6 +117,16 @@ function replacePersistenceSection(existing: string, match: RegExpExecArray, blo
   const before = existing.slice(0, match.index).replace(/(?:\r?\n)+$/, "");
   const after = existing.slice(match.index + match[0].length).replace(/^(?:\r?\n)+/, "");
   return after.length > 0 ? `${before}\n\n${block}\n\n${after}\n` : `${before}\n\n${block}\n`;
+}
+
+export function withoutPersistenceSection(existing: string): string | null {
+  const match = persistenceSection(existing);
+  if (!match) return null;
+  const before = existing.slice(0, match.index).replace(/(?:\r?\n)+$/, "");
+  const after = existing.slice(match.index + match[0].length).replace(/^(?:\r?\n)+/, "");
+  if (before && after) return `${before}\n\n${after}`;
+  if (before) return `${before}\n`;
+  return after;
 }
 
 async function writeReadme(toolRoot: string, agentsPath: string, project: string, branch: string): Promise<void> {
@@ -119,7 +140,7 @@ async function writeReadme(toolRoot: string, agentsPath: string, project: string
   }
 
   const existing = await readFile(readmePath, "utf8");
-  const match = FENCED_PERSISTENCE_RE.exec(existing) ?? TRAILING_PERSISTENCE_SECTION_RE.exec(existing);
+  const match = persistenceSection(existing);
   if (match) {
     await writeFile(readmePath, replacePersistenceSection(existing, match, normalized(rawBlock)));
     return;

@@ -22,6 +22,19 @@ export async function git(args: string[], cwd: string): Promise<SpawnResult> {
   return run("git", args, cwd);
 }
 
+// Reads file content from git without trimming it. `run` deliberately normalizes
+// command-oriented output, but callers reconstructing a committed file need its exact
+// leading and trailing bytes.
+export async function gitRaw(args: string[], cwd: string): Promise<SpawnResult> {
+  const proc = Bun.spawn(["git", ...args], { cwd, env: { ...process.env }, stdout: "pipe", stderr: "pipe" });
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  return { code, stdout, stderr: stderr.trim() };
+}
+
 // <MARROW_HOME>/vault.git is the bare repo every git-invoking command
 // actually targets; MARROW_HOME itself is just its parent (also holding
 // backups/ as a plain sibling directory).
@@ -108,8 +121,8 @@ export async function hasOrigin(cwd: string): Promise<boolean> {
 }
 
 // `git worktree add --orphan` — the mechanism behind every adopted project
-// (`commands/add.ts`, `vault.ts`) — landed in git 2.42. Older git runs `init`
-// fine and then fails on the first `add`, so this is checked up front by
+// (`commands/attach.ts`, `vault.ts`) — landed in git 2.42. Older git runs `init`
+// fine and then fails on the first `attach`, so this is checked up front by
 // `bin/setup` and re-checked by `doctor`.
 export const MIN_GIT_MAJOR = 2;
 export const MIN_GIT_MINOR = 42;

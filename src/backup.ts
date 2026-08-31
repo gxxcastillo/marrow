@@ -1,5 +1,5 @@
-// Collision-proof backup tarball construction for `add`'s adopt path. Kept
-// out of src/commands/add.ts to stay under that file's line budget.
+// Collision-proof backup tarball construction for `attach`'s adopt path. Kept
+// out of src/commands/attach.ts to stay under that file's line budget.
 
 import { existsSync } from "node:fs";
 import { mkdir, stat } from "node:fs/promises";

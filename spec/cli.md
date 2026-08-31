@@ -34,8 +34,8 @@ per-command syntax below must match that table.
 | [`publish`](#publish)       | publish the vault to a new private GitHub remote                                          | GitHub, vault remote refs                   |
 | [`status`](#status)         | show attached memory that needs attention                                                 | no                                          |
 | [`sync`](#sync)             | commit and push project worktrees                                                         | project worktrees, vault                    |
-| [`add`](#add)               | bring a project's `.agents/` under marrow — adopts if one exists, creates fresh otherwise | project directory, vault                    |
-| [`detach`](#detach)         | remove a project's worktree, keeping its branch in the vault                              | project directory (worktree only)           |
+| [`attach`](#attach)         | bring a project's `.agents/` under marrow — adopts if one exists, creates fresh otherwise | project directory, vault                    |
+| [`detach`](#detach)         | end attachment, keeping ordinary files by default or parking them in the vault             | project worktree                            |
 | [`doctor`](#doctor)         | verify marrow's setup and safety                                                          | vault remote refs (`fetch --prune` only)    |
 | [`grep`](#grep)             | search across all project worktrees                                                       | no                                          |
 | [`convention`](#convention) | print `CONVENTION.md`                                                                     | no                                          |
@@ -207,7 +207,7 @@ worktree here, a blank line and note follow the table — `2 project branches no
 on this machine (normal — each machine can attach a different subset):` with one branch
 per following indented line — so a partially attached machine is not read as a complete
 view. With zero project worktrees, prints `No projects attached on this machine. Run
-\`marrow add <project-path>\` to get started.` instead, followed by `The vault has <n>
+\`marrow attach <project-path>\` to get started.` instead, followed by `The vault has <n>
 project branches not attached on this machine (normal — each machine can attach a
 different subset):` and one branch per following indented line when any exist. An empty
 vault and an unattached one do not print the same result.
@@ -279,17 +279,17 @@ pushing only touches the branch ref, not the worktree directory.
 explicitly named target's worktree directory was missing, the fetch failed, a target needed
 manual reconciliation, a target's `git add`/`git commit` failed, or the push failed.
 
-## `add`
+## `attach`
 
 ```
-marrow add <project-path> [--id <stable-id>] [--dry-run]
+marrow attach <project-path> [--id <stable-id>] [--dry-run]
 ```
 
 `<project-path>` resolves to its parent Git repository's top-level directory, `--id` or
 not — a subdirectory of a repo always lands `.agents/` at the repo root, not the
 subdirectory. The one exception is a `<project-path>` that isn't inside a git repository
 at all (including one that doesn't exist yet): with `--id` given, that path is kept
-literally, since this is the fresh-create case (`marrow add /path/to/new-project --id
+literally, since this is the fresh-create case (`marrow attach /path/to/new-project --id
 local/new-project`) and there's no repo root to resolve to. Without `--id`, that same case
 still aborts — deriving an identity requires an existing repo's `origin`. Its default
 identity is the normalized repository name from the GitHub `origin`, and its branch is
@@ -298,7 +298,7 @@ identity. `--id` supplies a stable identity for a project without a supported or
 for a GitHub project that needs a non-default name. The path basename is a display name
 only.
 
-Before deciding, `add` fetches `origin` when the vault has one; a fetch failure aborts.
+Before deciding, `attach` fetches `origin` when the vault has one; a fetch failure aborts.
 This also happens under `--dry-run`, so a preview may refresh vault remote-tracking refs.
 It then reconciles the local path and matching branch: an ordinary `.agents/` with no
 branch is adopted; no `.agents/` with no branch is created fresh; no `.agents/` with a
@@ -309,13 +309,13 @@ so this aborts instead and names `marrow detach <branch>` as the remediation. Th
 applies when the branch is already attached at a different path whose directory is missing.
 An ordinary `.agents/` plus an existing branch, a different worktree at the path, or the
 same branch attached (and present) elsewhere on this machine aborts without mutation.
-Attach never writes a README, commits, or pushes.
+The existing-branch reattachment mode never writes a README, commits, or pushes.
 
 **Parent-repo `.gitignore` (both paths).** `.agents/` must end up ignored by the project's
-own repo: `doctor` checks it on every run, and the persistence block `add` writes into
+own repo: `doctor` checks it on every run, and the persistence block `attach` writes into
 `.agents/README.md` states it outright. So whenever `.agents/` is not already ignored,
 both paths append `.agents/` to `<project-path>/.gitignore`, creating that file if absent
-— and neither ever commits it. `add` never commits in a repo it doesn't own, so the
+— and neither ever commits it. `attach` never commits in a repo it doesn't own, so the
 parent-repo commit of that change is the user's to make; the line printed says so. The
 adopt path makes and verifies its backup before appending this line. The
 fresh path appends even when `<project-path>` is not a git repository yet, so that a later
@@ -323,8 +323,8 @@ fresh path appends even when `<project-path>` is not a git repository yet, so th
 as a precondition failure (see the state table below). A parent that already **tracks**
 `.agents/` in its index aborts on either path, with the untracking steps printed.
 
-**Parent instruction block (successful and dry-run paths).** After any successful add
-mode, including a no-op result for a project marrow already manages, `add` checks
+**Parent instruction block (successful and dry-run paths).** After any successful attach
+mode, including a no-op result for a project marrow already manages, `attach` checks
 `<project>/AGENTS.md` and `<project>/CLAUDE.md`. The canonical block ends with a
 right-aligned version tag, a note block that starts with `> [!Note]`, contains a markdown
 link to `.agents/README.md`, and ends with a line like `> <p align="right">v1</p>`
@@ -333,11 +333,11 @@ like `V2.3.2` are recognized too) — any note matching that shape is recognized
 of the wording around it. Anchoring on the link rather than the headline text means a
 future wording change doesn't need a widened regex. A recognized note whose text matches
 `templates/agents-block.md` exactly is left unchanged. Any other recognized note is stale,
-whether its version tag differs or only its wording does: live `add` replaces just that
+whether its version tag differs or only its wording does: live `attach` replaces just that
 note in place with the current template text, leaving the rest of the file untouched, and
 prints `Project instructions:`, an indented relative path, and `marrow .agents note updated
 (v<old> -> v<new>)` — or `(v<version>, not verbatim)` when the tag already matches and only
-the wording drifted, since `v2 -> v2` would say nothing. When neither file has a recognized note at all, live `add` instead prepends the
+the wording drifted, since `v2 -> v2` would say nothing. When neither file has a recognized note at all, live `attach` instead prepends the
 current block to `AGENTS.md` when it exists, otherwise to `CLAUDE.md` when it exists,
 otherwise to a new `AGENTS.md`, printing `marrow .agents note added`. If either checked
 file contains `.agents` references outside a recognized marrow note, it prints one count
@@ -348,8 +348,8 @@ an agents block.
 `--dry-run` prints the same target and review note, with `would update`/`would add`
 phrasing matching which case applies, without writing.
 
-**Parent agent memory config (successful and dry-run paths).** After any successful add
-mode, including a no-op result for a project marrow already manages, `add` disables
+**Parent agent memory config (successful and dry-run paths).** After any successful attach
+mode, including a no-op result for a project marrow already manages, `attach` disables
 agent-managed memory in parent project config files so `.agents/` remains the
 marrow-managed persistent working-memory channel. It writes `<project>/.codex/config.toml` with
 `[features] memories = false`, `[memories] use_memories = false`, and
@@ -360,18 +360,18 @@ changed file using paths relative to `<project-path>`. When no setting needs to 
 it prints `Project settings already up to date.` instead. `--dry-run` prints a matching
 `Would update project settings:` block without writing.
 
-For a project that is already managed, live `add` also creates a missing
+For a project that is already managed, live `attach` also creates a missing
 `.agents/current-state.md` from `templates/current-state.md`, commits it to that project's
 vault branch with `<project>: add current-state`, and pushes when the vault has an
 `origin`. Existing `current-state.md` files are never overwritten. `--dry-run` prints the
 same existing-attachment summary plus `.agents/current-state.md would be created` without
 writing.
 
-When live `add` changes any parent project file in the instruction or agent memory config
+When live `attach` changes any parent project file in the instruction or agent memory config
 steps, it prints one final `marrow did not commit these project files.` reminder after
 those sections.
 
-**Success summary.** Successful add modes identify the managed project with three fields:
+**Success summary.** Successful attach modes identify the managed project with three fields:
 `project` is the absolute parent project path, `location` is the absolute `.agents` path,
 and `key` is the stable marrow identity. An existing attachment starts with
 `<project> is already managed by marrow`. Attaching an existing branch starts with
@@ -392,12 +392,12 @@ a message on stderr and exit `1`, `--dry-run` included):
 | Parent-repo state of `.agents`       | Precondition result | What happens                                                                                                                                                                                                                      |
 | ------------------------------------ | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | ignored (matched by `.gitignore`)    | pass                | proceeds silently                                                                                                                                                                                                                 |
-| untracked, not ignored               | pass                | appends `.agents/` to `<project-path>/.gitignore` (creating the file if absent); prints a reminder that _the parent-repo commit of that `.gitignore` change is the user's to make_ — `add` never commits in a repo it doesn't own |
-| tracked (in the parent repo's index) | **abort**           | prints the exact untracking steps (`git rm -r --cached .agents`, add `.gitignore`, commit) and tells the user to re-run `add` after — this is a manual, attended step; see `safety.md`                                            |
+| untracked, not ignored               | pass                | appends `.agents/` to `<project-path>/.gitignore` (creating the file if absent); prints a reminder that _the parent-repo commit of that `.gitignore` change is the user's to make_ — `attach` never commits in a repo it doesn't own |
+| tracked (in the parent repo's index) | **abort**           | prints the exact untracking steps (`git rm -r --cached .agents`, add `.gitignore`, commit) and tells the user to re-run `attach` after — this is a manual, attended step; see `safety.md`                                            |
 | not a git repository                 | **abort**           | reports that the parent directory isn't a git repo                                                                                                                                                                                |
 
 **`--dry-run`**: runs preconditions and the `.gitignore`-state check (reporting what it
-_would_ append, without writing), prints `would add <project> to marrow` with `project`,
+_would_ append, without writing), prints `would attach <project> to marrow` with `project`,
 `location`, and `key` fields, prints the planned adopt mode, then runs the parent config
 checks described above and exits `0`. It does not write project files, alter the worktree
 registry, or change a project branch. The initial fetch may update vault remote-tracking
@@ -415,7 +415,7 @@ refs. It is safe to run against a real project.
 
 **Verification.** After the push succeeds, or after the commit when there is no origin, a
 recursive file-count/size snapshot of the new worktree (excluding `.git`) is compared
-against the snapshot taken before step 1. The command prints `added <project> to marrow`
+against the snapshot taken before step 1. The command prints `attached <project> to marrow`
 with `project`, `location`, and `key` fields; an `Adopted existing .agents` block with
 the backup path, `files: <before> before, <after> after`, and `size: <before>B before,
 <after>B after`; then `vault: pushed origin/<project>` or `vault: not pushed (no origin
@@ -440,9 +440,9 @@ creates the project directory if needed, then runs the same worktree-creation, R
 and commit/push steps as the adopt path (steps 4, 6, 7 above), plus
 the shared `.gitignore` handling and parent config step described above — which here runs
 against a directory that may have just been created and need not be a git repo at all. The
-commit message is `<project>: init via marrow add`. There is no backup step — there is
+commit message is `<project>: init via marrow attach`. There is no backup step — there is
 nothing to back up. As with adopt, a missing `origin` remote on the vault leaves the commit
-local and reports `vault: not pushed (no origin configured)` after the add result.
+local and reports `vault: not pushed (no origin configured)` after the attach result.
 `--dry-run` reports the `.gitignore` and parent config steps it would take, prints the
 same `project`, `location`, and `key` fields with `plan: create new .agents`, then runs
 the parent instruction-block check described above and exits `0` without changing the
@@ -454,37 +454,51 @@ project-file write failure, or a worktree/commit/push failure, and `0` on succes
 ## `detach`
 
 ```
-marrow detach <project> [--dry-run]
+marrow detach <project> [--vault-only] [--dry-run]
 ```
 
-Removes a project's worktree from this machine while leaving its branch, and everything on
-it, untouched in the vault. `<project>` resolves like a `sync` target: the local project
-directory basename, or the exact branch name; exactly one match is required — no match is
-`unknown project: <project>`, more than one is `ambiguous name <project> matches: <paths>`.
-`detach` never touches the branch or a configured remote — it is not a deletion, and
-re-attaching the same branch later (`marrow add <project-path>` at any checkout path) picks
-up exactly where it left off.
+Ends a project's attachment while retaining its vault branch. `<project>` resolves like a
+`sync` target: the local project directory basename, or the exact branch name; exactly one
+match is required — no match is `unknown project: <project>`, more than one is `ambiguous
+name <project> matches: <paths>`. Neither mode deletes a branch or touches a configured
+remote.
 
-The registered worktree's state decides what happens:
+The registered worktree's state and the file-disposition flag decide what happens:
 
-| Worktree state                          | Behavior                                                                                                        |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Directory already missing (`architecture.md` → Design model) | Clears the registration only (`git worktree remove --force <path>`); there is nothing on disk to remove |
-| Clean (no uncommitted changes)           | `git worktree remove <path>`                                                                                       |
-| Dirty (uncommitted changes present)      | Refuses; prints the uncommitted-change count and both remediation paths: `marrow sync <project>` first, or discard with `git -C <path> checkout -- . && git -C <path> clean -fd` |
+| Transition | Command and behavior |
+| --- | --- |
+| Attached → unmanaged, files kept | Bare `detach` removes the fenced marrow persistence block, or an identifiable historical unfenced marrow block, from `.agents/README.md`. It commits only that removal from the prior branch tip, releases the worktree registration, removes the `.git` pointer, and leaves `.agents/` on disk as ordinary files. Dirty worktrees are allowed because disk is the record; the uncommitted-change count is reported and unrelated README edits remain only in the retained files. |
+| Attached → branch-only | `detach --vault-only` removes the worktree directory and retains its branch. It refuses a dirty worktree because the branch becomes the only copy. This is reversible parking. Re-running `marrow attach <project-path>` later picks up exactly where it left off. |
+| Directory already missing (`architecture.md` → Design model) | Either form clears the stale registration only with `git worktree remove --force <path>`. There is no directory to keep or remove, so the flag is ignored. |
 
-**`--dry-run`.** Runs the same resolution and dirty check, prints what it would do, and
-exits `0` without touching disk. A dirty worktree still refuses under `--dry-run`, the same
-as live — dry runs preview a plan, not a bypass of the refusal.
+The default is a one-way exit rather than parking. It leaves an ordinary `.agents/`
+directory while the same branch remains in the vault, so a later `attach` refuses the
+local-content-plus-existing-branch conflict and tells the user to inspect both sources.
+No mode is provided to merge them automatically.
 
-**Output.** On success, prints the retained branch name and, for a clean non-missing
-worktree, any unpushed commit count still held on that branch (nothing was lost — those
-commits just aren't reachable from a local worktree anymore). For an already-missing
-worktree, notes that nothing was pushed or deleted, since the directory was already gone.
+Default detach does not edit the parent repository. It leaves `.agents/` ignored, leaves
+the `.agents` instruction note in `AGENTS.md`/`CLAUDE.md`, and leaves `.codex`/`.claude`
+memory settings unchanged. Those files express the working-memory convention rather than
+vault backing. The command prints each retained artifact and how to change it. The fenced
+marrow persistence block, and its identifiable historical unfenced form, inside
+`.agents/README.md` is different: its worktree, sync,
+status, and doctor claims become false after detachment, so the default removes it before
+releasing the worktree. No backup tarball is needed: the default deletes no content, and
+`--vault-only` refuses unless the retained branch already holds all content.
+
+**`--dry-run`.** Prints the full plan for the selected disposition and writes nothing.
+The default previews a dirty worktree successfully and says its changes remain in the
+retained files. `--vault-only --dry-run` still refuses a dirty worktree; dry runs preview
+a plan, not a bypass of that mode's safety boundary.
+
+**Output.** Both modes print the retained branch. The default names the retained file path,
+warns when it began dirty, and lists the parent artifacts left unchanged. `--vault-only`
+prints any unpushed commit count still held on the branch. For an already-missing worktree,
+the output notes that nothing was pushed or deleted.
 
 **Exit codes.** `2` (from `marrow` dispatch): missing `<project>` argument. `1`: unknown or
-ambiguous project name, a dirty-worktree refusal, or a `git worktree remove` failure. `0`:
-detached cleanly, or the dry-run preview printed successfully.
+ambiguous project name, a dirty `--vault-only` refusal, persistence-block commit failure,
+or worktree-release failure. `0`: detached cleanly, or the dry-run preview printed.
 
 ## `doctor`
 
@@ -507,12 +521,12 @@ project are summarized as one `OK` line rather than one per project. Output ends
 
 | Check                                                                                                                                                                                                                         | Result on failure                                                                                                                                                       |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `git --version` is at least 2.42, the release that added `git worktree add --orphan`                                                                                                                                         | FAIL below 2.42 — `add` and `publish` cannot run at all. WARN if the version string cannot be parsed, so an exotic build is never blocked. Checked first, before any vault finding |
+| `git --version` is at least 2.42, the release that added `git worktree add --orphan`                                                                                                                                         | FAIL below 2.42 — `attach` and `publish` cannot run at all. WARN if the version string cannot be parsed, so an exotic build is never blocked. Checked first, before any vault finding |
 | Every locally registered worktree is named `.agents`                                                                                                                                                                          | FAIL                                                                                                                                                                    |
 | Every registered worktree's directory still exists on disk                                                                                                                                                                    | WARN per missing worktree, naming the path and `marrow detach <branch>` as the remediation |
 | Project branches in the vault with no worktree on this machine are listed by name                                                                                                                                            | Never fails — reported as an `OK` line. Attaching a subset is a deliberate choice, not drift; it is surfaced only because it bounds what `grep` and `status` can see    |
 | Every project worktree's parent repo ignores `.agents` (`git check-ignore -q -- .agents` in the parent dir). A parent directory that is not a git repository at all passes — there is nothing it could commit `.agents/` into | FAIL                                                                                                                                                                    |
-| Every project worktree's parent `AGENTS.md`/`CLAUDE.md` carries the current marrow `.agents` note, recognized the same way `add`'s parent instruction block check recognizes it                                              | WARN per project missing or carrying a stale note, with `marrow add <project-dir>` as the remediation. Home-directory paths in the command may print with `~`            |
+| Every project worktree's parent `AGENTS.md`/`CLAUDE.md` carries the current marrow `.agents` note, recognized the same way `attach`'s parent instruction block check recognizes it                                              | WARN per project missing or carrying a stale note, with `marrow attach <project-dir>` as the remediation. Home-directory paths in the command may print with `~`            |
 | Every project worktree contains the required `current-state.md` resumption record with a well-formed line beginning `As of YYYY-MM-DD (<repo> @<short-sha>)` (`@no-HEAD` is also valid)                                          | WARN per project missing `.agents/current-state.md` or carrying a malformed stamp, with `marrow sync <project>` after correction                                        |
 | `origin` remote is configured on `<MARROW_HOME>/vault.git`                                                                                                                                                                    | WARN if absent                                                                                                                                                          |
 | `origin` is reachable (`git ls-remote origin`; no `--exit-code`, so a reachable remote with zero refs — e.g. before the first `marrow publish` — is not misreported as unreachable) | FAIL if unreachable                                                                                                                                                     |
@@ -560,7 +574,7 @@ writes one caveat line to **stderr** before running the search, naming the count
 branches:
 
 ```
-marrow grep: searched 4 of 7 project branches; 3 branches in the vault not attached on this machine (attach with `marrow add <project-path>`): docs, notes, scratch
+marrow grep: searched 4 of 7 project branches; 3 branches in the vault not attached on this machine (attach with `marrow attach <project-path>`): docs, notes, scratch
 ```
 
 This is stderr, never stdout, so it does not contaminate the match stream callers pipe,
@@ -639,10 +653,11 @@ marrow publish example-owner/marrow-vault --dry-run # optional after local init:
 marrow status                          # attached memory needing attention
 marrow sync                            # commit + push everything dirty
 marrow sync notes -m "weekly review"   # one project, a real message
-marrow add /path/to/project --dry-run   # preview before touching a real project
-marrow add /path/to/project             # for real; attended when adopting existing memory
-marrow add /path/to/new-project --id local/new-project # no prior .agents/ — created fresh instead
-marrow detach old-project               # stop tracking it here; branch stays in the vault
+marrow attach /path/to/project --dry-run   # preview before touching a real project
+marrow attach /path/to/project             # for real; attended when adopting existing memory
+marrow attach /path/to/new-project --id local/new-project # no prior .agents/ — created fresh instead
+marrow detach old-project               # keep ordinary files; branch stays in the vault
+marrow detach old-project --vault-only  # remove clean local files; branch stays in the vault
 marrow doctor                          # verify marrow's setup and safety
 marrow grep "TODO" -C2                 # cross-project search, rg flags pass through
 marrow convention                      # what should be inside .agents/

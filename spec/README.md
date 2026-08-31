@@ -9,7 +9,7 @@ describes the system as it exists today; git history records how it got here.
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | [architecture.md](./architecture.md) | design model — tool/vault repo split, worktree-as-registry, branch model, repo layout, env overrides, non-goals                                                    |
 | [cli.md](./cli.md)                   | every command: arguments, options, behavior, output shape, exit codes                                                                                              |
-| [safety.md](./safety.md)             | the hard guarantees — private-remote requirement, no history rewrites, `add`'s backup/rollback/verification contract when adopting, attended operation, known gaps |
+| [safety.md](./safety.md)             | the hard guarantees — private-remote requirement, no history rewrites, `attach`'s backup/rollback/verification contract when adopting, attended operation, known gaps |
 
 If the spec files disagree with each other: `safety.md` wins on anything
 safety-related, `cli.md` wins on command syntax and exit codes, `architecture.md` wins on
