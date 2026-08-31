@@ -30,20 +30,25 @@ visibility` when `gh` is available) specifically to catch that drift — see `cl
 `doctor`. `doctor` does not audit the tool repo's own visibility or hygiene; that's an
 ordinary dev-project concern, not a marrow safety property.
 
-## No destructive git operations, ever
+## No destructive shared-history operations
 
-Never force-push. Never rewrite history — on any vault project branch, the vault's
-minimal `main` landing branch, or the tool repo's own `main`. A branch that needs
-correcting gets a new commit, the same as any other git history — never `reset --hard` +
-force-push, never `filter-repo`. `detach` (`cli.md` → `detach`) never deletes history
-either: it removes a worktree checkout, or clears the registration for one already gone
-from disk, and leaves the branch itself untouched in the vault.
+Never force-push. Never rewrite history on a vault project branch, the vault's minimal
+`main` landing branch, or the tool repo's shared `main`. A branch that needs correcting
+gets a new commit. Never use `reset --hard` plus force-push or `filter-repo`. `detach`
+(`cli.md` → `detach`) never deletes history either: it removes a worktree checkout, or
+clears the registration for one already gone from disk, and leaves the branch untouched.
+
+The managed install at `~/.local/share/marrow` is a disposable local checkout, not a
+shared history. Its official updater may fetch and hard-reset that checkout to
+`origin/main` after verifying the official origin and a clean worktree. It never pushes,
+and `marrow update` refuses to run from a development checkout.
 
 ## Backup before mutate
 
-When `add` is adopting an existing `.agents/`, its first live action is always a tar
-backup of the project's current `.agents/`, written under `<MARROW_HOME>/backups/`,
-verified non-empty and listable before anything else happens (`cli.md` → `add`, step 1).
+When `add` is adopting an existing `.agents/`, its first project mutation occurs only
+after a tar backup of the current `.agents/` is written under `<MARROW_HOME>/backups/`
+and verified non-empty and listable (`cli.md` → `add`, step 1). The initial vault origin
+fetch may refresh remote-tracking refs before the backup; it does not touch the project.
 Each backup's filename carries a sub-second UTC timestamp and a random UUID suffix, so
 two adoptions of projects sharing a directory basename, two explicit `--id` values,
 concurrent attempts, and repeated same-day attempts can never collide or overwrite a
@@ -66,8 +71,10 @@ never auto-deleted), as a nudge, not a cleanup mechanism.
 If worktree creation (`git worktree add --orphan`) fails after the original `.agents/` has
 already been renamed aside, `add` renames it straight back before reporting the error.
 The project directory is never left in a state with no `.agents/` at all, and no half-built
-worktree is left behind for a human to find later. This is the only mutation `add`
-performs on error; every other precondition failure aborts before anything is written.
+worktree is left behind for a human to find later. The verified backup remains. If
+`.agents/` was not already ignored, the `.gitignore` append made after that backup may
+also remain for the user to commit or remove. Preconditions abort before project or
+project-branch mutation; the initial origin fetch may refresh vault remote-tracking refs.
 
 ## Content-preservation verification
 
@@ -98,9 +105,10 @@ invoking it unattended, in either mode. That gap is intentional but not free: th
 operating rule is that a human is present and approving each real (non-`--dry-run`) `add`
 that adopts an existing project, one project at a time. This is a human/agent discipline,
 not a code-enforced gate — see `../AGENTS.md` for the concrete rule.
-`--dry-run` exists precisely so that rule can be honored without giving up a preview: it
-runs every precondition check and prints the full plan against a real project directory
-without writing anything, anywhere.
+`--dry-run` exists precisely so that rule can be honored without giving up a preview. It
+runs every precondition check and prints the full plan without changing the project,
+worktree registry, or project branch. Its initial origin fetch may refresh the vault's
+remote-tracking refs.
 
 ## Known gaps
 

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { rm } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
+import path from "node:path";
 import { initCommand } from "../src/commands/init";
 import { listProjectWorktrees, vaultDir } from "../src/git";
 import { addProjectWorktree, makeFixture, type Fixture } from "./fixtures";
@@ -37,5 +38,18 @@ describe("init", () => {
 
     const worktrees = await listProjectWorktrees(vaultDir(fx.marrowHome));
     expect(worktrees.map((w) => w.branch)).toEqual(["alpha"]);
+  });
+
+  test("refuses an existing vault path that is not a bare git repository", async () => {
+    const vault = vaultDir(fx.marrowHome);
+    await rm(vault, { recursive: true, force: true });
+    await mkdir(vault);
+    await Bun.write(path.join(vault, "sentinel"), "keep\n");
+
+    for (const dryRun of [false, true]) {
+      const { code, errLines } = await captureLogs(() => initCommand(fx.marrowHome, { dryRun }));
+      expect(code).toBe(1);
+      expect(errLines).toEqual([`marrow init: ${vault} is not a bare git repository`]);
+    }
   });
 });

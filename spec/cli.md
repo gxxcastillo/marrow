@@ -15,7 +15,7 @@ tool's own install location, never relative to `MARROW_HOME`.
 
 **Global flags.** `-h`/`--help` prints the usage block to stdout and exits `0`;
 `<command> --help` (or `-h`) prints that one command's usage line, its one-line summary,
-any documented options (one line each, in the command's own `[flags]` order), and the
+any documented options (one line each, in command-table order), and the
 command's own help paragraph if it has one — all to stdout, exit `0`, and generated from
 the same command table that drives dispatch. `-v`/`--version` prints `marrow <version>`,
 read from the tool's own `package.json`, and exits `0`. [`grep`](#grep) is the exception: its
@@ -58,6 +58,10 @@ Without `--from`, ensures `<MARROW_HOME>/vault.git` exists with `git init --bare
 main`. It creates `<MARROW_HOME>` if needed. It is idempotent: if the vault already
 exists, it prints `vault already exists: <path>` and exits `0`. This local path never
 configures `origin`, fetches, pushes, or creates a remote.
+
+An existing vault path must be a bare git repository. Live and dry-run invocations refuse
+an existing file, ordinary directory, non-bare repository, or unreadable path instead of
+reporting it as initialized.
 
 With `--from`, initializes this machine from an already-created private vault remote.
 `<vault-url>` is a generic Git URL. There are only two accepted local states:
@@ -134,10 +138,13 @@ it would need to be created. It does not invoke `gh` and does not run any Git mu
 If GitHub creation succeeds but a later step fails, the command exits `1` with a partial
 failure report naming the created repository, whether `origin` was configured, whether
 any push completed, and the exact safe next command to run after fixing the reported
-problem. The safe next command is either `marrow doctor` when the local origin is already
-configured or `git -C <MARROW_HOME>/vault.git remote add origin <url>` followed by
-`marrow doctor` when only the GitHub repository exists. The command must not suggest
-deleting the repository, replacing an origin, force-pushing, or rewriting history.
+problem. When `origin` is configured but the push did not complete, it names `git -C
+<MARROW_HOME>/vault.git push origin --all && marrow doctor`. After a completed push, it
+names only `marrow doctor`. When the URL was read but origin configuration failed, it
+names `git remote add`, the push, and `marrow doctor`. When the URL was not read, it names
+`gh repo view`, then manual origin configuration and `marrow doctor`. The command must not
+suggest deleting the repository, replacing an origin, force-pushing, or rewriting
+history.
 
 **Output.** In live mode, prints `publishing vault to private GitHub repository
 <owner>/<repo>...` before the first external mutation. On success, prints the created
@@ -257,8 +264,8 @@ every branch as a local head, including branches this machine has never attached
 pushing `--all` would push those stale local heads too, failing non-fast-forward the
 moment another machine has advanced one of them. If `origin` isn't configured, the push is
 skipped with a warning (not a failure); with no project worktrees attached, it is skipped
-as well. Concurrent syncs of the same project serialize on git's own lock; a lock failure
-should be treated as retryable, not a hard error.
+as well. Concurrent syncs of the same project serialize on git's own lock. A lock failure
+is reported as an error and makes the command exit `1`. Retrying it is safe.
 
 A target whose worktree directory has been deleted out from under its registration (a
 `missing` worktree, `architecture.md` → Design model) is skipped rather than crashing:
@@ -292,6 +299,7 @@ for a GitHub project that needs a non-default name. The path basename is a displ
 only.
 
 Before deciding, `add` fetches `origin` when the vault has one; a fetch failure aborts.
+This also happens under `--dry-run`, so a preview may refresh vault remote-tracking refs.
 It then reconciles the local path and matching branch: an ordinary `.agents/` with no
 branch is adopted; no `.agents/` with no branch is created fresh; no `.agents/` with a
 branch attaches that branch. A matching worktree already at the path succeeds without
@@ -309,6 +317,7 @@ own repo: `doctor` checks it on every run, and the persistence block `add` write
 both paths append `.agents/` to `<project-path>/.gitignore`, creating that file if absent
 — and neither ever commits it. `add` never commits in a repo it doesn't own, so the
 parent-repo commit of that change is the user's to make; the line printed says so. The
+adopt path makes and verifies its backup before appending this line. The
 fresh path appends even when `<project-path>` is not a git repository yet, so that a later
 `git init` there cannot pick `.agents/` up; the adopt path instead treats a non-repo parent
 as a precondition failure (see the state table below). A parent that already **tracks**
@@ -370,8 +379,9 @@ and `key` is the stable marrow identity. An existing attachment starts with
 
 ### Adopting an existing `.agents/`
 
-**Preconditions** (checked before anything is written; first failure aborts with a message
-on stderr and exit `1`, `--dry-run` included):
+**Preconditions** (checked before any project or project-branch mutation; the initial
+origin fetch described above may refresh remote-tracking refs; first failure aborts with
+a message on stderr and exit `1`, `--dry-run` included):
 
 1. `<project-path>/.agents` must be a directory (not e.g. a plain file).
 2. `<project-path>/.agents/.git` must not exist (i.e. it isn't already a marrow worktree).
@@ -389,43 +399,45 @@ on stderr and exit `1`, `--dry-run` included):
 **`--dry-run`**: runs preconditions and the `.gitignore`-state check (reporting what it
 _would_ append, without writing), prints `would add <project> to marrow` with `project`,
 `location`, and `key` fields, prints the planned adopt mode, then runs the parent config
-checks described above and exits `0`. Nothing is written to disk in either the project
-directory or the vault — safe to run against a real project.
+checks described above and exits `0`. It does not write project files, alter the worktree
+registry, or change a project branch. The initial fetch may update vault remote-tracking
+refs. It is safe to run against a real project.
 
 **Live run**, once preconditions pass:
 
-1. **Backup.** `tar -czf <MARROW_HOME>/backups/<project>-<UTC-timestamp>-<uuid>.tar.gz -C <project> .agents`, where `<UTC-timestamp>` is a sub-second ISO timestamp (colons and the decimal point replaced with `-`) and `<uuid>` is a random UUID — collision-proof across same-basename projects, explicit `--id` values, and repeated or concurrent adoptions on the same day. The generated path is checked against disk before `tar` runs, and the tarball's size and `tar -tzf` listing are both checked after; any failure aborts before anything is moved.
-2. **Move aside.** `<project>/.agents` → `<project>/.agents.pre-marrow` (rename, same volume — not a copy).
-3. **Create the worktree.** `git worktree add --orphan -b <identity> <project>/.agents` runs against `<MARROW_HOME>/vault.git`. On failure, step 2 is undone (`.agents.pre-marrow` renamed back to `.agents`) before erroring out — the project directory is never left without a `.agents/`.
-4. **Restore contents.** Every entry under `.agents.pre-marrow/` — including dotfiles — is moved into the new (currently empty) worktree, then `.agents.pre-marrow` is removed.
-5. **Working-memory files.** `templates/persistence-block.md` (`{{project}}` substituted, read from the tool's own install location) is appended to `.agents/README.md`; if no `README.md` existed, one is created first from `templates/readme-seed.md`. If `current-state.md` is absent, marrow creates it from `templates/current-state.md` with the current date and parent `HEAD` short SHA, or `no-HEAD` when the parent has no commit. An existing `current-state.md` is never overwritten.
-6. **Commit and push.** `git add -A`, commit `<project>: adopt into marrow`. If the vault has no `origin` remote, the commit is left local; otherwise `git push -u origin <project>`.
-7. **Parent config.** Update the parent project's Codex and Claude Code memory config
-   files, then the parent instruction block described above. These files are parent-repo
-   changes; marrow prints that the user must commit them.
+1. **Backup.** `tar -czf <MARROW_HOME>/backups/<project>-<UTC-timestamp>-<uuid>.tar.gz -C <project> .agents`, where `<UTC-timestamp>` is a sub-second ISO timestamp (colons and the decimal point replaced with `-`) and `<uuid>` is a random UUID — collision-proof across same-basename projects, explicit `--id` values, and repeated or concurrent adoptions on the same day. The generated path is checked against disk before `tar` runs, and the tarball's size and `tar -tzf` listing are both checked after; any failure aborts before the project is changed.
+2. **Ignore.** If needed, append `.agents/` to the parent `.gitignore`. The verified backup exists before this first project write.
+3. **Move aside.** `<project>/.agents` → `<project>/.agents.pre-marrow` (rename, same volume — not a copy).
+4. **Create the worktree.** `git worktree add --orphan -b <identity> <project>/.agents` runs against `<MARROW_HOME>/vault.git`. On failure, step 3 is undone (`.agents.pre-marrow` renamed back to `.agents`) before erroring out — the project directory is never left without a `.agents/`.
+5. **Restore contents.** Every entry under `.agents.pre-marrow/` — including dotfiles — is moved into the new (currently empty) worktree, then `.agents.pre-marrow` is removed.
+6. **Working-memory files.** `templates/persistence-block.md` (`{{project}}` substituted, read from the tool's own install location) is appended to `.agents/README.md`; if no `README.md` existed, one is created first from `templates/readme-seed.md`. If `current-state.md` is absent, marrow creates it from `templates/current-state.md` with the current date and parent `HEAD` short SHA, or `no-HEAD` when the parent has no commit. An existing `current-state.md` is never overwritten.
+7. **Commit and push.** `git add -A`, commit `<project>: adopt into marrow`. If the vault has no `origin` remote, the commit is left local; otherwise `git push -u origin <project>`.
 
-**Verification.** After the push (or the no-origin notice) succeeds, a recursive
-file-count/size snapshot of the new worktree (excluding `.git`) is compared against the
-snapshot taken before step 1. If the after-count or after-size is _smaller_ than before,
-the commit (and push, if any) have already happened, but the command prints a `WARNING
-possible content loss` naming the backup tarball and exits `1` — a human needs to look.
-Otherwise it prints `added <project> to marrow` with `project`, `location`, and `key`
-fields; an `Adopted existing .agents` block with the backup path, `files: <before>
-before, <after> after`, and `size: <before>B before, <after>B after`; then `vault: pushed
-origin/<project>` or `vault: not pushed (no origin configured)`,
-and exits `0`. The persistence-block append and required-file creation account for the
-normal small size increase; the count only decreases in an actual loss.
+**Verification.** After the push succeeds, or after the commit when there is no origin, a
+recursive file-count/size snapshot of the new worktree (excluding `.git`) is compared
+against the snapshot taken before step 1. The command prints `added <project> to marrow`
+with `project`, `location`, and `key` fields; an `Adopted existing .agents` block with
+the backup path, `files: <before> before, <after> after`, and `size: <before>B before,
+<after>B after`; then `vault: pushed origin/<project>` or `vault: not pushed (no origin
+configured)`. If the after-count or after-size is _smaller_ than before, the commit (and
+push, if any) have already happened, but the command then prints a `WARNING possible
+content loss` naming the backup tarball and exits `1` — a human needs to look.
+Otherwise it runs the parent config steps described above and exits `0`. Those files are
+parent-repo changes, and marrow prints that the user must commit them. The
+persistence-block append and required-file creation account for the normal small size
+increase; the count only decreases in an actual loss.
 
 **Exit codes.** `2` (from `marrow` dispatch): missing `<project-path>` argument. `1`: any
-precondition failure, backup failure, worktree-creation failure, commit/push failure, or a
-post-adoption content-count/size shrink. `0`: adopted cleanly.
+precondition failure, backup failure, project-file write failure, worktree-creation
+failure, commit/push failure, or a post-adoption content-count/size shrink. `0`: adopted
+cleanly.
 
 ### Creating a fresh `.agents/`
 
 Used automatically when `<project-path>/.agents` and its identity branch do not exist. It
 creates the project directory if needed, then runs the same worktree-creation, README, and
 `current-state.md` seeding (from templates read from the tool's own install location),
-and commit/push steps as the adopt path (steps 3, 5, 6 above), plus
+and commit/push steps as the adopt path (steps 4, 6, 7 above), plus
 the shared `.gitignore` handling and parent config step described above — which here runs
 against a directory that may have just been created and need not be a git repo at all. The
 commit message is `<project>: init via marrow add`. There is no backup step — there is
@@ -433,9 +445,11 @@ nothing to back up. As with adopt, a missing `origin` remote on the vault leaves
 local and reports `vault: not pushed (no origin configured)` after the add result.
 `--dry-run` reports the `.gitignore` and parent config steps it would take, prints the
 same `project`, `location`, and `key` fields with `plan: create new .agents`, then runs
-the parent instruction-block check described above and exits `0` without touching disk.
-Exit `2` on a missing `<project-path>` argument, `1` on the branch-exists failure above or a
-worktree/commit/push failure, `0` on success.
+the parent instruction-block check described above and exits `0` without changing the
+project, worktree registry, or project branch. Its initial fetch may update vault
+remote-tracking refs.
+Exit `2` on a missing `<project-path>` argument, `1` on the branch-exists failure above, a
+project-file write failure, or a worktree/commit/push failure, and `0` on success.
 
 ## `detach`
 
@@ -560,8 +574,8 @@ A registered worktree whose directory is missing (`architecture.md` → Design m
 excluded from the search rather than passed to `rg`/`grep` as a nonexistent path. One
 stderr line names the skipped branches and `marrow detach <project>` as the remediation,
 same channel and same non-contamination rule as the unattached-branches caveat above. If
-every remaining worktree is missing, `grep` prints `No project worktrees.` to stdout (after
-the stderr notice) and exits `0`, the same as the zero-worktree case.
+every remaining worktree is missing, `grep` prints `No project worktrees.` to stdout after
+reporting the missing registrations and exits `0`, the same as the zero-worktree case.
 
 Output streams directly to the terminal (not buffered/parsed by marrow). With zero
 project worktrees, prints `No project worktrees.` to stdout and exits `0` without
@@ -577,7 +591,7 @@ also results if `rg` isn't on `PATH`; `2` also results from `marrow`'s own dispa
 marrow convention
 ```
 
-Reads and prints `CONVENTION.md` verbatim from the tool's own install location, not from
+Reads and prints `CONVENTION.md` from the tool's own install location, not from
 `MARROW_HOME`. Exits `0`. A missing or unreadable install copy surfaces as an unrecovered
 I/O error and exits nonzero.
 

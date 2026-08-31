@@ -63,6 +63,7 @@ export async function initCommand(marrowHome: string, opts: InitOptions = {}): P
   const vault = vaultDir(marrowHome);
   try {
     if (opts.from) return await initFrom(marrowHome, opts.from, opts.dryRun === true);
+    if (existsSync(vault) && !(await isBareVault(vault))) throw new InitAbort(`${vault} is not a bare git repository`);
     if (opts.dryRun) {
       console.log(existsSync(vault) ? `vault already exists: ${vault}` : `dry run: would initialize vault: ${vault}`);
       return 0;

@@ -8,8 +8,12 @@ export type VisibilityResult =
 
 export async function isBareVault(vault: string): Promise<boolean> {
   if (!existsSync(vault)) return false;
-  const res = await git(["rev-parse", "--is-bare-repository"], vault);
-  return res.code === 0 && res.stdout === "true";
+  try {
+    const res = await git(["rev-parse", "--is-bare-repository"], vault);
+    return res.code === 0 && res.stdout === "true";
+  } catch {
+    return false;
+  }
 }
 
 export async function localBranches(vault: string): Promise<string[]> {

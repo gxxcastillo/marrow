@@ -64,7 +64,7 @@ an independent orphan history, and none of them share history with the tool repo
 project memory, or tool configuration. Cross-project search is `marrow grep`, not `git
 log` or `git merge`. This makes push races between projects structurally impossible
 (disjoint branches); a concurrent sync of the _same_ project serializes on git's own lock
-and should be treated as a retryable warning, not an error.
+and reports a lock failure as an error. Retrying that failure is safe.
 
 **Deliberate syncs are the mechanism.** The expected rhythm is an agent running
 `marrow sync <project> -m "<summary>"` when work lands or a decision is made (per the
@@ -77,10 +77,11 @@ Persistence block appended to every adopted `.agents/README.md`). Automation
 | ------------- | ----------------------------------------------------------------------------------------------- | ----------- |
 | `MARROW_HOME` | vault parent directory — contains `vault.git/` (the bare repo git commands actually target) and `backups/` | `~/.marrow` |
 
-There is no env var for the tool's own location. `templates/` and `CONVENTION.md` are
-resolved relative to wherever the running `marrow` install actually lives on disk —
-independent of `MARROW_HOME` — so `marrow convention` and the README-seeding step of
-`add` work correctly regardless of where the vault is configured to be. This is
+There is no env var for the tool's own location. `templates/`, `CONVENTION.md`, and
+`package.json` are resolved relative to wherever the running `marrow` install lives —
+independent of `MARROW_HOME` — so version output, `marrow convention`, and the
+working-memory and parent-instruction steps of `add` work correctly regardless of where
+the vault is configured to be. This is
 one fewer thing to configure, not a gap: the tool's own location is never ambiguous to
 code that's already running from it. There is no projects-root setting either: `add`
 takes a project path, and registered worktree paths come from the vault.
@@ -105,12 +106,19 @@ marrow/
 │   ├── readme-seed.md       # seeds a fresh `marrow add`; {{project}} substituted
 │   └── persistence-block.md # appended to every adopted/created README.md
 ├── src/
-│   ├── cli.ts                # entry, arg parsing (node:util parseArgs), dispatch
-│   ├── git.ts                 # Bun.spawn git wrapper; worktree discovery; status helpers
-│   ├── memory-files.ts        # required-file seeding; README persistence block updates
-│   ├── project.ts             # parent instruction and ignore handling
+│   ├── cli.ts               # entry, command table, arg parsing, dispatch
+│   ├── agent-config.ts      # parent agent-memory settings
+│   ├── backup.ts            # verified adoption tarballs
+│   ├── format.ts            # shared output formatting
+│   ├── git.ts               # git process wrapper; worktree and ref helpers
+│   ├── identity.ts          # stable project identity resolution
+│   ├── memory-files.ts      # seeding, stamp parsing, and status scans
+│   ├── project.ts           # parent instruction and ignore handling
+│   ├── remote.ts            # origin configuration and safety checks
+│   ├── vault.ts             # vault initialization and landing branch
 │   └── commands/
-│       ├── status.ts, sync.ts, add.ts, doctor.ts, grep.ts, convention.ts
+│       ├── init.ts, publish.ts, status.ts, sync.ts, add.ts
+│       └── detach.ts, doctor.ts, grep.ts, convention.ts, update.ts
 ├── test/                     # bun test; fixtures build a throwaway tool root + vault
 ├── bin/
 │   ├── marrow                # `#!/usr/bin/env bun` shim; exports run() from cli.ts
@@ -178,19 +186,19 @@ to gitignore, since there's no enclosing repo to accidentally track it into.
 
 ## Non-goals
 
-- **Not a sync tool for `.agents/` _content_ rules.** What belongs inside `.agents/` —
-  file names, when to promote content upward, maintenance discipline — is
-  `../CONVENTION.md`'s job. marrow only backs the directory with git; it has no opinion
-  on what's written there.
+- **Not a sync tool for `.agents/` prose.** What belongs inside `.agents/`, when to
+  promote it, and how to maintain it are `../CONVENTION.md`'s job. marrow recognizes the
+  canonical current-state filename, stamp, blocked marker, and size threshold required
+  by `status` and `doctor`. It does not interpret the prose.
 - **No CLI framework, no runtime dependencies.** Argument handling is a command table in
-  `src/cli.ts` over `node:util`'s `parseArgs`. Seven commands and three flags do not earn
-  commander or yargs, and a runtime dependency would cost the install story: `bin/setup`
+  `src/cli.ts` over `node:util`'s `parseArgs`. The fixed command and flag surface does not
+  earn commander or yargs, and a runtime dependency would cost the install story: `bin/setup`
   is a symlink onto `PATH` plus `marrow init`, with no `bun install` step at the
   install location. `grep`'s verbatim `rg` pass-through is also easier with no parser in
   the way: its arguments are never parsed by marrow at all.
 - **No merge, no cross-project history.** Project branches are permanently disjoint from
-  each other and from the tool repo's `main`. There is no planned "combine everything"
-  view beyond `marrow grep`.
+  each other and from the tool repo's `main`. `status` composes current local state and
+  `grep` searches attached content. Neither combines branch histories.
 - **No automatic cross-machine conflict resolution.** `sync` fetches and fast-forwards a
   clean behind worktree. Dirty or diverged worktrees require manual reconciliation; marrow
   never merges, rebases, or rewrites history for them.

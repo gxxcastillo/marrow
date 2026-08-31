@@ -77,14 +77,14 @@ const COMMANDS: Record<string, Command> = {
     args: "<project-path> [--id <stable-id>] [--dry-run]",
     summary: "make a project's .agents/ available under marrow",
     options: {
-      "dry-run": { type: "boolean", default: false, desc: "preview without writing anything" },
+      "dry-run": { type: "boolean", default: false, desc: "preview without changing the project or vault project branches" },
       id: { type: "string", desc: "stable identity for a project with no supported GitHub origin, or to override the default" },
     },
     minArgs: 1, maxArgs: 1,
     help:
       "Adopts <project-path>/.agents if it already has one, attaches its branch if one exists but the worktree\n" +
       "doesn't, or creates a fresh .agents otherwise. Run with --dry-run first — it previews every mode without\n" +
-      "writing anything, and adopting an existing .agents is an attended-only operation.",
+      "changing the project or vault project branches. Adopting an existing .agents is an attended-only operation.",
     run: ({ values, positionals }, ctx) =>
       addCommand(positionals[0], { dryRun: values["dry-run"] as boolean, id: values.id as string | undefined }, ctx.marrowHome, ctx.toolRoot),
   },

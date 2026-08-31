@@ -139,9 +139,14 @@ function planAdd(i: AddInspection): AddPlan {
 }
 
 async function adopt(t: Target, state: IgnoreState, dryRun: boolean): Promise<number> {
-  await ensureIgnored(t.projectDir, state, dryRun);
-  if (dryRun) { printTarget(`would add ${t.name} to marrow`, t); console.log("plan: adopt existing .agents"); return 0; }
+  if (dryRun) {
+    await ensureIgnored(t.projectDir, state, true);
+    printTarget(`would add ${t.name} to marrow`, t);
+    console.log("plan: adopt existing .agents");
+    return 0;
+  }
   const before = await walk(t.agentsPath), tarball = await backupAgents(t.projectDir, t.name, t.marrowHome), moved = `${t.agentsPath}.pre-marrow`;
+  await ensureIgnored(t.projectDir, state, false);
   await rename(t.agentsPath, moved);
   const worktree = await git(["worktree", "add", "--orphan", "-b", t.branch, t.agentsPath], t.vault);
   if (worktree.code !== 0) { await rename(moved, t.agentsPath); throw new AddAbort(`git worktree add failed, rolled back: ${worktree.stderr}`); }

@@ -64,6 +64,17 @@ describe("add", () => {
       expect((await stat(path.join(backupsDir, entries[0]))).size).toBeGreaterThan(0);
     });
 
+    test("backup failure does not append to the parent .gitignore", async () => {
+      const projectDir = await makeProjectRepo(fx, "alpha", "untracked");
+      await Bun.write(path.join(fx.marrowHome, "backups"), "not a directory\n");
+
+      const { code } = await captureLogs(() => addCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+
+      expect(code).toBe(1);
+      expect(existsSync(path.join(projectDir, ".gitignore"))).toBe(false);
+      expect(existsSync(path.join(projectDir, ".agents", ".git"))).toBe(false);
+    });
+
     test("collision-proof backups: same directory basename, different --id, neither overwrites the other", async () => {
       const orgA = path.join(fx.projectsRoot, "org-a");
       const orgB = path.join(fx.projectsRoot, "org-b");
@@ -162,7 +173,7 @@ describe("add", () => {
       expect(errLines.join("\n")).toContain("already a git worktree");
     });
 
-    test("--dry-run makes no changes to the project or the vault", async () => {
+    test("--dry-run does not change the project or worktree registry", async () => {
       const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
       const agentsPath = path.join(projectDir, ".agents");
       const before = await listFilesRecursive(agentsPath);

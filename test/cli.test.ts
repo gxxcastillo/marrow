@@ -103,7 +103,7 @@ describe("cli dispatch", () => {
     expect(help).toContain("usage: marrow add <project-path> [--id <stable-id>] [--dry-run]");
     expect(help).toContain("Options:");
     expect(help).toContain("--dry-run");
-    expect(help).toContain("preview without writing anything");
+    expect(help).toContain("preview without changing the project or vault project branches");
     expect(help).toContain("--id");
     expect(help).toContain("stable identity for a project with no supported GitHub origin");
     expect(help).toContain("attended-only operation");

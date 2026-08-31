@@ -20,4 +20,5 @@ as license to pick whichever is convenient — fix the spec to match a deliberat
 change, or fix the code if the spec was the intended design.
 
 What `.agents/` directories contain and how they are maintained lives in
-`../CONVENTION.md`. marrow backs those directories; it does not define their contents.
+`../CONVENTION.md`. marrow does not interpret project prose. It recognizes only the
+convention's mechanical structure where a command contract requires it.
