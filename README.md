@@ -96,10 +96,10 @@ output; don't script or automate that step (`spec/safety.md` → "Attended opera
 
 ```
 marrow add /path/to/project            # adopt a project into the vault
-marrow status                          # what's dirty, what's unpushed
+marrow status                          # attached memory needing attention
 marrow sync                            # commit + push everything dirty
 marrow grep "TODO" -C2                 # search across every adopted project
-marrow doctor                          # full health check
+marrow doctor                          # verify marrow's setup and safety
 marrow update                          # update the managed install (refuses a dev checkout)
 marrow --help                          # command list; <command> --help for one
 ```

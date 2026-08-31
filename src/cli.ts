@@ -29,10 +29,8 @@ interface Command {
   minArgs?: number; // required positionals; fewer prints usage and exits 2
   maxArgs?: number; // upper bound on positionals; more prints usage and exits 2 (default: unlimited)
   raw?: boolean; // skip parsing — args reach the command verbatim (grep -> rg)
-  // Opt-out, not opt-in: every command needs the vault to exist except the
-  // two that set up don't. Defaulting to required is the fail-safe direction
-  // — a future command that forgets to opt out just gets the guard for free,
-  // instead of silently regressing to an uncaught stack trace.
+  // Opt-out, not opt-in: commands need the vault unless they explicitly do not.
+  // A future command that forgets to opt out gets the safe guard by default.
   skipVaultCheck?: boolean;
   help?: string; // optional paragraph appended to `<command> --help`, beyond options and the one-line summary
   run: (parsed: Parsed, ctx: Context) => Promise<number>;
@@ -40,7 +38,7 @@ interface Command {
 
 const COMMANDS: Record<string, Command> = {
   init: {
-    args: "[--from <vault-url>] [--dry-run]",
+    args: "[--from <vault-url>] [--dry-run]", maxArgs: 0,
     summary: "initialize the local vault",
     options: {
       from: { type: "string", desc: "attach to an existing private vault remote instead of creating a local one" },
@@ -55,13 +53,13 @@ const COMMANDS: Record<string, Command> = {
     args: "<owner>/<repo> [--dry-run]",
     summary: "publish the vault to a new private GitHub remote",
     options: { "dry-run": { type: "boolean", default: false, desc: "preview without creating anything" } },
-    minArgs: 1,
+    minArgs: 1, maxArgs: 1,
     run: ({ values, positionals }, ctx) => publishCommand(positionals[0], { dryRun: values["dry-run"] as boolean }, ctx.marrowHome),
   },
 
   status: {
-    args: "",
-    summary: "show project worktree status",
+    args: "", maxArgs: 0,
+    summary: "show attached memory that needs attention",
     run: (_parsed, ctx) => statusCommand(ctx.marrowHome),
   },
 
@@ -82,7 +80,7 @@ const COMMANDS: Record<string, Command> = {
       "dry-run": { type: "boolean", default: false, desc: "preview without writing anything" },
       id: { type: "string", desc: "stable identity for a project with no supported GitHub origin, or to override the default" },
     },
-    minArgs: 1,
+    minArgs: 1, maxArgs: 1,
     help:
       "Adopts <project-path>/.agents if it already has one, attaches its branch if one exists but the worktree\n" +
       "doesn't, or creates a fresh .agents otherwise. Run with --dry-run first — it previews every mode without\n" +
@@ -95,14 +93,14 @@ const COMMANDS: Record<string, Command> = {
     args: "<project> [--dry-run]",
     summary: "remove a project's worktree, keeping its branch in the vault",
     options: { "dry-run": { type: "boolean", default: false, desc: "preview without touching the worktree" } },
-    minArgs: 1,
+    minArgs: 1, maxArgs: 1,
     run: ({ values, positionals }, ctx) =>
       detachCommand(positionals[0], { dryRun: values["dry-run"] as boolean }, ctx.marrowHome),
   },
 
   doctor: {
-    args: "[--verbose]",
-    summary: "check vault + worktree health",
+    args: "[--verbose]", maxArgs: 0,
+    summary: "verify marrow setup and safety",
     options: {
       verbose: { type: "boolean", short: "v", default: false, desc: "print every passing check, not just warnings and failures" },
     },
@@ -118,7 +116,7 @@ const COMMANDS: Record<string, Command> = {
   },
 
   convention: {
-    args: "",
+    args: "", maxArgs: 0,
     summary: "print CONVENTION.md",
     skipVaultCheck: true,
     run: (_parsed, ctx) => conventionCommand(ctx.toolRoot),
@@ -126,7 +124,7 @@ const COMMANDS: Record<string, Command> = {
 
   update: {
     args: "",
-    summary: "update the managed install to the latest release",
+    summary: "update the managed install from its tracked main branch",
     skipVaultCheck: true,
     maxArgs: 0,
     help:
@@ -159,8 +157,8 @@ function usageText(): string {
 }
 
 // `<command> --help`: usage line, summary, every documented option, and the
-// command's own help paragraph if it has one — all generated from the same
-// table `--help` itself and `cli.md` are generated from.
+// command's own help paragraph if it has one — generated from the same table
+// that drives dispatch and global --help. cli.md syntax must match it.
 function commandHelp(name: string): string {
   const cmd = COMMANDS[name];
   const lines = [`usage: marrow ${invocation(name)}`, cmd.summary];

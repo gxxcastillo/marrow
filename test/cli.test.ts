@@ -23,7 +23,7 @@ describe("cli dispatch", () => {
     expect(code).toBe(0);
     expect(errLines).toEqual([]);
     const usage = outLines.join("\n");
-    for (const name of ["init", "publish", "status", "sync", "add", "doctor", "grep", "convention", "update"]) {
+    for (const name of ["init", "publish", "status", "sync", "add", "detach", "doctor", "grep", "convention", "update"]) {
       expect(usage).toContain(name);
     }
   });
@@ -70,6 +70,21 @@ describe("cli dispatch", () => {
   });
 
   test.each([
+    { command: "init", args: ["extra"], expected: "usage: marrow init [--from <vault-url>] [--dry-run]" },
+    { command: "publish", args: ["owner/repo", "extra"], expected: "usage: marrow publish <owner>/<repo> [--dry-run]" },
+    { command: "status", args: ["extra"], expected: "usage: marrow status" },
+    { command: "add", args: ["/tmp/project", "extra"], expected: "usage: marrow add <project-path> [--id <stable-id>] [--dry-run]" },
+    { command: "detach", args: ["project", "extra"], expected: "usage: marrow detach <project> [--dry-run]" },
+    { command: "doctor", args: ["extra"], expected: "usage: marrow doctor [--verbose]" },
+    { command: "convention", args: ["extra"], expected: "usage: marrow convention" },
+  ])("$command rejects extra positional arguments", async ({ command, args, expected }) => {
+    const { code, outLines, errLines } = await call([command, ...args]);
+    expect(code).toBe(2);
+    expect(outLines).toEqual([]);
+    expect(errLines).toEqual([expected]);
+  });
+
+  test.each([
     ["publish", "usage: marrow publish <owner>/<repo> [--dry-run]"],
     ["add", "usage: marrow add <project-path> [--id <stable-id>] [--dry-run]"],
     ["grep", "usage: marrow grep <pattern> [rg-args...]"],
@@ -103,7 +118,16 @@ describe("cli dispatch", () => {
 
   test("a command with no documented options prints no Options section", async () => {
     const { outLines } = await call(["status", "--help"]);
-    expect(outLines.join("\n")).not.toContain("Options:");
+    const help = outLines.join("\n");
+    expect(help).toContain("show attached memory that needs attention");
+    expect(help).not.toContain("Options:");
+  });
+
+  test("status and doctor help state their distinct roles", async () => {
+    const statusHelp = (await call(["status", "--help"])).outLines.join("\n");
+    const doctorHelp = (await call(["doctor", "--help"])).outLines.join("\n");
+    expect(statusHelp).toContain("show attached memory that needs attention");
+    expect(doctorHelp).toContain("verify marrow setup and safety");
   });
 
   test("grep does not intercept flags meant for rg", async () => {

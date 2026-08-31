@@ -202,7 +202,7 @@ It is never committed to the parent repo. Convention: `marrow convention`.
 - On session start, check `current-state.md`'s `As of` stamp against `git log`;
   reconcile before building on stale state.
 - Edit files in place; git history replaces inline correction narrative.
-- `marrow status` shows unsynced, stale, blocked, and oversized memory;
-  `marrow doctor` checks the setup.
+- `marrow status` shows memory needing attention; `marrow doctor` verifies
+  marrow's setup and safety.
 <!-- /marrow:persistence-block -->
 ```

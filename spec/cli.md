@@ -6,9 +6,9 @@ Global behavior: plain text output, one line per project where applicable. `MARR
 names the vault parent directory; every command that touches the vault's git history
 actually runs `git` against `<MARROW_HOME>/vault.git`, the bare repo (see
 `architecture.md` → Env overrides), initialized by [`init`](#init). Every command except
-[`init`](#init) and [`convention`](#convention) requires that bare repo to already exist:
-`marrow` checks for it before dispatching and prints `no vault at <path> — run \`marrow
-init\`` to stderr, exit `1`, rather than letting the command underneath fail with an
+[`init`](#init), [`convention`](#convention), and [`update`](#update) requires that bare
+repo to already exist. `marrow` checks before dispatch and prints `no vault at <path> —
+run \`marrow init\`` to stderr, exit `1`, rather than letting the command fail with an
 uncaught error.
 `templates/`, `CONVENTION.md` and `package.json` are resolved relative to the running
 tool's own install location, never relative to `MARROW_HOME`.
@@ -17,28 +17,36 @@ tool's own install location, never relative to `MARROW_HOME`.
 `<command> --help` (or `-h`) prints that one command's usage line, its one-line summary,
 any documented options (one line each, in the command's own `[flags]` order), and the
 command's own help paragraph if it has one — all to stdout, exit `0`, and generated from
-the same command table this document is. `-v`/`--version` prints `marrow <version>`, read
-from the tool's own `package.json`, and exits `0`. [`grep`](#grep) is the exception: its
+the same command table that drives dispatch. `-v`/`--version` prints `marrow <version>`,
+read from the tool's own `package.json`, and exits `0`. [`grep`](#grep) is the exception: its
 arguments are never parsed by marrow, so `-h`/`--help` after `marrow grep` reach `rg`
 verbatim.
 
-**Dispatch errors.** No command, an unknown command, a required argument missing, or an
-unrecognized/malformed option prints usage to stderr and exits `2`. Option errors print
-the parser's message first, then the command's usage line. Usage text is generated from a
-single command table in `src/cli.ts` — the per-command syntax in this document and in
-`--help` come from the same source.
+**Dispatch errors.** No command, an unknown command, a required argument missing, too
+many positional arguments, or an unrecognized/malformed option prints usage to stderr
+and exits `2`. Option errors print the parser's message first, then the command's usage
+line. Usage text is generated from a single command table in `src/cli.ts`; the
+per-command syntax below must match that table.
 
-| Command                     | Purpose                                                                                   | Mutates                              |
-| --------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------ |
-| [`init`](#init)             | initialize the local vault, empty or from an existing remote                              | vault (create/clone/configure/fetch) |
-| [`publish`](#publish)       | publish the vault to a new private GitHub remote                                          | GitHub, vault remote refs            |
-| [`status`](#status)         | per-project worktree health                                                               | no                                   |
-| [`sync`](#sync)             | commit + push project worktrees                                                           | project worktrees, vault             |
-| [`add`](#add)               | bring a project's `.agents/` under marrow — adopts if one exists, creates fresh otherwise | project dir, vault                   |
-| [`detach`](#detach)         | remove a project's worktree, keeping its branch in the vault                              | project dir (worktree only)          |
-| [`doctor`](#doctor)         | vault + worktree health checks                                                            | no                                   |
-| [`grep`](#grep)             | search across all project worktrees                                                       | no                                   |
-| [`convention`](#convention) | print `CONVENTION.md`                                                                     | no                                   |
+| Command                     | Purpose                                                                                   | Writes                                      |
+| --------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------- |
+| [`init`](#init)             | initialize the local vault, empty or from an existing remote                              | vault (create/clone/configure/fetch)        |
+| [`publish`](#publish)       | publish the vault to a new private GitHub remote                                          | GitHub, vault remote refs                   |
+| [`status`](#status)         | show attached memory that needs attention                                                 | no                                          |
+| [`sync`](#sync)             | commit and push project worktrees                                                         | project worktrees, vault                    |
+| [`add`](#add)               | bring a project's `.agents/` under marrow — adopts if one exists, creates fresh otherwise | project directory, vault                    |
+| [`detach`](#detach)         | remove a project's worktree, keeping its branch in the vault                              | project directory (worktree only)           |
+| [`doctor`](#doctor)         | verify marrow's setup and safety                                                          | vault remote refs (`fetch --prune` only)    |
+| [`grep`](#grep)             | search across all project worktrees                                                       | no                                          |
+| [`convention`](#convention) | print `CONVENTION.md`                                                                     | no                                          |
+| [`update`](#update)         | update the managed install from its tracked `main` branch                                 | managed install                             |
+
+`status` and `doctor` have separate contracts. `status` answers “What memory needs
+attention now?” from local attached-worktree state. Its findings are informational; it
+does not fetch or use the network. `doctor` answers “Is marrow configured and operating
+safely?” It verifies installation, vault, worktree, remote, and convention mechanics;
+it may fetch and classifies findings as `OK`, `WARN`, or `FAIL`. In short: `status`
+reports the state of memory; `doctor` verifies the machinery preserving it.
 
 ## `init`
 
@@ -140,8 +148,8 @@ and the branch count is `1`.
 **Exit codes.** `2` (from `marrow` dispatch): missing `<owner>/<repo>` argument or an
 unrecognized option. `1`: invalid slug, missing `gh`, missing local vault, existing
 origin, landing-branch creation failure, GitHub creation failure, origin configuration
-failure, push failure, fetch failure, reachability failure, or non-private visibility. `0`: remote created,
-configured, pushed, fetched, reachable, and private.
+failure, push failure, fetch failure, reachability failure, or non-private visibility.
+`0`: remote created, configured, pushed, fetched, reachable, and private.
 
 ## `status`
 
@@ -149,28 +157,28 @@ configured, pushed, fetched, reachable, and private.
 marrow status
 ```
 
-Writes `checking project status...` as a transient terminal status while it walks every
-attached worktree (mirrors [`doctor`](#doctor)'s progress line — this loop shells out
-per project and can take a moment on a vault with many attached projects), then replaces
-it with a grammatical summary, a blank line, and an aligned table with `PROJECT`, `KEY`,
-`STATUS`, and `LAST COMMIT` columns. `PROJECT` is the parent directory of the `.agents`
-worktree, abbreviated with `~` when it is under the user's home directory, and shortened
-from the left when needed. `KEY` shows the stable project identity. `STATUS` combines the
-local change state and sync state, e.g. `clean, synced`, `1 uncommitted change, synced`,
-or `clean, 1 commit to push`. It appends memory signals when present: `stale (parent 2
-commits past stamp)`, `stale (parent distance from stamp unmeasurable)`, and `large
-current-state.md (418 lines)`. `LAST COMMIT` prints the date and subject of the branch's
-current commit and is shortened when needed so one long subject does not dominate the
-table — but never below a floor wide enough to keep part of the subject visible, even
-when the other columns are collectively wide enough that the row exceeds the table's
-target width. When the subject starts with the exact `KEY` plus `: `, that redundant
-prefix is omitted from the display only. "Uncommitted changes" counts lines from `git
-status --porcelain` (i.e. files changed, not diff hunks). Ahead/behind compares `HEAD`
-against the local `origin/<branch>` ref — it does not fetch first, so it can be stale
-relative to a remote no one has pulled recently. The summary names the project count,
-missing worktrees, uncommitted projects, sync work remaining, stale projects, oversized
-`current-state.md` files, and blocked-on-you items. Signal counts are omitted when zero,
-so a project set with no signals keeps the previous output exactly.
+`status` is the local, informational view of attached memory. It never fetches, uses the
+network, or treats a finding as a health failure.
+
+It writes `checking project status...` as a transient terminal status while it walks
+every attached worktree, then replaces it with a grammatical summary, a blank line, and
+an aligned table with `PROJECT`, `KEY`, `STATUS`, and `LAST COMMIT` columns. `PROJECT` is
+the parent directory of the `.agents` worktree, abbreviated with `~` under the user's
+home directory and shortened from the left when needed. `KEY` is the stable project
+identity. `STATUS` combines local changes and sync state. Examples are `clean, synced`,
+`1 uncommitted change, synced`, and `clean, 1 commit to push`. It appends memory signals
+when present: `stale (parent 2 commits past stamp)`, `stale (parent distance from stamp
+unmeasurable)`, or `large current-state.md (418 lines)`.
+
+`LAST COMMIT` prints the branch's current commit date and subject. It is shortened so one
+long subject does not dominate the table, but never below a floor that preserves part of
+the subject. An exact leading `<KEY>: ` is omitted from the displayed subject only.
+"Uncommitted changes" counts files from `git status --porcelain`, not diff hunks.
+Ahead/behind compares `HEAD` with the existing local `origin/<branch>` ref, so it may lag
+the actual remote until another command fetches. The summary names project count,
+missing worktrees, projects with uncommitted changes, sync work, stale projects,
+oversized `current-state.md` files, and blocked-on-you items. Zero signal counts are
+omitted, preserving the prior output when no signals exist.
 
 Staleness compares the first `@<short-sha>` in a `.agents/current-state.md` line beginning
 `As of YYYY-MM-DD (<repo> @<short-sha>)` with the parent repo's `HEAD`. Text
@@ -194,21 +202,21 @@ per following indented line — so a partially attached machine is not read as a
 view. With zero project worktrees, prints `No projects attached on this machine. Run
 \`marrow add <project-path>\` to get started.` instead, followed by `The vault has <n>
 project branches not attached on this machine (normal — each machine can attach a
-different subset):` and one branch per following indented line when any exist — an empty
-vault and an unattached one are different situations and must not print the same thing.
-Always exits `0`.
+different subset):` and one branch per following indented line when any exist. An empty
+vault and an unattached one do not print the same result.
 
-A registered worktree whose directory no longer exists on disk (deleted out from under the
-registration, rather than detached through marrow) still gets a row: `STATUS` prints
+A registered worktree whose directory no longer exists on disk (deleted outside marrow
+rather than detached through it) still gets a row: `STATUS` prints
 `missing` and `LAST COMMIT` prints `-`. After the table and any unattached-branch note,
-a blank line separates this remediation from the table when there was no earlier
-post-table note. One further line names every such project and its remediation: for
-exactly one, the branch name is interpolated into a copy-pasteable command — `1 project
-missing its worktree directory; run \`marrow detach <branch>\` to clear the
-registration`; for more than one, `detach` only takes one project per invocation, so the
-line instead names the branches after a generic command — `2 projects missing their
-worktree directories; run \`marrow detach <project>\` to clear the registration: <branch>,
-<branch>`.
+a blank line separates this remediation when no other post-table section supplied one.
+One line names every such project and its remediation. For exactly one, the branch name
+is interpolated into a copy-pasteable command: `1 project missing its worktree directory;
+run marrow detach <branch> to clear the registration`. For more than one, the line names
+branches after a generic command: `2 projects missing their worktree directories; run
+marrow detach <project> to clear the registration: <branch>, <branch>`.
+
+**Exit codes.** `0` after dispatch, regardless of findings. The global no-vault guard
+exits `1`; malformed options exit `2` before `status` runs.
 
 ## `sync`
 
@@ -224,11 +232,11 @@ remaining targets still proceed. Two targets that resolve to the same worktree s
 once, not twice.
 
 `sync` fetches first. A clean worktree behind its upstream fast-forwards. A dirty or
-diverged worktree with remote changes is left untouched, and one error line prints the
-exact reconciliation steps (`project.ts`'s `trackedMessage` style — printed guidance,
-never run by marrow, which still never merges, rebases, or stashes on its own,
-`architecture.md` → Non-goals). Dirty and diverged are independent and the steps cover
-whichever combination applies: dirty-and-behind (not diverged) names `git stash`,
+diverged worktree with remote changes is left untouched, and one error line prints exact
+manual reconciliation steps. The steps are guidance only; marrow never merges, rebases,
+or stashes on its own (`architecture.md` → Non-goals). Dirty and diverged are
+independent. The steps cover whichever combination applies: dirty-and-behind (not
+diverged) names `git stash`,
 `git merge --ff-only origin/<branch>`, `git stash pop`; diverged (local and remote both
 hold commits the other lacks) names `git pull --no-rebase origin <branch>`, which resolves
 the divergence with an ordinary merge commit on the project's own branch; dirty *and*
@@ -253,7 +261,7 @@ as well. Concurrent syncs of the same project serialize on git's own lock; a loc
 should be treated as retryable, not a hard error.
 
 A target whose worktree directory has been deleted out from under its registration (a
-`missing` worktree, `../architecture.md` → Design model) is skipped rather than crashing:
+`missing` worktree, `architecture.md` → Design model) is skipped rather than crashing:
 its branch and history are untouched either way. Naming it as an explicit target is an
 error (the same as naming an unknown project); appearing only because no targets were
 given is a warning. Either way the printed line names the path and
@@ -414,9 +422,8 @@ post-adoption content-count/size shrink. `0`: adopted cleanly.
 
 ### Creating a fresh `.agents/`
 
-Used automatically when `<project-path>/.agents` does **not** exist and its identity branch
-does not exist. Otherwise: creates the
-project directory if needed, runs the same worktree-creation, README and
+Used automatically when `<project-path>/.agents` and its identity branch do not exist. It
+creates the project directory if needed, then runs the same worktree-creation, README, and
 `current-state.md` seeding (from templates read from the tool's own install location),
 and commit/push steps as the adopt path (steps 3, 5, 6 above), plus
 the shared `.gitignore` handling and parent config step described above — which here runs
@@ -427,8 +434,7 @@ local and reports `vault: not pushed (no origin configured)` after the add resul
 `--dry-run` reports the `.gitignore` and parent config steps it would take, prints the
 same `project`, `location`, and `key` fields with `plan: create new .agents`, then runs
 the parent instruction-block check described above and exits `0` without touching disk.
-Exit `2` on a missing
-`<project-path>` argument, `1` on the branch-exists failure above or a
+Exit `2` on a missing `<project-path>` argument, `1` on the branch-exists failure above or a
 worktree/commit/push failure, `0` on success.
 
 ## `detach`
@@ -472,12 +478,17 @@ detached cleanly, or the dry-run preview printed successfully.
 marrow doctor [--verbose]
 ```
 
-Writes `checking vault and project worktree health...` as a transient terminal status,
-then runs the fixed set of checks below, in this order. `WARN` and `FAIL` lines always
-print — they're the actionable part. `OK` lines print only with `--verbose`/`-v`; by
-default a clean vault prints nothing but the summary line. Per-project `FAIL` and `WARN`
-lines stay explicit even under `--verbose`; checks that pass for every attached project
-are summarized as one `OK` line rather than one per project. Output ends with
+`doctor` verifies the machinery that preserves memory: the installation, vault,
+worktrees, remotes, and mechanical convention requirements. Unlike `status`, it may use
+the network and refresh `origin/*` refs. It never writes project files, working memory,
+or vault project branches. It checks whether a stamp is well formed, but ordinary
+staleness, file size, and blocked-on-you markers belong only to `status`.
+
+It writes `checking vault and project worktree health...` as a transient terminal status,
+then runs the fixed checks below in order. `WARN` and `FAIL` lines always print. `OK`
+lines print only with `--verbose`/`-v`; a clean default run prints only the summary.
+Per-project `WARN` and `FAIL` lines remain explicit. Checks that pass for every attached
+project are summarized as one `OK` line rather than one per project. Output ends with
 `doctor: OK`, `doctor: OK (<n> warnings)`, or `doctor: FAIL (<n> failures[, <n> warnings])`:
 
 | Check                                                                                                                                                                                                                         | Result on failure                                                                                                                                                       |
@@ -505,8 +516,10 @@ directory (`.agents`-ignored, ahead/behind) — there is nothing on disk to chec
 checks' `OK` summaries count only present worktrees.
 
 The vault's worktree registry is the source of each path; marrow does not require a common
-projects root. Exit `1` if any check produced a `FAIL` line, `0` otherwise — `WARN` never
-affects the exit code.
+projects root.
+
+**Exit codes.** `1` if any check produces `FAIL`; `0` otherwise. `WARN` never affects the
+exit code. Malformed options exit `2` before `doctor` runs.
 
 ## `grep`
 
@@ -564,9 +577,9 @@ also results if `rg` isn't on `PATH`; `2` also results from `marrow`'s own dispa
 marrow convention
 ```
 
-Reads and prints `CONVENTION.md` verbatim from the tool's own install location (not from
-`MARROW_HOME` — see the top-of-file caveat). Exits `0`, or crashes with an uncaught error
-if the file is missing.
+Reads and prints `CONVENTION.md` verbatim from the tool's own install location, not from
+`MARROW_HOME`. Exits `0`. A missing or unreadable install copy surfaces as an unrecovered
+I/O error and exits nonzero.
 
 ## `update`
 
@@ -575,8 +588,8 @@ marrow update
 ```
 
 Updates the managed install (the checkout `bin/install` creates at
-`~/.local/share/marrow`) to the latest commit on its tracked `main` branch. Takes no
-arguments or options, and does not require a vault (`skipVaultCheck`).
+`~/.local/share/marrow`) from its tracked `main` branch. Takes no arguments or options
+and does not require a vault.
 
 There is one updater implementation: `update` locates the managed checkout, then spawns
 that checkout's own `bin/install` with inherited stdout/stderr and returns its exit code.
@@ -607,16 +620,16 @@ unset, not the managed checkout, missing installer, or the installer's own nonze
 
 ```bash
 marrow init                            # one-time: create the vault's bare repo
-marrow init --from git@github.com:example-owner/marrow-vault.git --dry-run # preview existing remote setup
-marrow publish example-owner/marrow-vault --dry-run # preview private remote creation
-marrow status                          # what's dirty, what's unpushed
+marrow init --from git@github.com:example-owner/marrow-vault.git --dry-run # alternative: preview existing remote setup
+marrow publish example-owner/marrow-vault --dry-run # optional after local init: preview private remote creation
+marrow status                          # attached memory needing attention
 marrow sync                            # commit + push everything dirty
 marrow sync notes -m "weekly review"   # one project, a real message
 marrow add /path/to/project --dry-run   # preview before touching a real project
 marrow add /path/to/project             # for real; attended when adopting existing memory
 marrow add /path/to/new-project --id local/new-project # no prior .agents/ — created fresh instead
 marrow detach old-project               # stop tracking it here; branch stays in the vault
-marrow doctor                          # health check after any of the above
+marrow doctor                          # verify marrow's setup and safety
 marrow grep "TODO" -C2                 # cross-project search, rg flags pass through
 marrow convention                      # what should be inside .agents/
 marrow update                          # update the managed install (refuses a dev checkout)
