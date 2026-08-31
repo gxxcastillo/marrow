@@ -3,7 +3,7 @@ import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { MIN_GIT_MAJOR, MIN_GIT_MINOR, aheadBehind, git, gitTooOld, gitVersion, listProjectWorktrees, splitByMissing, vaultDir } from "../git";
 import { clearProgress, countLabel, displayPath, showProgress } from "../format";
-import { hasCurrentState } from "../memory-files";
+import { readCurrentState } from "../memory-files";
 import { PARENT_INSTRUCTION_FILENAMES, agentsBlockStatus, updateLabel } from "../project";
 import { originUrl, verifyOriginReachable, verifyPrivateVisibility } from "../remote";
 import { unattachedBranches } from "../vault";
@@ -88,7 +88,7 @@ export async function doctorCommand(marrowHome: string, toolRoot: string, opts: 
   // another, so they share a single traversal instead of three.
   let ignoredParents = 0;
   let currentAgentsBlocks = 0;
-  let currentStateFiles = 0;
+  let wellformedCurrentStates = 0;
   for (const wt of presentWorktrees) {
     const projectDir = path.dirname(wt.path);
 
@@ -117,12 +117,18 @@ export async function doctorCommand(marrowHome: string, toolRoot: string, opts: 
       warn(`${wt.branch}: stale marrow .agents note (${versions}); run \`marrow add ${displayPath(projectDir)}\` to update it`);
     }
 
-    if (hasCurrentState(wt.path)) {
-      currentStateFiles++;
-    } else {
+    const currentState = await readCurrentState(wt.path);
+    if (!currentState) {
       warn(
         `${wt.branch}: missing required .agents/current-state.md; create it with an honest As of stamp, then run \`marrow sync ${wt.branch}\``,
       );
+    } else if (!currentState.stamp) {
+      warn(
+        `${wt.branch}: malformed As of stamp in .agents/current-state.md; use ` +
+          `As of YYYY-MM-DD (<repo> @<short-sha>) or @no-HEAD, then run \`marrow sync ${wt.branch}\``,
+      );
+    } else {
+      wellformedCurrentStates++;
     }
   }
   if (ignoredParents === presentWorktrees.length && presentWorktrees.length > 0) {
@@ -131,8 +137,8 @@ export async function doctorCommand(marrowHome: string, toolRoot: string, opts: 
   if (currentAgentsBlocks === presentWorktrees.length && presentWorktrees.length > 0) {
     ok(`marrow .agents note current for ${countLabel(presentWorktrees.length, "project parent")}`);
   }
-  if (currentStateFiles === presentWorktrees.length && presentWorktrees.length > 0) {
-    ok(`current-state.md present for ${countLabel(presentWorktrees.length, "project worktree")}`);
+  if (wellformedCurrentStates === presentWorktrees.length && presentWorktrees.length > 0) {
+    ok(`current-state.md stamps well formed for ${countLabel(presentWorktrees.length, "project worktree")}`);
   }
 
   const url = await originUrl(vault);

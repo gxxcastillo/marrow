@@ -118,7 +118,7 @@ describe("add", () => {
       expect(outLines).toContain("added alpha to marrow");
       expect(outLines.join("\n")).toContain("Adopted existing .agents\n  backup:");
       expect(outLines.join("\n")).toContain("  files:  4 before, 4 after");
-      expect(outLines.join("\n")).toContain("  size:   34B before,");
+      expect(outLines.join("\n")).toContain("  size:   89B before,");
       expect(outLines).toContain("vault: not pushed (no origin configured)");
     });
 

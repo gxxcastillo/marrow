@@ -108,7 +108,10 @@ export async function makeProjectRepo(
   const agentsPath = path.join(projectDir, ".agents");
   await mkdir(path.join(agentsPath, "sub"), { recursive: true });
   await Bun.write(path.join(agentsPath, "README.md"), `# ${name} agents\n`);
-  await Bun.write(path.join(agentsPath, "current-state.md"), "state\n");
+  await Bun.write(
+    path.join(agentsPath, "current-state.md"),
+    `As of 2026-01-01 (${name} @deadbee)\n\n# Current state — ${name}\n`,
+  );
   await Bun.write(path.join(agentsPath, "sub", "note.md"), "note\n");
   await Bun.write(path.join(agentsPath, ".hidden"), "dotfile\n");
 

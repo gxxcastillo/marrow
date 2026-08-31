@@ -56,7 +56,9 @@ describe("multi-machine attachment", () => {
     const { code, outLines } = await captureLogs(() => addCommand(machineB, {}, machineBHome, fx.toolRoot));
     expect(code).toBe(0);
     expect(outLines.join("\n")).toContain(`attached ${BRANCH}`);
-    expect(await Bun.file(path.join(machineB, ".agents", "current-state.md")).text()).toBe("state\n");
+    expect(await Bun.file(path.join(machineB, ".agents", "current-state.md")).text()).toBe(
+      "As of 2026-01-01 (alpha @deadbee)\n\n# Current state — alpha\n",
+    );
     expect((await listProjectWorktrees(vaultDir(machineBHome))).map((wt) => wt.branch)).toEqual([BRANCH]);
   });
 

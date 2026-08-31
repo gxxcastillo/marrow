@@ -176,6 +176,9 @@ names the plan.
   deliberate migration is a plan, run attended.
 - Edit in place. Git history replaces inline correction ledgers.
 - Collapse progress logs when work lands. Keep final state, not round-by-round history.
+  Discard pure execution history; git retains it. Move dated evidence that remains useful
+  to an `analysis/` record and link that record from `current-state.md` when it still
+  matters to resumption.
 - Do not leave `.agents/` as the sole copy of a rule future contributors must honor —
   promote it to the appropriate shared source first.
 
@@ -199,6 +202,7 @@ It is never committed to the parent repo. Convention: `marrow convention`.
 - On session start, check `current-state.md`'s `As of` stamp against `git log`;
   reconcile before building on stale state.
 - Edit files in place; git history replaces inline correction narrative.
-- `marrow status` shows unsynced changes; `marrow doctor` checks the setup.
+- `marrow status` shows unsynced, stale, blocked, and oversized memory;
+  `marrow doctor` checks the setup.
 <!-- /marrow:persistence-block -->
 ```

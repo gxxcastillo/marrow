@@ -1,7 +1,85 @@
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { git } from "./git";
+
+export const CURRENT_STATE_LINE_THRESHOLD = 300;
+
+export interface CurrentStateStamp {
+  date: string;
+  revision: string;
+}
+
+export interface CurrentStateInfo {
+  content: string;
+  lineCount: number;
+  stamp: CurrentStateStamp | null;
+}
+
+export type ParentFreshness =
+  | { kind: "current" }
+  | { kind: "stale"; commitsPast: number | null }
+  | { kind: "unavailable" };
+
+const CURRENT_STATE_STAMP_RE = /^As of (\d{4}-\d{2}-\d{2}) \([^\r\n]*?@([0-9a-fA-F]+|no-HEAD)(?=[,;)\s])/m;
+
+function validDate(value: string): boolean {
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
+}
+
+export function parseCurrentStateStamp(content: string): CurrentStateStamp | null {
+  const match = content.match(CURRENT_STATE_STAMP_RE);
+  if (!match || !validDate(match[1])) return null;
+  return { date: match[1], revision: match[2] };
+}
+
+function physicalLineCount(content: string): number {
+  if (content.length === 0) return 0;
+  const lines = content.split(/\r\n|\r|\n/).length;
+  return /(?:\r\n|\r|\n)$/.test(content) ? lines - 1 : lines;
+}
+
+export async function readCurrentState(agentsPath: string): Promise<CurrentStateInfo | null> {
+  const statePath = path.join(agentsPath, "current-state.md");
+  if (!existsSync(statePath)) return null;
+  const content = await readFile(statePath, "utf8");
+  return { content, lineCount: physicalLineCount(content), stamp: parseCurrentStateStamp(content) };
+}
+
+export async function parentFreshness(parentPath: string, stamp: CurrentStateStamp): Promise<ParentFreshness> {
+  if (stamp.revision === "no-HEAD") return { kind: "current" };
+
+  const inside = await git(["rev-parse", "--is-inside-work-tree"], parentPath);
+  if (inside.code !== 0) return { kind: "unavailable" };
+  const head = await git(["rev-parse", "--verify", "HEAD^{commit}"], parentPath);
+  if (head.code !== 0) return { kind: "unavailable" };
+  const stamped = await git(["rev-parse", "--verify", `${stamp.revision}^{commit}`], parentPath);
+  if (stamped.code !== 0) return { kind: "stale", commitsPast: null };
+  if (stamped.stdout === head.stdout) return { kind: "current" };
+
+  const ancestor = await git(["merge-base", "--is-ancestor", stamped.stdout, head.stdout], parentPath);
+  if (ancestor.code !== 0) return { kind: "stale", commitsPast: null };
+  const count = await git(["rev-list", "--count", `${stamped.stdout}..${head.stdout}`], parentPath);
+  const commitsPast = count.code === 0 && /^\d+$/.test(count.stdout) ? Number(count.stdout) : null;
+  return { kind: "stale", commitsPast };
+}
+
+export async function blockedOnYouLines(agentsPath: string): Promise<string[]> {
+  const plansPath = path.join(agentsPath, "plans");
+  if (!existsSync(plansPath)) return [];
+  const files = (await readdir(plansPath, { withFileTypes: true }))
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    .map((entry) => entry.name)
+    .sort();
+  const lines: string[] = [];
+  for (const file of files) {
+    const content = await readFile(path.join(plansPath, file), "utf8");
+    const line = content.split(/\r\n|\r|\n/).find((item) => item.startsWith("Blocked on you:"));
+    if (line) lines.push(line);
+  }
+  return lines;
+}
 
 export async function renderTemplate(
   toolRoot: string,

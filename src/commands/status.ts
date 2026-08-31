@@ -1,6 +1,12 @@
 import path from "node:path";
 import { aheadBehind, dirtyCount, lastCommit, listProjectWorktrees, vaultDir } from "../git";
 import { clearProgress, countLabel, displayPath, showProgress } from "../format";
+import {
+  CURRENT_STATE_LINE_THRESHOLD,
+  blockedOnYouLines,
+  parentFreshness,
+  readCurrentState,
+} from "../memory-files";
 import { unattachedBranches } from "../vault";
 
 const PROGRESS_LINE = "checking project status...";
@@ -68,6 +74,11 @@ function displayCommit(commit: { date: string; subject: string } | null, project
   return `${commit.date} ${subject}`;
 }
 
+function staleLabel(commitsPast: number | null): string {
+  if (commitsPast === null) return "stale (parent distance from stamp unmeasurable)";
+  return `stale (parent ${countLabel(commitsPast, "commit")} past stamp)`;
+}
+
 export async function statusCommand(marrowHome: string): Promise<number> {
   const progressShown = showProgress(PROGRESS_LINE);
   const vault = vaultDir(marrowHome);
@@ -91,8 +102,11 @@ export async function statusCommand(marrowHome: string): Promise<number> {
   let unpushedTotal = 0;
   let aheadTotal = 0;
   let behindTotal = 0;
+  let staleTotal = 0;
+  let oversizedTotal = 0;
   const rows: string[][] = [];
   const missingBranches: string[] = [];
+  const blockers: Array<{ project: string; line: string }> = [];
   for (const wt of worktrees) {
     if (wt.missing) {
       missingBranches.push(wt.branch);
@@ -102,6 +116,20 @@ export async function statusCommand(marrowHome: string): Promise<number> {
     const dirty = await dirtyCount(wt.path);
     const ab = await aheadBehind(wt.path, wt.branch);
     const commit = await lastCommit(wt.path);
+    const state = await readCurrentState(wt.path);
+    const signals: string[] = [];
+    if (state?.stamp) {
+      const freshness = await parentFreshness(path.dirname(wt.path), state.stamp);
+      if (freshness.kind === "stale") {
+        staleTotal++;
+        signals.push(staleLabel(freshness.commitsPast));
+      }
+    }
+    if (state && state.lineCount > CURRENT_STATE_LINE_THRESHOLD) {
+      oversizedTotal++;
+      signals.push(`large current-state.md (${state.lineCount} lines)`);
+    }
+    for (const line of await blockedOnYouLines(wt.path)) blockers.push({ project: wt.branch, line });
     if (dirty > 0) dirtyTotal++;
     if (!ab) unpushedTotal++;
     if (ab) {
@@ -112,7 +140,7 @@ export async function statusCommand(marrowHome: string): Promise<number> {
     rows.push([
       displayPath(path.dirname(wt.path)),
       wt.branch,
-      `${dirty > 0 ? countLabel(dirty, "uncommitted change") : "clean"}, ${syncLabel(ab)}`,
+      [`${dirty > 0 ? countLabel(dirty, "uncommitted change") : "clean"}, ${syncLabel(ab)}`, ...signals].join(", "),
       displayCommit(commit, wt.branch),
     ]);
   }
@@ -128,12 +156,24 @@ export async function statusCommand(marrowHome: string): Promise<number> {
     aheadTotal > 0 ? `${countLabel(aheadTotal, "commit")} to push` : "",
     behindTotal > 0 ? `${countLabel(behindTotal, "commit")} to pull` : "",
   ].filter(Boolean);
-  console.log(`${countLabel(worktrees.length, "project")}: ${changes}, ${sync.join(", ") || "all synced"}`);
+  const memory = [
+    staleTotal > 0 ? countLabel(staleTotal, "stale project") : "",
+    oversizedTotal > 0 ? countLabel(oversizedTotal, "oversized current-state.md", "oversized current-state.md files") : "",
+    blockers.length > 0 ? `${blockers.length} blocked on you` : "",
+  ].filter(Boolean);
+  const memorySummary = memory.length > 0 ? `, ${memory.join(", ")}` : "";
+  console.log(`${countLabel(worktrees.length, "project")}: ${changes}, ${sync.join(", ") || "all synced"}${memorySummary}`);
   console.log("");
   printRows(rows);
   let printedPostTableNote = false;
-  if (unattachedNote) {
+  if (blockers.length > 0) {
     console.log("");
+    console.log("Blocked on you:");
+    for (const blocker of blockers) console.log(`  ${blocker.project}: ${blocker.line}`);
+    printedPostTableNote = true;
+  }
+  if (unattachedNote) {
+    if (!printedPostTableNote) console.log("");
     printBranchList(unattachedNote, unattached);
     printedPostTableNote = true;
   }

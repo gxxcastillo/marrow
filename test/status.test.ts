@@ -1,8 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { statusCommand } from "../src/commands/status";
 import { git } from "../src/git";
-import { addProjectWorktree, addUnattachedBranch, deleteWorktreeDir, makeFixture, type Fixture } from "./fixtures";
+import {
+  addProjectWorktree,
+  addUnattachedBranch,
+  deleteWorktreeDir,
+  makeFixture,
+  setTestIdentity,
+  type Fixture,
+} from "./fixtures";
 import { captureLogs } from "./helpers";
 
 describe("status", () => {
@@ -31,6 +39,68 @@ describe("status", () => {
     expect(outLines[2]).toContain("PROJECT");
     expect(outLines[2]).toContain("STATUS");
     expect(outLines[4]).toContain("alpha");
+    expect(outLines[4]).toContain("clean, synced");
+  });
+
+  test("surfaces stale, oversized, and blocked-on-you memory", async () => {
+    const projectDir = path.join(fx.projectsRoot, "alpha");
+    await mkdir(projectDir, { recursive: true });
+    await git(["init", "-q", "-b", "main"], projectDir);
+    await setTestIdentity(projectDir);
+    await Bun.write(path.join(projectDir, ".gitignore"), ".agents/\n");
+    await git(["add", ".gitignore"], projectDir);
+    await git(["commit", "-q", "-m", "initial parent"], projectDir);
+    const stampedHead = (await git(["rev-parse", "--short", "HEAD"], projectDir)).stdout;
+
+    const agentsPath = await addProjectWorktree(fx, "alpha");
+    await mkdir(path.join(agentsPath, "plans"));
+    const state = [
+      `As of 2026-08-31 (alpha @${stampedHead})`,
+      ...Array.from({ length: 300 }, (_, index) => `line ${index + 1}`),
+    ].join("\n");
+    await Bun.write(path.join(agentsPath, "current-state.md"), `${state}\n`);
+    await Bun.write(
+      path.join(agentsPath, "plans", "approval-plan.md"),
+      "# Approval\n\nBlocked on you: approve the fixture (2026-08-31)\ncontinuation is not printed\n",
+    );
+    await git(["add", "current-state.md", "plans/approval-plan.md"], agentsPath);
+    await git(["commit", "-q", "-m", "alpha: add memory signals"], agentsPath);
+    await git(["push", "-q", "origin", "alpha"], agentsPath);
+
+    await Bun.write(path.join(projectDir, "advance.txt"), "advance\n");
+    await git(["add", "advance.txt"], projectDir);
+    await git(["commit", "-q", "-m", "advance parent"], projectDir);
+
+    const { outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
+    expect(outLines[0]).toBe(
+      "1 project: all clean, all synced, 1 stale project, 1 oversized current-state.md, 1 blocked on you",
+    );
+    expect(outLines[4]).toContain("stale (parent 1 commit past stamp)");
+    expect(outLines[4]).toContain("large current-state.md (301 lines)");
+    expect(outLines).toContain("Blocked on you:");
+    expect(outLines).toContain("  alpha: Blocked on you: approve the fixture (2026-08-31)");
+    expect(outLines.join("\n")).not.toContain("continuation is not printed");
+  });
+
+  test("keeps clean output unchanged for a fresh stamp with no blocked lines", async () => {
+    const projectDir = path.join(fx.projectsRoot, "alpha");
+    await mkdir(projectDir, { recursive: true });
+    await git(["init", "-q", "-b", "main"], projectDir);
+    await setTestIdentity(projectDir);
+    await Bun.write(path.join(projectDir, ".gitignore"), ".agents/\n");
+    await git(["add", ".gitignore"], projectDir);
+    await git(["commit", "-q", "-m", "initial parent"], projectDir);
+    const parentHead = (await git(["rev-parse", "--short", "HEAD"], projectDir)).stdout;
+
+    const agentsPath = await addProjectWorktree(fx, "alpha");
+    await Bun.write(path.join(agentsPath, "current-state.md"), `As of 2026-08-31 (alpha @${parentHead})\n`);
+    await git(["add", "current-state.md"], agentsPath);
+    await git(["commit", "-q", "-m", "alpha: add current state"], agentsPath);
+    await git(["push", "-q", "origin", "alpha"], agentsPath);
+
+    const { outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
+    expect(outLines[0]).toBe("1 project: all clean, all synced");
+    expect(outLines).toHaveLength(5);
     expect(outLines[4]).toContain("clean, synced");
   });
 

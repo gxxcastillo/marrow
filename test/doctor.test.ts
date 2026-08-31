@@ -37,7 +37,7 @@ describe("doctor", () => {
     const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot, { verbose: true }));
     expect(outLines.some((l) => l.startsWith("FAIL"))).toBe(false);
     expect(outLines).toContain("OK    marrow .agents note current for 1 project parent");
-    expect(outLines).toContain("OK    current-state.md present for 1 project worktree");
+    expect(outLines).toContain("OK    current-state.md stamps well formed for 1 project worktree");
     expect(code).toBe(0);
   });
 
@@ -68,6 +68,19 @@ describe("doctor", () => {
     expect(line).toStartWith("WARN");
     expect(line).toContain("alpha: missing required .agents/current-state.md");
     expect(line).not.toContain(" at ");
+    expect(line).toContain("marrow sync alpha");
+  });
+
+  test("warns when the current-state.md stamp is malformed", async () => {
+    const agentsPath = await addProjectWorktree(fx, "alpha");
+    await writeFile(path.join(agentsPath, "current-state.md"), "# Current state\n");
+
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
+
+    expect(code).toBe(0);
+    const line = outLines.find((item) => item.includes("malformed As of stamp"));
+    expect(line).toStartWith("WARN");
+    expect(line).toContain("alpha: malformed As of stamp in .agents/current-state.md");
     expect(line).toContain("marrow sync alpha");
   });
 

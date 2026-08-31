@@ -157,7 +157,9 @@ it with a grammatical summary, a blank line, and an aligned table with `PROJECT`
 worktree, abbreviated with `~` when it is under the user's home directory, and shortened
 from the left when needed. `KEY` shows the stable project identity. `STATUS` combines the
 local change state and sync state, e.g. `clean, synced`, `1 uncommitted change, synced`,
-or `clean, 1 commit to push`. `LAST COMMIT` prints the date and subject of the branch's
+or `clean, 1 commit to push`. It appends memory signals when present: `stale (parent 2
+commits past stamp)`, `stale (parent distance from stamp unmeasurable)`, and `large
+current-state.md (418 lines)`. `LAST COMMIT` prints the date and subject of the branch's
 current commit and is shortened when needed so one long subject does not dominate the
 table — but never below a floor wide enough to keep part of the subject visible, even
 when the other columns are collectively wide enough that the row exceeds the table's
@@ -166,7 +168,24 @@ prefix is omitted from the display only. "Uncommitted changes" counts lines from
 status --porcelain` (i.e. files changed, not diff hunks). Ahead/behind compares `HEAD`
 against the local `origin/<branch>` ref — it does not fetch first, so it can be stale
 relative to a remote no one has pulled recently. The summary names the project count,
-missing worktrees, uncommitted projects, and sync work remaining.
+missing worktrees, uncommitted projects, sync work remaining, stale projects, oversized
+`current-state.md` files, and blocked-on-you items. Signal counts are omitted when zero,
+so a project set with no signals keeps the previous output exactly.
+
+Staleness compares the first `@<short-sha>` in a `.agents/current-state.md` line beginning
+`As of YYYY-MM-DD (<repo> @<short-sha>)` with the parent repo's `HEAD`. Text
+after that first SHA on the same line is ignored. A descendant `HEAD` reports the number
+of commits past the stamp. A stamp that no longer belongs to the parent `HEAD` history
+reports an unmeasurable distance. `@no-HEAD` never reports stale. A parent directory
+that is not a git repository and a missing or malformed stamp stay neutral in `status`;
+[`doctor`](#doctor) owns stamp-conformance warnings.
+
+A `current-state.md` over 300 physical lines reports as large. This is an informational
+compaction signal, not a failure. After the table, a `Blocked on you:` section is printed
+when any attached worktree has a line beginning exactly `Blocked on you:` in a direct
+`plans/*.md` child. Each item prints the project key and that marker's first physical
+line. The section is omitted when empty. `status` reads only these convention-guaranteed
+markers, the canonical filename, and the stamp format; it does not interpret prose.
 
 The table covers attached worktrees only. When the vault holds project branches with no
 worktree here, a blank line and note follow the table — `2 project branches not attached
@@ -469,7 +488,7 @@ are summarized as one `OK` line rather than one per project. Output ends with
 | Project branches in the vault with no worktree on this machine are listed by name                                                                                                                                            | Never fails — reported as an `OK` line. Attaching a subset is a deliberate choice, not drift; it is surfaced only because it bounds what `grep` and `status` can see    |
 | Every project worktree's parent repo ignores `.agents` (`git check-ignore -q -- .agents` in the parent dir). A parent directory that is not a git repository at all passes — there is nothing it could commit `.agents/` into | FAIL                                                                                                                                                                    |
 | Every project worktree's parent `AGENTS.md`/`CLAUDE.md` carries the current marrow `.agents` note, recognized the same way `add`'s parent instruction block check recognizes it                                              | WARN per project missing or carrying a stale note, with `marrow add <project-dir>` as the remediation. Home-directory paths in the command may print with `~`            |
-| Every project worktree contains the required `current-state.md` resumption record                                                                                                                                            | WARN per project missing `.agents/current-state.md`, with `marrow sync <project>` after creation                                                                        |
+| Every project worktree contains the required `current-state.md` resumption record with a well-formed line beginning `As of YYYY-MM-DD (<repo> @<short-sha>)` (`@no-HEAD` is also valid)                                          | WARN per project missing `.agents/current-state.md` or carrying a malformed stamp, with `marrow sync <project>` after correction                                        |
 | `origin` remote is configured on `<MARROW_HOME>/vault.git`                                                                                                                                                                    | WARN if absent                                                                                                                                                          |
 | `origin` is reachable (`git ls-remote origin`; no `--exit-code`, so a reachable remote with zero refs — e.g. before the first `marrow publish` — is not misreported as unreachable) | FAIL if unreachable                                                                                                                                                     |
 | `origin` refs can be refreshed (`git fetch --prune origin`)                                                                                                                                                                   | FAIL if fetch fails                                                                                                                                                     |
