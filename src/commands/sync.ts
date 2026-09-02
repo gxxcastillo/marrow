@@ -1,5 +1,6 @@
 import path from "node:path";
-import { aheadBehind, dirtyCount, git, hasOrigin, listProjectWorktrees, matchWorktrees, vaultDir, type ProjectWorktree } from "../git";
+import { aheadBehind, dirtyCount, git, hasOrigin, listProjectWorktrees, vaultDir } from "../git";
+import { report, reportMissingWorktree, resolveTargets } from "../target-resolution";
 
 export interface SyncOptions {
   message?: string;
@@ -9,11 +10,6 @@ function isoLocal(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
-
-function report(line: string, isError = false): void {
-  if (isError) console.error(line);
-  else console.log(line);
 }
 
 // Printed for a manual-reconciliation refusal, in the same style as
@@ -39,29 +35,14 @@ function reconciliationMessage(name: string, agentsPath: string, branch: string,
 export async function syncCommand(targets: string[], opts: SyncOptions, marrowHome: string): Promise<number> {
   const vault = vaultDir(marrowHome);
   const all = await listProjectWorktrees(vault);
-  const matches = (target: string) => matchWorktrees(all, target);
 
   let hadError = false;
   let worktrees = all;
 
   if (targets.length > 0) {
-    // Each target resolves to exactly one worktree or is excluded with an
-    // accurate reason — a prior version reported an ambiguous target as
-    // "unknown" yet still synced every one of its matches.
-    const resolved = new Map<string, ProjectWorktree>();
-    for (const target of targets) {
-      const found = matches(target);
-      if (found.length === 0) {
-        hadError = true;
-        report(`unknown project: ${target}`, true);
-      } else if (found.length > 1) {
-        hadError = true;
-        report(`ambiguous name ${target} matches: ${found.map((w) => w.path).join(", ")}`, true);
-      } else {
-        resolved.set(found[0].path, found[0]); // keyed by path: dedupes when two targets name the same worktree
-      }
-    }
-    worktrees = [...resolved.values()];
+    const resolution = resolveTargets(all, targets);
+    hadError = resolution.hadError;
+    worktrees = resolution.worktrees;
   } else if (opts.message) {
     const dirtyFlags = await Promise.all(all.filter((wt) => !wt.missing).map((wt) => dirtyCount(wt.path)));
     const dirtyProjects = dirtyFlags.filter((count) => count > 0).length;
@@ -85,13 +66,9 @@ export async function syncCommand(targets: string[], opts: SyncOptions, marrowHo
       // gone — so this never blocks the push below. Unnamed (all-projects) sync
       // treats it as a warning; naming this project explicitly is an error, the
       // same as naming an unknown one.
-      const remediation = `worktree directory missing at ${wt.path}; run \`marrow detach ${wt.branch}\` to clear the registration`;
-      if (targets.length > 0) {
-        hadError = true;
-        report(`${name}: ERROR ${remediation}`, true);
-      } else {
-        report(`${name}: WARN ${remediation}`, true);
-      }
+      const explicit = targets.length > 0;
+      reportMissingWorktree(name, wt, explicit);
+      if (explicit) hadError = true;
       continue;
     }
     try {

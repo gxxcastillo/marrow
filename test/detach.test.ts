@@ -5,6 +5,7 @@ import path from "node:path";
 import { attachCommand } from "../src/commands/attach";
 import { detachCommand } from "../src/commands/detach";
 import { git, gitRaw, listProjectWorktrees, vaultDir } from "../src/git";
+import { renderTemplate } from "../src/memory-files";
 import { addProjectWorktree, deleteWorktreeDir, makeFixture, setTestIdentity, type Fixture } from "./fixtures";
 import { captureLogs } from "./helpers";
 
@@ -22,7 +23,7 @@ describe("detach", () => {
   test("keeps ordinary files, removes the persistence block, and leaves parent files unchanged", async () => {
     const agentsPath = await addProjectWorktree(fx, "alpha");
     const projectDir = path.dirname(agentsPath);
-    const persistence = await Bun.file(path.join(fx.toolRoot, "templates", "persistence-block.md")).text();
+    const persistence = await renderTemplate(fx.toolRoot, "persistence-block.md", {});
     await Bun.write(path.join(agentsPath, "README.md"), `# Alpha notes\n\n${persistence}`);
     await git(["add", "README.md"], agentsPath);
     await git(["commit", "-q", "-m", "alpha: add persistence block"], agentsPath);
@@ -64,7 +65,7 @@ describe("detach", () => {
 
   test("commits only the block removal while retaining dirty README edits", async () => {
     const agentsPath = await addProjectWorktree(fx, "alpha");
-    const persistence = await Bun.file(path.join(fx.toolRoot, "templates", "persistence-block.md")).text();
+    const persistence = await renderTemplate(fx.toolRoot, "persistence-block.md", {});
     await Bun.write(path.join(agentsPath, "README.md"), `# Alpha notes\n\n${persistence}`);
     await git(["add", "README.md"], agentsPath);
     await git(["commit", "-q", "-m", "alpha: add persistence block"], agentsPath);
@@ -98,6 +99,27 @@ describe("detach", () => {
     expect(await Bun.file(path.join(agentsPath, "README.md")).text()).toBe(readme);
     expect((await gitRaw(["show", "alpha:README.md"], vaultDir(fx.marrowHome))).stdout).toBe(readme);
     expect((await git(["rev-parse", "alpha"], vaultDir(fx.marrowHome))).stdout).toBe(before);
+  });
+
+  test("strips the version ledger from both the retained and branch-committed README", async () => {
+    const agentsPath = await addProjectWorktree(fx, "alpha");
+    const persistence = await renderTemplate(fx.toolRoot, "persistence-block.md", {});
+    const readme = `---\ntitle: foo\nmarrow-versions:\n  persistence-block: 3\n  agents-note: 4\n---\n# Alpha notes\n\n${persistence}`;
+    await Bun.write(path.join(agentsPath, "README.md"), readme);
+    await git(["add", "README.md"], agentsPath);
+    await git(["commit", "-q", "-m", "alpha: add ledger and persistence block"], agentsPath);
+
+    const { code } = await captureLogs(() => detachCommand("alpha", {}, fx.marrowHome));
+    expect(code).toBe(0);
+
+    const retained = await Bun.file(path.join(agentsPath, "README.md")).text();
+    expect(retained).not.toContain("marrow-versions:");
+    expect(retained).toContain("title: foo");
+    expect(retained).toContain("# Alpha notes");
+
+    const branchReadme = (await gitRaw(["show", "alpha:README.md"], vaultDir(fx.marrowHome))).stdout;
+    expect(branchReadme).not.toContain("marrow-versions:");
+    expect(branchReadme).toContain("title: foo");
   });
 
   test("default detach leaves two sources that attach refuses to merge", async () => {
@@ -156,7 +178,10 @@ describe("detach", () => {
     );
     expect(attached.code).toBe(0);
     expect(existsSync(path.join(agentsPath, ".git"))).toBe(true);
-    expect(await Bun.file(path.join(agentsPath, "README.md")).text()).toBe("# alpha\n");
+    // Reattach itself never rewrites the README, but attach's post-plan step still adds
+    // the missing AGENTS.md note and, as part of that, records its version in the
+    // README's ledger — a plain, uncommitted file edit, not a vault commit.
+    expect(await Bun.file(path.join(agentsPath, "README.md")).text()).toContain("# alpha\n");
   });
 
   test("clears the registration for a worktree whose directory is already missing", async () => {

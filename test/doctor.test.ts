@@ -4,6 +4,8 @@ import path from "node:path";
 import { attachCommand } from "../src/commands/attach";
 import { doctorCommand } from "../src/commands/doctor";
 import { git, vaultDir } from "../src/git";
+import { templateVersion } from "../src/memory-files";
+import { upsertLedgerEntry } from "../src/version-ledger";
 import {
   addProjectWorktree,
   addUnattachedBranch,
@@ -14,7 +16,7 @@ import {
   setTestIdentity,
   type Fixture,
 } from "./fixtures";
-import { captureLogs, currentAgentsBlockVersion } from "./helpers";
+import { captureLogs } from "./helpers";
 
 describe("doctor", () => {
   let fx: Fixture;
@@ -37,6 +39,7 @@ describe("doctor", () => {
     const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot, { verbose: true }));
     expect(outLines.some((l) => l.startsWith("FAIL"))).toBe(false);
     expect(outLines).toContain("OK    marrow .agents note current for 1 project parent");
+    expect(outLines).toContain("OK    CLAUDE.md redirect present for 1 project parent");
     expect(outLines).toContain("OK    current-state.md stamps well formed for 1 project worktree");
     expect(code).toBe(0);
   });
@@ -97,25 +100,55 @@ describe("doctor", () => {
     expect(line).toStartWith("WARN");
     expect(line).toContain("alpha");
     expect(line).not.toContain(" at ");
-    expect(line).toContain("marrow attach ");
+    expect(line).toContain("marrow refresh ");
+  });
+
+  test("warns when a project's AGENTS.md has no CLAUDE.md redirect", async () => {
+    await addProjectWorktree(fx, "alpha");
+    const projectDir = path.join(fx.projectsRoot, "alpha");
+    await writeFile(path.join(projectDir, "AGENTS.md"), "# alpha\n");
+
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
+    expect(code).toBe(0);
+    const line = outLines.find((l) => l.includes("no CLAUDE.md redirect"));
+    expect(line).toBeDefined();
+    expect(line).toStartWith("WARN");
+    expect(line).toContain("alpha");
+    expect(line).toContain("marrow refresh ");
+  });
+
+  test("does not warn about a CLAUDE.md redirect when AGENTS.md doesn't exist", async () => {
+    await addProjectWorktree(fx, "alpha");
+
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot, { verbose: true }));
+    expect(code).toBe(0);
+    expect(outLines.some((l) => l.includes("no CLAUDE.md redirect"))).toBe(false);
+    expect(outLines).toContain("OK    CLAUDE.md redirect present for 1 project parent");
   });
 
   test("warns when a project's marrow .agents note is stale", async () => {
     const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
     const { code: adoptCode } = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
     expect(adoptCode).toBe(0);
+
+    // Staleness is content-based now, not tag-based: drift the note's wording so it no
+    // longer matches the template, and separately backdate the ledger's own record of
+    // which version was last written — simulating a project refreshed under an older
+    // marrow release whose note has since been hand-edited out of sync with the ledger.
     const agentsMdPath = path.join(projectDir, "AGENTS.md");
-    const stale = (await readFile(agentsMdPath, "utf8")).replace(/<p align="right">v\d+<\/p>/, '<p align="right">v0</p>');
-    await writeFile(agentsMdPath, stale);
+    const drifted = (await readFile(agentsMdPath, "utf8")).replace("and keep it current as you go.", "and keep it up to date.");
+    await writeFile(agentsMdPath, drifted);
+    const readmePath = path.join(projectDir, ".agents", "README.md");
+    await writeFile(readmePath, upsertLedgerEntry(await readFile(readmePath, "utf8"), "agents-note", "0"));
 
     const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
     expect(code).toBe(0);
     const line = outLines.find((l) => l.includes("stale marrow .agents note"));
     expect(line).toBeDefined();
     expect(line).toStartWith("WARN");
-    expect(line).toContain(`v0 -> v${await currentAgentsBlockVersion(fx.toolRoot)}`);
+    expect(line).toContain(`v0 -> v${await templateVersion(fx.toolRoot, "agents-block.md")}`);
     expect(line).not.toContain(" at ");
-    expect(line).toContain("marrow attach ");
+    expect(line).toContain("marrow refresh ");
   });
 
   test("warns with 'not verbatim' when a project's note wording drifted at the current version", async () => {
@@ -124,10 +157,7 @@ describe("doctor", () => {
     expect(adoptCode).toBe(0);
     const agentsMdPath = path.join(projectDir, "AGENTS.md");
     const original = await readFile(agentsMdPath, "utf8");
-    const drifted = original
-      .split("\n")
-      .filter((line) => line.trim() !== ">")
-      .join("\n");
+    const drifted = original.replace("and keep it current as you go.", "and keep it up to date.");
     expect(drifted).not.toBe(original);
     await writeFile(agentsMdPath, drifted);
 
@@ -135,9 +165,29 @@ describe("doctor", () => {
     expect(code).toBe(0);
     const line = outLines.find((l) => l.includes("stale marrow .agents note"));
     expect(line).toBeDefined();
-    const currentVersion = await currentAgentsBlockVersion(fx.toolRoot);
+    // The ledger already records the current version (attach just wrote the note fresh),
+    // so this is a same-version wording drift, not a version bump.
+    const currentVersion = await templateVersion(fx.toolRoot, "agents-block.md");
     expect(line).toContain(`v${currentVersion}, not verbatim`);
     expect(line).not.toContain(`v${currentVersion} -> v${currentVersion}`);
+  });
+
+  test("warns when a project's working-memory block is stale, and not for a current one", async () => {
+    const alpha = await makeProjectRepo(fx, "alpha", "ignored");
+    const beta = await makeProjectRepo(fx, "beta", "ignored");
+    await captureLogs(() => attachCommand(alpha, {}, fx.marrowHome, fx.toolRoot));
+    await captureLogs(() => attachCommand(beta, {}, fx.marrowHome, fx.toolRoot));
+    const readmePath = path.join(alpha, ".agents", "README.md");
+    await writeFile(readmePath, (await readFile(readmePath, "utf8")).replace("Convention: `marrow convention`.", "Convention: unrecognized."));
+
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
+    expect(code).toBe(0);
+    const line = outLines.find((l) => l.includes("stale marrow working-memory block"));
+    expect(line).toBeDefined();
+    expect(line).toStartWith("WARN");
+    expect(line).toContain("alpha:");
+    expect(line).toContain("marrow refresh ");
+    expect(outLines.some((l) => l.includes("beta") && l.includes("working-memory block"))).toBe(false);
   });
 
   test("shows transient progress without keeping it in final output", async () => {

@@ -4,8 +4,11 @@ import { mkdir, readdir, readFile, realpath, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { attachCommand } from "../src/commands/attach";
 import { git, listProjectWorktrees, run, vaultDir } from "../src/git";
+import { templateVersion } from "../src/memory-files";
+import { agentsBlock } from "../src/project";
+import { readLedgerEntry } from "../src/version-ledger";
 import { addProjectWorktree, makeFixture, makeProjectRepo, type Fixture } from "./fixtures";
-import { captureLogs, currentAgentsBlockVersion, currentPersistenceBlockVersion, listFilesRecursive } from "./helpers";
+import { captureLogs, listFilesRecursive } from "./helpers";
 
 const branch = (name: string) => name;
 
@@ -45,9 +48,10 @@ describe("attach", () => {
       expect(worktrees.map((w) => w.branch)).toContain(branch("alpha"));
 
       const readme = await readFile(path.join(agentsPath, "README.md"), "utf8");
-      expect(readme).toContain(`<!-- marrow:persistence-block v${await currentPersistenceBlockVersion(fx.toolRoot)} -->`);
-      expect(readme).toContain("## Persistence");
+      expect(readme).toContain("<!-- marrow:persistence-block -->");
+      expect(readme).toContain("## Working memory via marrow");
       expect(readme).toContain(`branch: \`${branch("alpha")}\``);
+      expect(readLedgerEntry(readme, "persistence-block")).toBe(await templateVersion(fx.toolRoot, "persistence-block.md"));
 
       const rev = await git(["rev-parse", "HEAD"], agentsPath);
       const remoteRev = await git(["rev-parse", `origin/${branch("alpha")}`], agentsPath);
@@ -229,8 +233,62 @@ describe("attach", () => {
       expect(output).toContain("AGENTS.md                 1 existing .agents reference found; review for inconsistent guidance");
       expect(outLines.filter((line) => line === "marrow did not commit these project files.")).toHaveLength(1);
       expect(agents).toStartWith("> [!NOTE]");
-      expect(agents).toContain(`> <p align="right">v${await currentAgentsBlockVersion(fx.toolRoot)}</p>`);
       expect(agents).toContain("Read .agents/README.md first.");
+      const readme = await readFile(path.join(projectDir, ".agents", "README.md"), "utf8");
+      expect(readLedgerEntry(readme, "agents-note")).toBe(await templateVersion(fx.toolRoot, "agents-block.md"));
+    });
+
+    test("live attach creates a CLAUDE.md redirect when AGENTS.md exists and CLAUDE.md does not", async () => {
+      const projectDir = await makeProjectRepo(fx, "needs-redirect", "ignored");
+      await Bun.write(path.join(projectDir, "AGENTS.md"), "Read .agents/README.md first.\n");
+
+      const { code, outLines } = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+
+      const output = outLines.join("\n");
+      expect(code).toBe(0);
+      expect(output).toContain("Claude Code compatibility:");
+      expect(output).toContain("CLAUDE.md                 redirect to AGENTS.md added");
+      expect(outLines.filter((line) => line === "marrow did not commit these project files.")).toHaveLength(1);
+      expect(await readFile(path.join(projectDir, "CLAUDE.md"), "utf8")).toBe("@AGENTS.md\n");
+    });
+
+    test("--dry-run previews the CLAUDE.md redirect without writing it", async () => {
+      const projectDir = await makeProjectRepo(fx, "needs-redirect-dry", "ignored");
+      await Bun.write(path.join(projectDir, "AGENTS.md"), "Read .agents/README.md first.\n");
+
+      const { code, outLines } = await captureLogs(() =>
+        attachCommand(projectDir, { dryRun: true }, fx.marrowHome, fx.toolRoot),
+      );
+
+      expect(code).toBe(0);
+      expect(outLines.join("\n")).toContain("would add redirect to AGENTS.md");
+      expect(existsSync(path.join(projectDir, "CLAUDE.md"))).toBe(false);
+    });
+
+    test("live attach never modifies an existing CLAUDE.md", async () => {
+      const projectDir = await makeProjectRepo(fx, "has-claude", "ignored");
+      await Bun.write(path.join(projectDir, "AGENTS.md"), "Read .agents/README.md first.\n");
+      await Bun.write(path.join(projectDir, "CLAUDE.md"), "custom instructions\n");
+
+      const { code, outLines } = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+
+      expect(code).toBe(0);
+      expect(outLines.join("\n")).not.toContain("Claude Code compatibility:");
+      expect(await readFile(path.join(projectDir, "CLAUDE.md"), "utf8")).toBe("custom instructions\n");
+    });
+
+    test("live attach backfills a missing CLAUDE.md redirect for an already-attached project", async () => {
+      const projectDir = await makeProjectRepo(fx, "backfill", "ignored");
+      const first = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+      expect(first.code).toBe(0);
+      expect(existsSync(path.join(projectDir, "CLAUDE.md"))).toBe(true);
+      await rm(path.join(projectDir, "CLAUDE.md"));
+
+      const { code, outLines } = await captureLogs(() => attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot));
+
+      expect(code).toBe(0);
+      expect(outLines.join("\n")).toContain("CLAUDE.md                 redirect to AGENTS.md added");
+      expect(existsSync(path.join(projectDir, "CLAUDE.md"))).toBe(true);
     });
 
     test("live attach disables Codex and Claude Code built-in memory for the parent project", async () => {
@@ -335,7 +393,7 @@ describe("attach", () => {
 
     test("does not update parent instruction files when either one has the canonical block", async () => {
       const projectDir = await makeProjectRepo(fx, "has-block", "ignored");
-      const block = await readFile(path.join(fx.toolRoot, "templates", "agents-block.md"), "utf8");
+      const block = await agentsBlock(fx.toolRoot, "project");
       await Bun.write(path.join(projectDir, "CLAUDE.md"), `Project notes.\n\n${block}`);
 
       const { code, outLines } = await captureLogs(() =>
@@ -348,7 +406,7 @@ describe("attach", () => {
 
     test("updates a stale parent instruction block even when another file is current", async () => {
       const projectDir = await makeProjectRepo(fx, "mixed-note-blocks", "ignored");
-      const block = await readFile(path.join(fx.toolRoot, "templates", "agents-block.md"), "utf8");
+      const block = await agentsBlock(fx.toolRoot, "project");
       const agentsContent = `${block.trim()}\n\n# Existing Guidance\n`;
       await Bun.write(path.join(projectDir, "AGENTS.md"), agentsContent);
       await Bun.write(path.join(projectDir, "CLAUDE.md"), [
@@ -374,9 +432,11 @@ describe("attach", () => {
         true,
       );
       expect(agents).toBe(agentsContent);
-      expect(claude).toContain(`> <p align="right">v${await currentAgentsBlockVersion(fx.toolRoot)}</p>`);
+      expect(claude).toContain(block.trim());
       expect(claude).not.toContain("v10.20.30.40");
       expect(claude).toContain("# Claude Guidance");
+      const readme = await readFile(path.join(projectDir, ".agents", "README.md"), "utf8");
+      expect(readLedgerEntry(readme, "agents-note")).toBe(await templateVersion(fx.toolRoot, "agents-block.md"));
     });
 
     test("dry-run treats non-canonical .agents prose as missing", async () => {
@@ -412,7 +472,7 @@ describe("attach", () => {
 
       expect(code).toBe(0);
       expect(outLines.join("\n")).toContain("Project instructions:");
-      expect(outLines.join("\n")).toContain(`would update marrow .agents note (v10.20.30.40 -> v${await currentAgentsBlockVersion(fx.toolRoot)})`);
+      expect(outLines.join("\n")).toContain(`would update marrow .agents note (v10.20.30.40 -> v${await templateVersion(fx.toolRoot, "agents-block.md")})`);
       expect(outLines.join("\n")).not.toContain("existing .agents reference");
       expect(agents).toBe(before);
     });
@@ -435,17 +495,48 @@ describe("attach", () => {
         attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
       );
       const agents = await readFile(path.join(projectDir, "AGENTS.md"), "utf8");
-      const currentVersion = await currentAgentsBlockVersion(fx.toolRoot);
+      const currentVersion = await templateVersion(fx.toolRoot, "agents-block.md");
 
       expect(code).toBe(0);
       expect(outLines.join("\n")).toContain("Project instructions:");
       expect(outLines.join("\n")).toContain(`marrow .agents note updated (v10.20.30.40 -> v${currentVersion})`);
       expect(outLines.join("\n")).toContain("AGENTS.md                 1 existing .agents reference found; review for inconsistent guidance");
       expect(outLines).toContain("marrow did not commit these project files.");
-      expect(agents).toContain(`> <p align="right">v${currentVersion}</p>`);
+      expect(agents).toContain((await agentsBlock(fx.toolRoot, "project")).trim());
       expect(agents).not.toContain("v10.20.30.40");
+      expect(agents).not.toContain("<p align=");
       expect(agents).toContain("# Existing Guidance");
       expect(agents).toContain("`.agents/custom-plan.md`");
+      const readme = await readFile(path.join(projectDir, ".agents", "README.md"), "utf8");
+      expect(readLedgerEntry(readme, "agents-note")).toBe(currentVersion);
+    });
+
+    test("updates a note whose wording is byte-identical except for a removed trailing tag", async () => {
+      // The real-world v3 -> v4 migration: the template body text didn't change at all,
+      // only the trailing `<p align="right">vN</p>` tag was dropped. That makes the new,
+      // shorter template text a literal prefix of the old note — a regression guard for
+      // a real bug where `agentsBlockStatus` used `file.content.includes(block)` (a
+      // whole-file substring search) instead of comparing the extracted note span
+      // exactly, so every not-yet-migrated real project was wrongly reported "current".
+      const projectDir = await makeProjectRepo(fx, "prefix-note-block", "ignored");
+      const block = await agentsBlock(fx.toolRoot, "project");
+      const oldNote = `${block.trim()}\n>\n> <p align="right">v3</p>`;
+      await Bun.write(path.join(projectDir, "AGENTS.md"), `${oldNote}\n\n# Existing Guidance\n`);
+
+      const { code, outLines } = await captureLogs(() =>
+        attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
+      );
+      const agents = await readFile(path.join(projectDir, "AGENTS.md"), "utf8");
+      const currentVersion = await templateVersion(fx.toolRoot, "agents-block.md");
+
+      expect(code).toBe(0);
+      expect(outLines.join("\n")).toContain(`marrow .agents note updated (v3 -> v${currentVersion})`);
+      expect(agents).toContain(block.trim());
+      expect(agents).not.toContain("v3</p>");
+      expect(agents).not.toContain("<p align=");
+      expect(agents).toContain("# Existing Guidance");
+      const readme = await readFile(path.join(projectDir, ".agents", "README.md"), "utf8");
+      expect(readLedgerEntry(readme, "agents-note")).toBe(currentVersion);
     });
 
     test("upgrades a real historical v1 note to the current version", async () => {
@@ -465,18 +556,21 @@ describe("attach", () => {
         attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
       );
       const agents = await readFile(path.join(projectDir, "AGENTS.md"), "utf8");
-      const currentVersion = await currentAgentsBlockVersion(fx.toolRoot);
+      const currentVersion = await templateVersion(fx.toolRoot, "agents-block.md");
 
       expect(code).toBe(0);
       expect(outLines.join("\n")).toContain(`marrow .agents note updated (v1 -> v${currentVersion})`);
       expect(outLines.join("\n")).not.toContain("existing .agents reference");
-      expect(agents).toContain(`> <p align="right">v${currentVersion}</p>`);
+      expect(agents).toContain((await agentsBlock(fx.toolRoot, "project")).trim());
+      expect(agents).not.toContain("<p align=");
       expect(agents).toContain("# Existing Guidance");
+      const readme = await readFile(path.join(projectDir, ".agents", "README.md"), "utf8");
+      expect(readLedgerEntry(readme, "agents-note")).toBe(currentVersion);
     });
 
     test("does nothing when the note already carries the current version", async () => {
       const projectDir = await makeProjectRepo(fx, "current-note-block", "ignored");
-      const block = await readFile(path.join(fx.toolRoot, "templates", "agents-block.md"), "utf8");
+      const block = await agentsBlock(fx.toolRoot, "project");
       const agentsContent = `${block.trim()}\n\n# Existing Guidance\n`;
       await Bun.write(path.join(projectDir, "AGENTS.md"), agentsContent);
 
@@ -490,13 +584,16 @@ describe("attach", () => {
       expect(agents).toBe(agentsContent);
     });
 
-    test("repairs a current-version note whose wording drifted from the template", async () => {
+    test("repairs a note whose wording drifted from the template, even with no note-version history yet", async () => {
       const projectDir = await makeProjectRepo(fx, "drifted-note-block", "ignored");
-      const block = await readFile(path.join(fx.toolRoot, "templates", "agents-block.md"), "utf8");
-      const currentVersion = await currentAgentsBlockVersion(fx.toolRoot);
-      // Same version tag, one line of wording removed: the shape that let four projects
-      // carry one banner and five another while all nine claimed the same version.
-      const drifted = block.trim().split("\n").filter((line) => line.trim() !== ">").join("\n");
+      const block = await agentsBlock(fx.toolRoot, "project");
+      // One word of wording changed: the shape that let four projects carry one banner
+      // and five another while all nine claimed the same version. This project has
+      // never been attached before (its `.agents/README.md` ledger carries no
+      // `agents-note` entry yet), so the repair is correctly labeled from "unknown" —
+      // `test/doctor.test.ts` covers the same-version "not verbatim" label for a
+      // project the ledger already has version history for.
+      const drifted = block.trim().replace("and keep it current as you go.", "and keep it up to date.");
       expect(drifted).not.toBe(block.trim());
       await Bun.write(path.join(projectDir, "AGENTS.md"), `${drifted}\n\n# Existing Guidance\n`);
 
@@ -504,9 +601,10 @@ describe("attach", () => {
         attachCommand(projectDir, {}, fx.marrowHome, fx.toolRoot),
       );
       const agents = await readFile(path.join(projectDir, "AGENTS.md"), "utf8");
+      const currentVersion = await templateVersion(fx.toolRoot, "agents-block.md");
 
       expect(code).toBe(0);
-      expect(outLines.join("\n")).toContain(`marrow .agents note updated (v${currentVersion}, not verbatim)`);
+      expect(outLines.join("\n")).toContain(`marrow .agents note updated (vunknown -> v${currentVersion})`);
       expect(agents).toContain(block.trim());
       expect(agents).toContain("# Existing Guidance");
     });
@@ -542,10 +640,11 @@ describe("attach", () => {
 
       const readme = await readFile(path.join(agentsPath, "README.md"), "utf8");
       expect(readme).toContain("freshproj");
-      expect(readme).toContain(`<!-- marrow:persistence-block v${await currentPersistenceBlockVersion(fx.toolRoot)} -->`);
-      expect(readme).toContain("## Persistence");
+      expect(readme).toContain("<!-- marrow:persistence-block -->");
+      expect(readme).toContain("## Working memory via marrow");
       expect(readme).toContain("## Ownership");
       expect(readme).toContain("remain authoritative for accepted requirements");
+      expect(readLedgerEntry(readme, "persistence-block")).toBe(await templateVersion(fx.toolRoot, "persistence-block.md"));
 
       const currentState = await readFile(path.join(agentsPath, "current-state.md"), "utf8");
       expect(currentState).toContain("# Current state — freshproj");
@@ -554,7 +653,7 @@ describe("attach", () => {
 
       const agentsMd = await readFile(path.join(projectDir, "AGENTS.md"), "utf8");
       expect(agentsMd).toStartWith("> [!NOTE]");
-      expect(agentsMd).toContain(`> <p align="right">v${await currentAgentsBlockVersion(fx.toolRoot)}</p>`);
+      expect(readLedgerEntry(readme, "agents-note")).toBe(await templateVersion(fx.toolRoot, "agents-block.md"));
 
       const worktrees = await listProjectWorktrees(vaultDir(fx.marrowHome));
       expect(worktrees.map((w) => w.branch)).toContain("local/freshproj");

@@ -176,56 +176,83 @@ function claudeSettingsWithMemoryDisabled(content: string): string {
   return `${JSON.stringify(settings, null, 2)}\n`;
 }
 
-export async function ensureAgentMemoryDisabled(projectDir: string, dryRun: boolean): Promise<boolean> {
+export interface MemorySettingChange {
+  path: string;
+  content: string;
+  label: string;
+}
+
+export interface AgentMemoryChanges {
+  changes: MemorySettingChange[];
+  skipped: string[];
+}
+
+// Pure read-and-diff half of `ensureAgentMemoryDisabled`, split out so `refresh` can ask
+// "would this project need anything" without printing or writing — the same role
+// `agentsBlockStatus`/`needsClaudeRedirect` already play for the other two ensure*
+// functions. Exported so a caller that already computed this (`refresh`) can hand the
+// result straight to `ensureAgentMemoryDisabled` instead of triggering a second read of
+// the same two files.
+export async function computeAgentMemoryChanges(projectDir: string): Promise<AgentMemoryChanges> {
   const codexConfig = path.join(projectDir, ".codex", "config.toml");
   const claudeSettings = path.join(projectDir, ".claude", "settings.json");
-  const changes = [
-    {
-      path: codexConfig,
-      next: codexConfigWithMemoryDisabled,
-      label: "Codex memory disabled",
-    },
-    {
-      path: claudeSettings,
-      next: claudeSettingsWithMemoryDisabled,
-      label: "Claude Code auto memory disabled",
-    },
+  const targets = [
+    { path: codexConfig, next: codexConfigWithMemoryDisabled, label: "Codex memory disabled" },
+    { path: claudeSettings, next: claudeSettingsWithMemoryDisabled, label: "Claude Code auto memory disabled" },
   ];
 
-  const changed: string[] = [];
+  const changes: MemorySettingChange[] = [];
   const skipped: string[] = [];
-  for (const change of changes) {
-    const existing = existsSync(change.path) ? await readFile(change.path, "utf8") : "";
+  for (const target of targets) {
+    const existing = existsSync(target.path) ? await readFile(target.path, "utf8") : "";
     let next: string;
     try {
-      next = change.next(existing);
+      next = target.next(existing);
     } catch (err) {
       // An unrelated pre-existing file the project already has (e.g. hand-edited,
       // invalid JSON) must not turn a successful attach into a reported failure —
       // skip just this file and let the rest of `attach` finish normally.
-      skipped.push(`  ${path.relative(projectDir, change.path).padEnd(25)} could not update: ${err instanceof Error ? err.message : String(err)}`);
+      skipped.push(`  ${path.relative(projectDir, target.path).padEnd(25)} could not update: ${err instanceof Error ? err.message : String(err)}`);
       continue;
     }
     if (next === existing) continue;
-    changed.push(`  ${path.relative(projectDir, change.path).padEnd(25)} ${change.label}`);
-    if (!dryRun) {
-      await mkdir(path.dirname(change.path), { recursive: true });
-      await writeFile(change.path, next);
-    }
+    changes.push({ path: target.path, content: next, label: target.label });
   }
+  return { changes, skipped };
+}
+
+// `skipped` (an unrelated file that failed to parse) must count as "not current" too —
+// otherwise `refresh` would treat a project with a broken .codex/config.toml or
+// .claude/settings.json as fully up to date and silently never surface the parse error
+// that `ensureAgentMemoryDisabled` would otherwise print.
+export function agentMemoryChangesPending({ changes, skipped }: AgentMemoryChanges): boolean {
+  return changes.length > 0 || skipped.length > 0;
+}
+
+export async function ensureAgentMemoryDisabled(
+  projectDir: string,
+  dryRun: boolean,
+  precomputed?: AgentMemoryChanges,
+): Promise<boolean> {
+  const { changes, skipped } = precomputed ?? (await computeAgentMemoryChanges(projectDir));
+  const label = (c: MemorySettingChange) => `  ${path.relative(projectDir, c.path).padEnd(25)} ${c.label}`;
 
   console.log("");
   for (const entry of skipped) console.log(entry);
-  if (changed.length === 0) {
+  if (changes.length === 0) {
     if (skipped.length === 0) console.log("Project settings already up to date.");
     return false;
   }
   if (dryRun) {
     console.log("Would update project settings:");
-    for (const entry of changed) console.log(entry);
+    for (const c of changes) console.log(label(c));
     return false;
   }
+  for (const c of changes) {
+    await mkdir(path.dirname(c.path), { recursive: true });
+    await writeFile(c.path, c.content);
+  }
   console.log("Updated project settings:");
-  for (const entry of changed) console.log(entry);
+  for (const c of changes) console.log(label(c));
   return true;
 }

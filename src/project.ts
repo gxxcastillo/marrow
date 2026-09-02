@@ -1,9 +1,9 @@
 import { existsSync } from "node:fs";
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { countLabel } from "./format";
-import { git } from "./git";
-import { renderTemplate } from "./memory-files";
+import { renderTemplate, templateVersion } from "./memory-files";
+import { readLedgerEntry, upsertLedgerEntry } from "./version-ledger";
 
 export async function agentsBlock(toolRoot: string, project: string): Promise<string> {
   return renderTemplate(toolRoot, "agents-block.md", { project });
@@ -13,16 +13,23 @@ function normalizedBlock(content: string): string {
   return content.replaceAll("\r\n", "\n").trim();
 }
 
-// Anchored on the `[!NOTE]` opener, the link to `.agents/README.md`, and the trailing
-// version tag — not on headline bold text, which drifts with wording (v1's "Agent
-// memory" vs v2's "Agent working memory"). The link target is a stable filesystem fact,
-// so prose between the anchors can change freely without stranding recognition.
-const AGENTS_NOTE_RE =
-  /^> \[!note\][\s\S]*?\[`\.agents\/README\.md`\]\(\.agents\/README\.md\)[\s\S]*?^> <p align="right">v(\d+(?:\.\d+)*)<\/p>\s*$/im;
+// Anchored on the `[!NOTE]` opener and the link to `.agents/README.md` — not on
+// headline bold text, which drifts with wording (v1's "Agent memory" vs v2's "Agent
+// working memory"), and no longer on a trailing version tag (the version now lives in
+// the `.agents/README.md` ledger, not the note itself). The match extends across every
+// consecutive `>`-prefixed line starting at the opener, a superset of the old
+// tag-anchored pattern: an old note's trailing `> <p align="right">v3</p>` line is
+// itself `>`-prefixed, so it's still fully captured and replaced, not left as debris.
+const NOTE_BLOCKQUOTE_RE = /^> \[!note\](?:\r?\n>.*)*/im;
+const AGENTS_NOTE_LINK = "[`.agents/README.md`](.agents/README.md)";
+// A legacy tag, if still present within a matched note span, labels a not-yet-migrated
+// project's display version — for output only, never for deciding staleness.
+const LEGACY_VERSION_TAG_RE = /> <p align="right">v(\d+(?:\.\d+)*)<\/p>/;
 
-export function findAgentsNote(content: string): { index: number; length: number; version: string } | undefined {
-  const match = AGENTS_NOTE_RE.exec(content);
-  return match ? { index: match.index, length: match[0].length, version: match[1] } : undefined;
+export function findAgentsNote(content: string): { index: number; length: number } | undefined {
+  const match = NOTE_BLOCKQUOTE_RE.exec(content);
+  if (!match || !match[0].includes(AGENTS_NOTE_LINK)) return undefined;
+  return { index: match.index, length: match[0].length };
 }
 
 // The canonical parent instruction filenames marrow looks for, in priority order.
@@ -43,7 +50,8 @@ async function parentInstructionFiles(projectDir: string): Promise<{ name: strin
 export type StaleAgentsBlockFile = {
   path: string;
   content: string;
-  note: { index: number; length: number; version: string };
+  note: { index: number; length: number };
+  fromVersion: string;
 };
 
 export type AgentsBlockStatus =
@@ -55,35 +63,51 @@ export type AgentsBlockStatus =
       files: StaleAgentsBlockFile[];
     };
 
-// Recognizes the canonical note by its opener, its link to `.agents/README.md`, and its
-// trailing version tag, regardless of prose wording changes elsewhere in the note, so a
-// template edit doesn't strand every already-adopted project with a permanently
-// "unrecognized" block. Recognition is not acceptance: only text matching the template
-// exactly is current. Any other recognized note is stale, including one whose version tag
-// already matches — same-version wording drift is the ordinary result of a template fix,
-// and treating it as current is what let four projects carry one banner shape and five
-// another while all nine claimed v2.
-export async function agentsBlockStatus(toolRoot: string, projectDir: string, project: string): Promise<AgentsBlockStatus> {
+// Labels a stale note for display only, never for deciding staleness (that's exact
+// content comparison, same as ever): a legacy embedded tag if the note being replaced
+// still has one (an old-format project, not yet migrated), else the ledger's existing
+// `agents-note` entry (an already-migrated project on a later bump), else "unknown".
+function noteFromVersion(noteText: string, agentsReadme: string | undefined): string {
+  const legacy = LEGACY_VERSION_TAG_RE.exec(noteText);
+  if (legacy) return legacy[1];
+  return (agentsReadme !== undefined ? readLedgerEntry(agentsReadme, "agents-note") : undefined) ?? "unknown";
+}
+
+// Recognizes the canonical note by its opener and its link to `.agents/README.md`,
+// regardless of prose wording changes elsewhere in the note, so a template edit doesn't
+// strand every already-adopted project with a permanently "unrecognized" block.
+// Recognition is not acceptance: only text matching the template exactly is current.
+// Any other recognized note is stale, including one whose wording is the only thing
+// that drifted — treating same-content-family drift as current is what let four
+// projects carry one banner shape and five another while all nine claimed v2.
+export async function agentsBlockStatus(
+  toolRoot: string,
+  projectDir: string,
+  agentsPath: string,
+  project: string,
+): Promise<AgentsBlockStatus> {
   const block = normalizedBlock(await agentsBlock(toolRoot, project));
-  const currentVersion = findAgentsNote(block)?.version;
-  if (currentVersion === undefined) {
-    // marrow's own bundled template failing to parse is a marrow bug, not a project
-    // problem — fail loudly instead of silently treating every project as up to date.
-    throw new Error("marrow's bundled agents-block template has no recognizable version tag");
-  }
+  const currentVersion = await templateVersion(toolRoot, "agents-block.md");
+  const readmePath = path.join(agentsPath, "README.md");
+  const agentsReadme = existsSync(readmePath) ? await readFile(readmePath, "utf8") : undefined;
   const stale: StaleAgentsBlockFile[] = [];
   let current = false;
   for (const file of await parentInstructionFiles(projectDir)) {
-    if (normalizedBlock(file.content).includes(block)) {
-      current = true;
-      continue;
-    }
     // Found against the file's own raw content (not the \n-normalized copy above) so
     // note.index/length stay valid offsets into file.content — writing that back later
     // must not silently rewrite a CRLF file's line endings to LF.
     const note = findAgentsNote(file.content);
     if (!note) continue;
-    stale.push({ path: file.path, content: file.content, note });
+    const noteText = file.content.slice(note.index, note.index + note.length);
+    // Exact match against the extracted note span, not a substring search over the whole
+    // file: a version bump that only removes trailing content (e.g. the v3 -> v4 tag
+    // drop) makes the new, shorter template text a literal prefix of every not-yet-
+    // migrated project's still-old note, which `.includes()` would wrongly call current.
+    if (normalizedBlock(noteText) === block) {
+      current = true;
+      continue;
+    }
+    stale.push({ path: file.path, content: file.content, note, fromVersion: noteFromVersion(noteText, agentsReadme) });
   }
   if (stale.length > 0) return { kind: "stale", currentVersion, files: stale };
   if (current) return { kind: "current" };
@@ -135,8 +159,23 @@ function joinWithBlankLine(head: string, tail: string): string {
   return trimmedTail.length === 0 ? `${head}\n` : `${head}\n\n${trimmedTail}`;
 }
 
-export async function ensureAgentsBlock(toolRoot: string, projectDir: string, project: string, dryRun: boolean): Promise<boolean> {
-  const status = await agentsBlockStatus(toolRoot, projectDir, project);
+// After writing the note into the parent project, records the template version marrow
+// wrote in the `.agents/README.md` ledger — the only place that version now lives.
+async function recordAgentsNoteVersion(toolRoot: string, agentsPath: string): Promise<void> {
+  const readmePath = path.join(agentsPath, "README.md");
+  const readme = await readFile(readmePath, "utf8");
+  await writeFile(readmePath, upsertLedgerEntry(readme, "agents-note", await templateVersion(toolRoot, "agents-block.md")));
+}
+
+export async function ensureAgentsBlock(
+  toolRoot: string,
+  projectDir: string,
+  agentsPath: string,
+  project: string,
+  dryRun: boolean,
+  precomputedStatus?: AgentsBlockStatus,
+): Promise<boolean> {
+  const status = precomputedStatus ?? (await agentsBlockStatus(toolRoot, projectDir, agentsPath, project));
   if (status.kind === "current") return false;
   const mentionCounts = await agentsMentionCounts(projectDir);
 
@@ -146,7 +185,7 @@ export async function ensureAgentsBlock(toolRoot: string, projectDir: string, pr
       console.log("Project instructions:");
       for (const file of status.files) {
         const relativeTarget = path.relative(projectDir, file.path);
-        const label = updateLabel(file.note.version, status.currentVersion);
+        const label = updateLabel(file.fromVersion, status.currentVersion);
         console.log(`  ${relativeTarget.padEnd(25)} would update marrow .agents note (${label})`);
       }
       for (const note of reviewNotes(mentionCounts)) console.log(note);
@@ -157,12 +196,13 @@ export async function ensureAgentsBlock(toolRoot: string, projectDir: string, pr
     console.log("Project instructions:");
     for (const file of status.files) {
       const relativeTarget = path.relative(projectDir, file.path);
-      const label = updateLabel(file.note.version, status.currentVersion);
+      const label = updateLabel(file.fromVersion, status.currentVersion);
       const before = file.content.slice(0, file.note.index);
       const after = file.content.slice(file.note.index + file.note.length);
       await writeFile(file.path, before + joinWithBlankLine(block, after));
       console.log(`  ${relativeTarget.padEnd(25)} marrow .agents note updated (${label})`);
     }
+    await recordAgentsNoteVersion(toolRoot, agentsPath);
     for (const note of reviewNotes(mentionCounts)) console.log(note);
     return true;
   }
@@ -180,58 +220,10 @@ export async function ensureAgentsBlock(toolRoot: string, projectDir: string, pr
   const block = normalizedBlock(await agentsBlock(toolRoot, project));
   const existing = existsSync(target) ? await readFile(target, "utf8") : "";
   await writeFile(target, joinWithBlankLine(block, existing));
+  await recordAgentsNoteVersion(toolRoot, agentsPath);
   console.log("");
   console.log("Project instructions:");
   console.log(`  ${relativeTarget.padEnd(25)} marrow .agents note added`);
   for (const note of reviewNotes(mentionCounts)) console.log(note);
   return true;
-}
-
-// --- Parent-repo `.agents/` ignore handling -------------------------------
-// `.agents/` must end up ignored by the project's own repo: `doctor` checks it
-// on every run and the persistence block promises it. See spec/cli.md -> `attach`.
-
-export type IgnoreState = "ignored" | "untracked" | "tracked" | "no-repo";
-
-export async function gitignoreState(projectDir: string): Promise<IgnoreState> {
-  const tracked = await git(["ls-files", "--", ".agents"], projectDir);
-  if (tracked.code !== 0) return "no-repo";
-  if (tracked.stdout.length > 0) return "tracked";
-  const ignoreCheck = await git(["check-ignore", "-q", "--", ".agents"], projectDir);
-  if (ignoreCheck.code === 0) return "ignored";
-  if (ignoreCheck.code === 1) return "untracked";
-  return "no-repo";
-}
-
-// Appending is safe even when the parent is not a git repo yet — a later
-// `git init` there then can't pick `.agents/` up. marrow never commits in a repo
-// it doesn't own, so committing the change is the user's job, and the line says so.
-export async function ensureIgnored(projectDir: string, state: IgnoreState, dryRun: boolean): Promise<void> {
-  if (state === "ignored") return;
-  if (dryRun) {
-    console.log(`${projectDir}/.agents is not ignored — would append '.agents/' to .gitignore.`);
-    return;
-  }
-  const gitignorePath = path.join(projectDir, ".gitignore");
-  const existing = existsSync(gitignorePath) ? await readFile(gitignorePath, "utf8") : "";
-  await appendFile(gitignorePath, `${existing.length > 0 && !existing.endsWith("\n") ? "\n" : ""}.agents/\n`);
-  console.log(
-    state === "no-repo"
-      ? `appended '.agents/' to ${projectDir}/.gitignore — not a git repo yet, so it takes effect if you run 'git init' here.`
-      : `appended '.agents/' to ${projectDir}/.gitignore — commit that change in the parent repo yourself.`,
-  );
-}
-
-// A parent repo that tracks `.agents/` needs an attended untracking step first;
-// marrow will not run `git rm --cached` on a repo it doesn't own.
-export function trackedMessage(projectDir: string): string {
-  return (
-    `${projectDir}/.agents is tracked by its parent repo. Untrack it first (attended step):\n` +
-    `  cd ${projectDir}\n` +
-    `  git rm -r --cached .agents\n` +
-    `  echo '.agents/' >> .gitignore\n` +
-    `  git add .gitignore\n` +
-    `  git commit -m "untrack .agents"\n` +
-    `Then re-run: marrow attach ${projectDir}`
-  );
 }

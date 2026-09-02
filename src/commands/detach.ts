@@ -4,6 +4,7 @@ import path from "node:path";
 import { countLabel } from "../format";
 import { aheadBehind, dirtyCount, git, gitRaw, listProjectWorktrees, matchWorktrees, vaultDir } from "../git";
 import { withoutPersistenceSection } from "../memory-files";
+import { stripLedger } from "../version-ledger";
 
 export interface DetachOptions {
   dryRun?: boolean;
@@ -41,6 +42,16 @@ async function vaultOnlyDetach(
   return 0;
 }
 
+// Composes the two disjoint marrow-authored regions of a retained README — the fenced
+// persistence block (or its identifiable historical unfenced form) and the frontmatter
+// version ledger — into one removal, returning `null` only when neither was present.
+function withoutMarrowMetadata(content: string): string | null {
+  const withoutPersistence = withoutPersistenceSection(content);
+  const base = withoutPersistence ?? content;
+  const stripped = stripLedger(base);
+  return withoutPersistence !== null || stripped !== base ? stripped : null;
+}
+
 function printParentReminder(projectPath: string): void {
   console.log("Parent project files were left unchanged:");
   console.log(`  ${path.join(projectPath, ".gitignore")} — remove .agents/ only if it should be tracked`);
@@ -58,7 +69,7 @@ async function keepFilesDetach(
   const dirty = await dirtyCount(worktreePath);
   const readmePath = path.join(worktreePath, "README.md");
   const originalReadme = existsSync(readmePath) ? await readFile(readmePath, "utf8") : null;
-  const diskRemoval = originalReadme === null ? null : withoutPersistenceSection(originalReadme);
+  const diskRemoval = originalReadme === null ? null : withoutMarrowMetadata(originalReadme);
   const retainedReadme = diskRemoval ?? originalReadme;
   const trackedReadme = await git(["ls-tree", "--name-only", "HEAD", "--", "README.md"], worktreePath);
   if (trackedReadme.code !== 0) {
@@ -70,10 +81,10 @@ async function keepFilesDetach(
     console.error(`marrow detach: could not read the committed README: ${committedReadme.stderr}`);
     return 1;
   }
-  const branchRemoval = committedReadme ? withoutPersistenceSection(committedReadme.stdout) : null;
+  const branchRemoval = committedReadme ? withoutMarrowMetadata(committedReadme.stdout) : null;
   if (dryRun) {
     console.log(`dry run: would keep ${worktreePath} as ordinary files and retain branch '${branch}' in the vault`);
-    if (diskRemoval !== null) console.log("dry run: would remove the marrow persistence block from .agents/README.md");
+    if (diskRemoval !== null) console.log("dry run: would remove marrow's persistence block and version ledger from .agents/README.md");
     if (dirty > 0) console.log(`warning: ${dirty} uncommitted change(s) would remain in the retained files`);
     printParentReminder(path.dirname(worktreePath));
     return 0;

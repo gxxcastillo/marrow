@@ -1,5 +1,6 @@
-<!-- marrow:persistence-block v2 -->
-## Persistence
+<!-- marrow:template-version 3 -->
+<!-- marrow:persistence-block -->
+## Working memory via marrow
 
 This directory is a git worktree of the private marrow vault (branch: `{{branch}}`).
 It is never committed to the parent repo. Convention: `marrow convention`.

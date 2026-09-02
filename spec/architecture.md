@@ -102,6 +102,7 @@ marrow/
 ├── spec/                    # this directory
 ├── templates/
 │   ├── agents-block.md      # parent instruction block printed by `marrow attach`
+│   ├── claude-redirect.md   # CLAUDE.md stub planted when AGENTS.md exists without one
 │   ├── current-state.md     # required resumption-context seed
 │   ├── readme-seed.md       # seeds a fresh `marrow attach`; {{project}} substituted
 │   └── persistence-block.md # appended to every adopted/created README.md
@@ -109,15 +110,19 @@ marrow/
 │   ├── cli.ts               # entry, command table, arg parsing, dispatch
 │   ├── agent-config.ts      # parent agent-memory settings
 │   ├── backup.ts            # verified adoption tarballs
+│   ├── claude-redirect.ts   # CLAUDE.md redirect stub for Claude Code auto-load
 │   ├── format.ts            # shared output formatting
 │   ├── git.ts               # git process wrapper; worktree and ref helpers
+│   ├── gitignore.ts         # parent-repo .agents/ ignore-state handling
 │   ├── identity.ts          # stable project identity resolution
 │   ├── memory-files.ts      # seeding, stamp parsing, and status scans
-│   ├── project.ts           # parent instruction and ignore handling
+│   ├── project.ts           # parent instruction block: recognition, status, writes
 │   ├── remote.ts            # origin configuration and safety checks
+│   ├── target-resolution.ts # shared target resolution for sync/refresh
 │   ├── vault.ts             # vault initialization and landing branch
+│   ├── version-ledger.ts    # .agents/README.md frontmatter version ledger
 │   └── commands/
-│       ├── init.ts, publish.ts, status.ts, sync.ts, attach.ts
+│       ├── init.ts, publish.ts, status.ts, sync.ts, attach.ts, refresh.ts
 │       └── detach.ts, doctor.ts, grep.ts, convention.ts, update.ts
 ├── test/                     # bun test; fixtures build a throwaway tool root + vault
 ├── bin/

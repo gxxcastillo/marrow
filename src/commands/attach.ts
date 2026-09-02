@@ -2,11 +2,13 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, rename, rmdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { ensureAgentMemoryDisabled } from "../agent-config";
+import { ensureClaudeRedirect } from "../claude-redirect";
 import { resolveIdentity } from "../identity";
 import { backupAgents } from "../backup";
 import { git, hasOrigin, listProjectWorktrees, vaultDir } from "../git";
+import { ensureIgnored, gitignoreState, trackedMessage, type IgnoreState } from "../gitignore";
 import { ensureCurrentState, hasCurrentState, writeMemoryFiles } from "../memory-files";
-import { ensureAgentsBlock, ensureIgnored, gitignoreState, trackedMessage, type IgnoreState } from "../project";
+import { ensureAgentsBlock } from "../project";
 
 export interface AttachOptions { dryRun?: boolean; id?: string }
 class AttachAbort extends Error {}
@@ -78,6 +80,17 @@ async function pushBranch(t: Target, localNote = ""): Promise<"pushed" | "not-pu
   const push = await git(["push", "-u", "origin", t.branch], t.agentsPath);
   if (push.code !== 0) throw new AttachAbort(`push failed (commit is local${localNote}): ${push.stderr}`);
   return "pushed";
+}
+// Commits `ensureAgentsBlock`'s uncommitted ledger write immediately, like every other
+// vault write here — otherwise two machines attaching the same never-attached branch
+// each leave an independent uncommitted edit that collides once one has pushed.
+async function commitLedgerIfChanged(t: Target): Promise<void> {
+  const status = await git(["status", "--porcelain", "--", "README.md"], t.agentsPath);
+  if (status.stdout.trim().length === 0) return;
+  await git(["add", "--", "README.md"], t.agentsPath);
+  const commit = await git(["commit", "-m", `${t.name}: record marrow .agents note version`], t.agentsPath);
+  if (commit.code !== 0) throw new AttachAbort(`commit failed: ${commit.stderr}`);
+  await pushBranch(t);
 }
 async function inspectAttach(projectArg: string, opts: AttachOptions, marrowHome: string, toolRoot: string): Promise<AttachInspection> {
   const identity = await resolveIdentity(projectArg, opts.id);
@@ -229,8 +242,10 @@ export async function attachCommand(projectArg: string, opts: AttachOptions, mar
     const code = await executePlan(planAttach(inspection), dryRun);
     if (code === 0) {
       const settingsChanged = await ensureAgentMemoryDisabled(inspection.target.projectDir, dryRun);
-      const instructionsChanged = await ensureAgentsBlock(toolRoot, inspection.target.projectDir, inspection.target.name, dryRun);
-      if (settingsChanged || instructionsChanged) {
+      const instructionsChanged = await ensureAgentsBlock(toolRoot, inspection.target.projectDir, inspection.target.agentsPath, inspection.target.name, dryRun);
+      if (instructionsChanged) await commitLedgerIfChanged(inspection.target);
+      const redirectChanged = await ensureClaudeRedirect(toolRoot, inspection.target.projectDir, dryRun);
+      if (settingsChanged || instructionsChanged || redirectChanged) {
         console.log("");
         console.log("marrow did not commit these project files.");
       }

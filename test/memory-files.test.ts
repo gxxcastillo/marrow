@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import { parentFreshness, parseCurrentStateStamp, withoutPersistenceSection } from "../src/memory-files";
+import {
+  parentFreshness,
+  parseCurrentStateStamp,
+  persistenceBlockStatus,
+  templateVersion,
+  withoutPersistenceSection,
+  writeReadme,
+} from "../src/memory-files";
 import { git } from "../src/git";
 import { makeFixture, setTestIdentity, type Fixture } from "./fixtures";
 
@@ -35,7 +42,7 @@ describe("memory files", () => {
   });
 
   test("removes fenced and legacy persistence sections without disturbing adjacent prose", () => {
-    const fenced = "# Notes\n\n<!-- marrow:persistence-block v2 -->\n## Persistence\nmanaged\n<!-- /marrow:persistence-block -->\n\n## Work\nkeep\n";
+    const fenced = "# Notes\n\n<!-- marrow:persistence-block -->\n## Working memory via marrow\nmanaged\n<!-- /marrow:persistence-block -->\n\n## Work\nkeep\n";
     expect(withoutPersistenceSection(fenced)).toBe("# Notes\n\n## Work\nkeep\n");
     const legacy = "# Notes\n\n## Persistence\n\nThis directory is a git worktree of the private `marrow` repo (branch: `notes`).\nold block\n\n## Work\nkeep\n";
     expect(withoutPersistenceSection(legacy)).toBe("# Notes\n\n## Work\nkeep\n");
@@ -72,5 +79,36 @@ describe("memory files", () => {
       .toEqual({ kind: "current" });
     expect(await parentFreshness(plain, { date: "2026-08-31", revision: "abc1234" }))
       .toEqual({ kind: "unavailable" });
+  });
+
+  test("templateVersion reads the leading tag and throws when one is absent", async () => {
+    expect(await templateVersion(fx.toolRoot, "persistence-block.md")).toMatch(/^\d+(\.\d+)*$/);
+    await expect(templateVersion(fx.toolRoot, "readme-seed.md")).rejects.toThrow(/no recognizable template-version tag/);
+  });
+
+  describe("persistenceBlockStatus", () => {
+    test("is missing with no README, stale with unrecognized content, current once written", async () => {
+      const dir = path.join(fx.root, "block-status");
+      await mkdir(dir, { recursive: true });
+
+      expect(await persistenceBlockStatus(fx.toolRoot, dir, "widget", "widget")).toEqual({ kind: "missing" });
+
+      await Bun.write(path.join(dir, "README.md"), "# custom routing guide\n\nsome notes.\n");
+      expect(await persistenceBlockStatus(fx.toolRoot, dir, "widget", "widget")).toEqual({ kind: "missing" });
+
+      await writeReadme(fx.toolRoot, dir, "widget", "widget");
+      const currentVersion = await templateVersion(fx.toolRoot, "persistence-block.md");
+      expect(await persistenceBlockStatus(fx.toolRoot, dir, "widget", "widget")).toEqual({ kind: "current" });
+
+      await Bun.write(
+        path.join(dir, "README.md"),
+        (await Bun.file(path.join(dir, "README.md")).text()).replace("Convention: `marrow convention`.", "Convention: unrecognized."),
+      );
+      expect(await persistenceBlockStatus(fx.toolRoot, dir, "widget", "widget")).toEqual({
+        kind: "stale",
+        currentVersion,
+        installedVersion: currentVersion,
+      });
+    });
   });
 });

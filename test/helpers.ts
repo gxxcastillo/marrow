@@ -1,4 +1,4 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import path from "node:path";
 
 export interface CapturedLogs {
@@ -25,21 +25,6 @@ export async function captureLogs(fn: () => Promise<number>): Promise<CapturedLo
     console.log = originalLog;
     console.error = originalError;
   }
-}
-
-// Reads the current version straight from the template so bumping it costs no test edits.
-export async function currentAgentsBlockVersion(toolRoot: string): Promise<string> {
-  const block = await readFile(path.join(toolRoot, "templates", "agents-block.md"), "utf8");
-  const match = block.match(/<p align="right">v([\d.]+)<\/p>/);
-  if (!match) throw new Error("agents-block.md has no version tag");
-  return match[1];
-}
-
-export async function currentPersistenceBlockVersion(toolRoot: string): Promise<string> {
-  const block = await readFile(path.join(toolRoot, "templates", "persistence-block.md"), "utf8");
-  const match = block.match(/marrow:persistence-block v([\d.]+)/);
-  if (!match) throw new Error("persistence-block.md has no version tag");
-  return match[1];
 }
 
 // Temporarily overrides one or more environment variables for the duration of

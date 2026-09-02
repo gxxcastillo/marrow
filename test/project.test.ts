@@ -23,7 +23,19 @@ describe("project", () => {
     test("recognizes the tool's own current template", async () => {
       const block = await agentsBlock(fx.toolRoot, "project");
       const note = findAgentsNote(block);
-      expect(note?.version).toBeDefined();
+      expect(note).toBeDefined();
+    });
+
+    test("recognizes an old-format note carrying a trailing legacy version tag", () => {
+      const legacy = [
+        "> [!Note]",
+        "> **Agent memory:** Read [`.agents/README.md`](.agents/README.md) before work.",
+        "> Keep `.agents/` current.",
+        '> <p align="right">v3</p>',
+      ].join("\n");
+      const note = findAgentsNote(legacy);
+      expect(note).toBeDefined();
+      expect(legacy.slice(note!.index, note!.index + note!.length)).toBe(legacy);
     });
   });
 
@@ -120,7 +132,10 @@ describe("project", () => {
       await writeMemoryFiles(fx.toolRoot, dir, "widget", "widget");
       const content = await readFile(readmePath, "utf8");
 
-      expect(content).toStartWith(original);
+      // The version ledger's frontmatter must be the literal first bytes of the file,
+      // so it precedes the preserved user content rather than the other way around.
+      expect(content).toStartWith("---\nmarrow-versions:");
+      expect(content).toContain(original);
       expect(content).toContain("Keep this user-authored policy.");
       expect(content).toContain("<!-- marrow:persistence-block");
     });

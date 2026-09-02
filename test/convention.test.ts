@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { conventionCommand } from "../src/commands/convention";
+import { renderTemplate } from "../src/memory-files";
 import { makeFixture, type Fixture } from "./fixtures";
 import { captureLogs } from "./helpers";
 
@@ -36,11 +37,13 @@ describe("convention", () => {
 
   test("embeds the current agents-block and persistence-block templates verbatim", async () => {
     const convention = await readFile(path.join(fx.toolRoot, "CONVENTION.md"), "utf8");
-    const agentsBlockTemplate = (await readFile(path.join(fx.toolRoot, "templates", "agents-block.md"), "utf8")).trim();
-    const persistenceBlockTemplate = (await readFile(path.join(fx.toolRoot, "templates", "persistence-block.md"), "utf8"))
-      .trim()
-      .replaceAll("{{branch}}", "<project>")
-      .replaceAll("{{project}}", "<project>");
+    // `renderTemplate` (not a raw file read) so the tooling-only leading
+    // `<!-- marrow:template-version N -->` line — never shown in a real project or in
+    // CONVENTION.md — is stripped the same way it is before marrow writes either block.
+    const agentsBlockTemplate = (await renderTemplate(fx.toolRoot, "agents-block.md", {})).trim();
+    const persistenceBlockTemplate = (
+      await renderTemplate(fx.toolRoot, "persistence-block.md", { branch: "<project>", project: "<project>" })
+    ).trim();
 
     expect(convention).toContain(agentsBlockTemplate);
     expect(convention).toContain(persistenceBlockTemplate);

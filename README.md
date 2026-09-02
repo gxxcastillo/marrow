@@ -96,6 +96,7 @@ output; don't script or automate that step (`spec/safety.md` → "Attended opera
 
 ```
 marrow attach /path/to/project         # adopt a project into the vault
+marrow refresh                         # reconcile every attached project's footprint
 marrow status                          # attached memory needing attention
 marrow sync                            # commit + push everything dirty
 marrow grep "TODO" -C2                 # search across every adopted project

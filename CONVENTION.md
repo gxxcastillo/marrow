@@ -77,27 +77,27 @@ updates the template and tests in the same commit.
 ```markdown
 > [!NOTE]
 > **Agent working memory:** Read [`.agents/README.md`](.agents/README.md) before
-> non-trivial work and keep it current as the work changes. It holds private working
-> state; it does not replace the project's designated shared sources of truth.
->
-> <p align="right">v2</p>
+> non-trivial work — coding or not — and keep it current as you go. It holds private
+> working state; it does not replace the project's designated shared sources of truth.
 ```
 
 This text is strict-verbatim; project-specific policy lives outside this block. `attach` keys
 off the text itself: a note matching the template exactly is left alone, any recognized note
 that differs is replaced in place with the current text, and prose with no recognizable note
-at all is treated as missing. A note is recognized by its opener, its link to
-`.agents/README.md`, and a trailing version tag, so wording may drift without stranding it.
-The version tag records which wording a note was written against and labels the repair; it
+at all is treated as missing. A note is recognized by its opener and its link to
+`.agents/README.md`, so wording may drift without stranding it — there is no trailing version
+tag in the note itself. The version the note was last written against lives in
+`.agents/README.md`'s version ledger instead (see `## Version ledger` below), updated in the
+same step `attach`/`refresh` replace the note. That recorded version labels the repair; it
 does not decide whether one happens, so a template fix reaches every adopted project on its
-next `attach` without a version bump. Bump the version when the meaning changes, not for every
-edit.
+next `attach`/`refresh` without a version bump. Bump the version when the meaning changes, not
+for every edit.
 
 ## Files
 
 Every `.agents/` directory contains:
 
-- `README.md` — routing guide only, plus the Persistence block.
+- `README.md` — routing guide, the version ledger, and the Persistence block.
 - `current-state.md` — shortest resumption context: what landed, where it lives, next
   step.
 
@@ -182,13 +182,35 @@ names the plan.
 - Do not leave `.agents/` as the sole copy of a rule future contributors must honor —
   promote it to the appropriate shared source first.
 
+## Version ledger
+
+`.agents/README.md` opens with a YAML frontmatter block — its literal first bytes,
+ahead of the `#` title — recording the version of each marrow-authored template block
+present in the file:
+
+```markdown
+---
+marrow-versions:
+  persistence-block: 3
+  agents-note: 4
+---
+```
+
+This ledger holds marrow's own template versions only — never project-specific
+metadata. It is how `doctor`/`refresh` label a repair (`v<old> -> v<new>`) once a note
+or block no longer carries its own inline tag; the version tag itself has been dropped
+from both templates for exactly this reason (see `## Parent instruction block` and
+`## Persistence block`). `detach`'s default mode removes the whole ledger, along with
+the frontmatter delimiters if nothing else remains in them, since a detached project's
+retained files should carry no marrow bookkeeping at all.
+
 ## Persistence block
 
 Every `.agents/README.md` ends with this block, substituting the project name:
 
 ```markdown
-<!-- marrow:persistence-block v2 -->
-## Persistence
+<!-- marrow:persistence-block -->
+## Working memory via marrow
 
 This directory is a git worktree of the private marrow vault (branch: `<project>`).
 It is never committed to the parent repo. Convention: `marrow convention`.
@@ -206,3 +228,6 @@ It is never committed to the parent repo. Convention: `marrow convention`.
   marrow's setup and safety.
 <!-- /marrow:persistence-block -->
 ```
+
+Its own version — a template-boilerplate detail, not something a reader of the file
+needs — lives only in the version ledger above, not inline in the fence.

@@ -35,6 +35,7 @@ per-command syntax below must match that table.
 | [`status`](#status)         | show attached memory that needs attention                                                 | no                                          |
 | [`sync`](#sync)             | commit and push project worktrees                                                         | project worktrees, vault                    |
 | [`attach`](#attach)         | bring a project's `.agents/` under marrow — adopts if one exists, creates fresh otherwise | project directory, vault                    |
+| [`refresh`](#refresh)       | reconcile every attached project's parent-repo footprint against the current templates    | project directories                         |
 | [`detach`](#detach)         | end attachment, keeping ordinary files by default or parking them in the vault             | project worktree                            |
 | [`doctor`](#doctor)         | verify marrow's setup and safety                                                          | vault remote refs (`fetch --prune` only)    |
 | [`grep`](#grep)             | search across all project worktrees                                                       | no                                          |
@@ -309,7 +310,12 @@ so this aborts instead and names `marrow detach <branch>` as the remediation. Th
 applies when the branch is already attached at a different path whose directory is missing.
 An ordinary `.agents/` plus an existing branch, a different worktree at the path, or the
 same branch attached (and present) elsewhere on this machine aborts without mutation.
-The existing-branch reattachment mode never writes a README, commits, or pushes.
+The existing-branch reattachment mode never regenerates or rewrites the persistence
+block itself, and by itself never writes a README, commits, or pushes. The one exception
+is downstream of the parent-instruction-block step below: when that step adds or updates
+the `.agents` note, it also records the note's version in the README's ledger and commits
+that one-line change immediately (see "Parent instruction block" below) — the same as it
+would for any other outcome that needed the note fixed.
 
 **Parent-repo `.gitignore` (both paths).** `.agents/` must end up ignored by the project's
 own repo: `doctor` checks it on every run, and the persistence block `attach` writes into
@@ -325,19 +331,23 @@ as a precondition failure (see the state table below). A parent that already **t
 
 **Parent instruction block (successful and dry-run paths).** After any successful attach
 mode, including a no-op result for a project marrow already manages, `attach` checks
-`<project>/AGENTS.md` and `<project>/CLAUDE.md`. The canonical block ends with a
-right-aligned version tag, a note block that starts with `> [!Note]`, contains a markdown
-link to `.agents/README.md`, and ends with a line like `> <p align="right">v1</p>`
-(case-insensitive `v`, one or more dot-separated numeric groups, so older dotted versions
-like `V2.3.2` are recognized too) — any note matching that shape is recognized regardless
-of the wording around it. Anchoring on the link rather than the headline text means a
-future wording change doesn't need a widened regex. A recognized note whose text matches
-`templates/agents-block.md` exactly is left unchanged. Any other recognized note is stale,
-whether its version tag differs or only its wording does: live `attach` replaces just that
+`<project>/AGENTS.md` and `<project>/CLAUDE.md`. A note is recognized by its opener
+(`> [!NOTE]`, case-insensitive) and a markdown link to `.agents/README.md` anywhere in the
+maximal run of consecutive `>`-prefixed lines starting at that opener — there is no
+trailing version tag in the note itself; the version it was last written against lives in
+`.agents/README.md`'s `marrow-versions` ledger instead (`CONVENTION.md` → Version ledger).
+This match is a superset of the old tag-anchored shape, so an already-adopted project's
+note with a legacy trailing `> <p align="right">v<N></p>` line is still fully recognized
+and replaced, tag included. A recognized note whose text matches `templates/agents-block.md`
+exactly is left unchanged. Any other recognized note is stale, whether its content differs
+by a version's worth of change or only by wording drift: live `attach` replaces just that
 note in place with the current template text, leaving the rest of the file untouched, and
 prints `Project instructions:`, an indented relative path, and `marrow .agents note updated
-(v<old> -> v<new>)` — or `(v<version>, not verbatim)` when the tag already matches and only
-the wording drifted, since `v2 -> v2` would say nothing. When neither file has a recognized note at all, live `attach` instead prepends the
+(v<old> -> v<new>)` — or `(v<version>, not verbatim)` when the version is unchanged and only
+the wording drifted, since `v2 -> v2` would say nothing. `<old>` reads a legacy trailing tag
+when the note being replaced still has one, else the ledger's existing `agents-note` entry,
+else the literal `unknown` (a project whose note has never been recorded in the ledger).
+When neither file has a recognized note at all, live `attach` instead prepends the
 current block to `AGENTS.md` when it exists, otherwise to `CLAUDE.md` when it exists,
 otherwise to a new `AGENTS.md`, printing `marrow .agents note added`. If either checked
 file contains `.agents` references outside a recognized marrow note, it prints one count
@@ -347,6 +357,28 @@ review count. Arbitrary `.agents` prose with no recognized note is never interpr
 an agents block.
 `--dry-run` prints the same target and review note, with `would update`/`would add`
 phrasing matching which case applies, without writing.
+
+Whenever this step actually adds or replaces the note (live only, never `--dry-run`),
+it also records the current template version under the `agents-note` key in
+`.agents/README.md`'s ledger and, if that changed the file's on-disk bytes, commits that
+one-line change on the vault branch immediately (`<project>: record marrow .agents note
+version`) and pushes when the vault has an `origin` — the same as every other write
+`attach` makes to the vault worktree. A same-value rewrite (the ledger already recorded
+the version being written again) leaves nothing to commit.
+
+**Claude Code redirect (successful and dry-run paths, after the parent instruction block
+step).** Claude Code auto-loads `CLAUDE.md`, never `AGENTS.md` directly, so a project
+carrying the marrow note only in `AGENTS.md` silently strands Claude Code agents — the
+note, and the `.agents/README.md` pointer inside it, never reaches context regardless of
+wording. Whenever `<project>/AGENTS.md` exists (including one this same attach just
+created) and `<project>/CLAUDE.md` does not, live `attach` creates `CLAUDE.md` from
+`templates/claude-redirect.md` — a two-line stub whose `@AGENTS.md` import syntax Claude
+Code actually resolves (a plain markdown link does not) — and prints `Claude Code
+compatibility:` followed by `CLAUDE.md                 redirect to AGENTS.md added`. A
+`CLAUDE.md` that already exists is never modified, however it does or doesn't redirect:
+only a fully missing file is created. `--dry-run` prints `would add redirect to AGENTS.md`
+without writing; because it never creates the AGENTS.md this check depends on, `--dry-run`
+does not preview the redirect for a project that starts with neither file.
 
 **Parent agent memory config (successful and dry-run paths).** After any successful attach
 mode, including a no-op result for a project marrow already manages, `attach` disables
@@ -410,7 +442,7 @@ refs. It is safe to run against a real project.
 3. **Move aside.** `<project>/.agents` → `<project>/.agents.pre-marrow` (rename, same volume — not a copy).
 4. **Create the worktree.** `git worktree add --orphan -b <identity> <project>/.agents` runs against `<MARROW_HOME>/vault.git`. On failure, step 3 is undone (`.agents.pre-marrow` renamed back to `.agents`) before erroring out — the project directory is never left without a `.agents/`.
 5. **Restore contents.** Every entry under `.agents.pre-marrow/` — including dotfiles — is moved into the new (currently empty) worktree, then `.agents.pre-marrow` is removed.
-6. **Working-memory files.** `templates/persistence-block.md` (`{{project}}` substituted, read from the tool's own install location) is appended to `.agents/README.md`; if no `README.md` existed, one is created first from `templates/readme-seed.md`. If `current-state.md` is absent, marrow creates it from `templates/current-state.md` with the current date and parent `HEAD` short SHA, or `no-HEAD` when the parent has no commit. An existing `current-state.md` is never overwritten.
+6. **Working-memory files.** `templates/persistence-block.md` (`{{project}}`/`{{branch}}` substituted, read from the tool's own install location) is appended to `.agents/README.md`; if no `README.md` existed, one is created first from `templates/readme-seed.md`. Either way, the block's current version is recorded under the `persistence-block` key in the README's frontmatter ledger (`CONVENTION.md` → Version ledger) in the same write. If `current-state.md` is absent, marrow creates it from `templates/current-state.md` with the current date and parent `HEAD` short SHA, or `no-HEAD` when the parent has no commit. An existing `current-state.md` is never overwritten.
 7. **Commit and push.** `git add -A`, commit `<project>: adopt into marrow`. If the vault has no `origin` remote, the commit is left local; otherwise `git push -u origin <project>`.
 
 **Verification.** After the push succeeds, or after the commit when there is no origin, a
@@ -451,6 +483,59 @@ remote-tracking refs.
 Exit `2` on a missing `<project-path>` argument, `1` on the branch-exists failure above, a
 project-file write failure, or a worktree/commit/push failure, and `0` on success.
 
+## `refresh`
+
+```
+marrow refresh [project...] [--dry-run]
+```
+
+Reconciles every attached project's marrow-managed footprint — the `.agents` note in
+`AGENTS.md`/`CLAUDE.md`, the `.agents/README.md` working-memory persistence block, the
+`CLAUDE.md` redirect stub, and the `.codex`/`.claude` memory-disable settings — against
+whatever the current templates say. The note and redirect/settings concerns are the batch
+form of `attach`'s already-attached path (see `attach` → Parent instruction block, Claude
+Code redirect, Parent agent memory config above), calling those same functions per project
+rather than redefining them; the persistence-block concern mirrors `doctor`'s own
+`persistenceBlockStatus` check and reuses `attach`'s `writeReadme` as its mutator. It never
+touches `.agents/current-state.md` (creation or staleness — that stays `sync`'s and
+`attach`'s remediation) and never fetches, commits, or pushes any vault git state — unlike
+`attach`, a `refresh` that updates the note or the persistence block leaves the resulting
+`.agents/README.md` ledger edit uncommitted, for a later `marrow sync` to pick up.
+
+**Targets.** Resolved exactly like [`sync`](#sync): the named local project directory
+basenames (or exact branch names), or every attached project worktree if none are named.
+Every target this command can name is by definition already attached — there is no
+create/adopt path to gate. Each target resolves independently to exactly one worktree; a
+target matching none prints `unknown project: <target>`, one matching more than one prints
+`ambiguous name <target> matches: <path1>, <path2>`, and either way the remaining targets
+still proceed. A target whose worktree directory is missing is skipped rather than
+crashing: naming it explicitly prints `ERROR` and fails the command, appearing only because
+no targets were given prints `WARN` and continues — either way the line names the path and
+`marrow detach <branch>` as the remediation, matching `sync`'s equivalent case exactly.
+
+**Per project.** Whether a resolved, present project needs anything is checked first and
+silently, using the same read-only checks `doctor` already uses (`agentsBlockStatus`,
+`persistenceBlockStatus`, `needsClaudeRedirect`, and the equivalent settings check). A
+project that is already fully current is counted and skipped without printing anything for
+it. A project needing at least one of the four concerns fixed gets one `<name>:` heading,
+then `refresh` runs `ensureAgentMemoryDisabled`, `ensureAgentsBlock`, `ensureClaudeRedirect`,
+and (if the persistence block needs it) `writeReadme`, printing whatever each step itself
+prints (including a concern that turns out to already be fine, such as `Project settings
+already up to date.` when only the note was stale) underneath the heading — a labeled
+`.agents/README.md ... would add/update working memory block (v<old> -> v<new>)` line for
+the persistence-block concern, mirroring the note's own labeling. `--dry-run` previews every
+needing-work project's plan without writing anything. `refresh` writes plain files in the
+parent project directory exactly as `attach` does, plus `.agents/README.md` in the vault
+worktree for the note-version ledger and the persistence block — never `current-state.md`,
+and never a commit. A final `refresh: <n> project(s) updated, <m> unchanged` line closes
+the run, where `<n>` counts projects that needed at least one fix (live or previewed) and
+`<m>` counts only successfully checked projects that needed none — skipped or
+target-resolution-failed projects count toward neither.
+
+**Exit codes.** `0`: every resolved target was checked (whether or not anything needed
+fixing). `1`: an unknown or ambiguous project name was given, or an explicitly named
+target's worktree directory was missing.
+
 ## `detach`
 
 ```
@@ -467,7 +552,7 @@ The registered worktree's state and the file-disposition flag decide what happen
 
 | Transition | Command and behavior |
 | --- | --- |
-| Attached → unmanaged, files kept | Bare `detach` removes the fenced marrow persistence block, or an identifiable historical unfenced marrow block, from `.agents/README.md`. It commits only that removal from the prior branch tip, releases the worktree registration, removes the `.git` pointer, and leaves `.agents/` on disk as ordinary files. Dirty worktrees are allowed because disk is the record; the uncommitted-change count is reported and unrelated README edits remain only in the retained files. |
+| Attached → unmanaged, files kept | Bare `detach` removes the fenced marrow persistence block, or an identifiable historical unfenced marrow block, and the frontmatter version ledger — delimiters included, if nothing else remains in them — from `.agents/README.md`. It commits only that removal from the prior branch tip, releases the worktree registration, removes the `.git` pointer, and leaves `.agents/` on disk as ordinary files. Dirty worktrees are allowed because disk is the record; the uncommitted-change count is reported and unrelated README edits remain only in the retained files. |
 | Attached → branch-only | `detach --vault-only` removes the worktree directory and retains its branch. It refuses a dirty worktree because the branch becomes the only copy. This is reversible parking. Re-running `marrow attach <project-path>` later picks up exactly where it left off. |
 | Directory already missing (`architecture.md` → Design model) | Either form clears the stale registration only with `git worktree remove --force <path>`. There is no directory to keep or remove, so the flag is ignored. |
 
@@ -483,8 +568,10 @@ vault backing. The command prints each retained artifact and how to change it. T
 marrow persistence block, and its identifiable historical unfenced form, inside
 `.agents/README.md` is different: its worktree, sync,
 status, and doctor claims become false after detachment, so the default removes it before
-releasing the worktree. No backup tarball is needed: the default deletes no content, and
-`--vault-only` refuses unless the retained branch already holds all content.
+releasing the worktree — along with the frontmatter version ledger, since a detached
+project's retained files should carry no marrow bookkeeping at all. No backup tarball is
+needed: the default deletes no content, and `--vault-only` refuses unless the retained
+branch already holds all content.
 
 **`--dry-run`.** Prints the full plan for the selected disposition and writes nothing.
 The default previews a dirty worktree successfully and says its changes remain in the
@@ -526,7 +613,9 @@ project are summarized as one `OK` line rather than one per project. Output ends
 | Every registered worktree's directory still exists on disk                                                                                                                                                                    | WARN per missing worktree, naming the path and `marrow detach <branch>` as the remediation |
 | Project branches in the vault with no worktree on this machine are listed by name                                                                                                                                            | Never fails — reported as an `OK` line. Attaching a subset is a deliberate choice, not drift; it is surfaced only because it bounds what `grep` and `status` can see    |
 | Every project worktree's parent repo ignores `.agents` (`git check-ignore -q -- .agents` in the parent dir). A parent directory that is not a git repository at all passes — there is nothing it could commit `.agents/` into | FAIL                                                                                                                                                                    |
-| Every project worktree's parent `AGENTS.md`/`CLAUDE.md` carries the current marrow `.agents` note, recognized the same way `attach`'s parent instruction block check recognizes it                                              | WARN per project missing or carrying a stale note, with `marrow attach <project-dir>` as the remediation. Home-directory paths in the command may print with `~`            |
+| Every project worktree's parent `AGENTS.md`/`CLAUDE.md` carries the current marrow `.agents` note, recognized the same way `attach`'s parent instruction block check recognizes it                                              | WARN per project missing or carrying a stale note, with `marrow refresh <project-dir>` as the remediation. Home-directory paths in the command may print with `~`            |
+| Every project worktree's `.agents/README.md` carries the current working-memory persistence block, by the same exact-content comparison `attach` uses                                                                          | WARN per project missing or carrying a stale block, with `marrow refresh <project-dir>` as the remediation |
+| Whenever a project worktree's parent `AGENTS.md` exists, its parent `CLAUDE.md` also exists (so Claude Code, which only auto-loads `CLAUDE.md`, actually loads the note) — a parent with no `AGENTS.md` at all passes, since there is nothing to redirect | WARN per project with `AGENTS.md` but no `CLAUDE.md`, with `marrow refresh <project-dir>` as the remediation |
 | Every project worktree contains the required `current-state.md` resumption record with a well-formed line beginning `As of YYYY-MM-DD (<repo> @<short-sha>)` (`@no-HEAD` is also valid)                                          | WARN per project missing `.agents/current-state.md` or carrying a malformed stamp, with `marrow sync <project>` after correction                                        |
 | `origin` remote is configured on `<MARROW_HOME>/vault.git`                                                                                                                                                                    | WARN if absent                                                                                                                                                          |
 | `origin` is reachable (`git ls-remote origin`; no `--exit-code`, so a reachable remote with zero refs — e.g. before the first `marrow publish` — is not misreported as unreachable) | FAIL if unreachable                                                                                                                                                     |

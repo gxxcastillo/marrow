@@ -8,20 +8,14 @@ import { doctorCommand } from "./commands/doctor";
 import { grepCommand } from "./commands/grep";
 import { initCommand } from "./commands/init";
 import { publishCommand } from "./commands/publish";
+import { refreshCommand } from "./commands/refresh";
 import { statusCommand } from "./commands/status";
 import { syncCommand } from "./commands/sync";
 import { updateCommand } from "./commands/update";
 import { vaultDir } from "./git";
 
-interface Context {
-  marrowHome: string;
-  toolRoot: string;
-}
-
-interface Parsed {
-  values: Record<string, string | boolean | undefined>;
-  positionals: string[];
-}
+interface Context { marrowHome: string; toolRoot: string }
+interface Parsed { values: Record<string, string | boolean | undefined>; positionals: string[] }
 interface Command {
   args: string; // argument syntax after the command name; the only copy of it
   summary: string;
@@ -29,9 +23,7 @@ interface Command {
   minArgs?: number; // required positionals; fewer prints usage and exits 2
   maxArgs?: number; // upper bound on positionals; more prints usage and exits 2 (default: unlimited)
   raw?: boolean; // skip parsing — args reach the command verbatim (grep -> rg)
-  // Opt-out, not opt-in: commands need the vault unless they explicitly do not.
-  // A future command that forgets to opt out gets the safe guard by default.
-  skipVaultCheck?: boolean;
+  skipVaultCheck?: boolean; // opt-out, not opt-in: a command that forgets this still gets the vault guard
   help?: string; // optional paragraph appended to `<command> --help`, beyond options and the one-line summary
   run: (parsed: Parsed, ctx: Context) => Promise<number>;
 }
@@ -89,6 +81,14 @@ const COMMANDS: Record<string, Command> = {
       attachCommand(positionals[0], { dryRun: values["dry-run"] as boolean, id: values.id as string | undefined }, ctx.marrowHome, ctx.toolRoot),
   },
 
+  refresh: {
+    args: "[project...] [--dry-run]",
+    summary: "reconcile every attached project's parent-repo footprint",
+    options: { "dry-run": { type: "boolean", default: false, desc: "preview without writing anything" } },
+    run: ({ values, positionals }, ctx) =>
+      refreshCommand(positionals, { dryRun: values["dry-run"] as boolean }, ctx.marrowHome, ctx.toolRoot),
+  },
+
   detach: {
     args: "<project> [--vault-only] [--dry-run]",
     summary: "detach a project, keeping its files by default",
@@ -98,9 +98,7 @@ const COMMANDS: Record<string, Command> = {
     },
     minArgs: 1, maxArgs: 1,
     run: ({ values, positionals }, ctx) =>
-      detachCommand(positionals[0], {
-        dryRun: values["dry-run"] as boolean, vaultOnly: values["vault-only"] as boolean,
-      }, ctx.marrowHome),
+      detachCommand(positionals[0], { dryRun: values["dry-run"] as boolean, vaultOnly: values["vault-only"] as boolean }, ctx.marrowHome),
   },
 
   doctor: {

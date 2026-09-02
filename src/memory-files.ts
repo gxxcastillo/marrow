@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { git } from "./git";
+import { readLedgerEntry, upsertLedgerEntry } from "./version-ledger";
 
 export const CURRENT_STATE_LINE_THRESHOLD = 300;
 
@@ -81,19 +82,41 @@ export async function blockedOnYouLines(agentsPath: string): Promise<string[]> {
   return lines;
 }
 
+// A leading `<!-- marrow:template-version N -->` line marks marrow's own bundled
+// template source; it is never written into a real project's file, only read by
+// marrow's own tooling to know what version a template currently is.
+const TEMPLATE_VERSION_RE = /^<!-- marrow:template-version (\d+(?:\.\d+)*) -->\r?\n/;
+
 export async function renderTemplate(
   toolRoot: string,
   name: string,
   substitutions: Record<string, string>,
 ): Promise<string> {
   let content = await readFile(path.join(toolRoot, "templates", name), "utf8");
+  content = content.replace(TEMPLATE_VERSION_RE, "");
   for (const [key, value] of Object.entries(substitutions)) content = content.replaceAll(`{{${key}}}`, value);
   return content;
 }
 
+// marrow's own bundled template failing to parse is a marrow bug, not a project
+// problem — throwing here mirrors `agentsBlockStatus`'s same precedent.
+export async function templateVersion(toolRoot: string, name: string): Promise<string> {
+  const raw = await readFile(path.join(toolRoot, "templates", name), "utf8");
+  const match = TEMPLATE_VERSION_RE.exec(raw);
+  if (!match) throw new Error(`marrow's bundled template ${name} has no recognizable template-version tag`);
+  return match[1];
+}
+
 // `\r?\n` (not bare `\n`): a CRLF README must still be recognized, or the fenced/trailing
-// section goes undetected and gets duplicated below instead of replaced in place.
-const FENCED_PERSISTENCE_RE = /<!-- marrow:persistence-block v[\d.]+ -->[\s\S]*?<!-- \/marrow:persistence-block -->\r?\n?/;
+// section goes undetected and gets duplicated below instead of replaced in place. The
+// opening tag's version suffix is optional (not required-absent): a real already-adopted
+// project's fence still reads `<!-- marrow:persistence-block v2 -->` until its next
+// `refresh`, and the fence markers alone are already an unambiguous, version-agnostic
+// signal — matching only the tag-less form here would strand every old-versioned fence
+// behind the weaker sentence-based legacy fallback below, which anchors on `## Persistence`
+// and would leave the old opening tag line behind as orphaned debris (it precedes that
+// anchor, so it falls outside the matched, replaced span).
+const FENCED_PERSISTENCE_RE = /<!-- marrow:persistence-block(?: v[\d.]+)? -->[\s\S]*?<!-- \/marrow:persistence-block -->\r?\n?/;
 // Stops at the next heading (or true end-of-string) rather than devouring the rest of the
 // file — an old-style README may have content of the user's own after this section.
 const TRAILING_PERSISTENCE_SECTION_RE = /^## Persistence\r?\n[\s\S]*?(?=\r?\n#{1,6}[ \t]|(?![\s\S]))/m;
@@ -129,25 +152,58 @@ export function withoutPersistenceSection(existing: string): string | null {
   return after;
 }
 
-async function writeReadme(toolRoot: string, agentsPath: string, project: string, branch: string): Promise<void> {
+export async function writeReadme(toolRoot: string, agentsPath: string, project: string, branch: string): Promise<void> {
   const substitutions = { project, branch };
   const rawBlock = await renderTemplate(toolRoot, "persistence-block.md", substitutions);
   const readmePath = path.join(agentsPath, "README.md");
+  const blockVersion = await templateVersion(toolRoot, "persistence-block.md");
 
   if (!existsSync(readmePath)) {
-    await writeFile(readmePath, `${await renderTemplate(toolRoot, "readme-seed.md", substitutions)}\n${rawBlock}`);
+    const seeded = `${await renderTemplate(toolRoot, "readme-seed.md", substitutions)}\n${rawBlock}`;
+    await writeFile(readmePath, upsertLedgerEntry(seeded, "persistence-block", blockVersion));
     return;
   }
 
   const existing = await readFile(readmePath, "utf8");
   const match = persistenceSection(existing);
   if (match) {
-    await writeFile(readmePath, replacePersistenceSection(existing, match, normalized(rawBlock)));
+    const replaced = replacePersistenceSection(existing, match, normalized(rawBlock));
+    await writeFile(readmePath, upsertLedgerEntry(replaced, "persistence-block", blockVersion));
     return;
   }
 
   const sep = existing.endsWith("\n\n") ? "" : existing.endsWith("\n") ? "\n" : "\n\n";
-  await writeFile(readmePath, `${existing}${sep}${rawBlock}`);
+  const appended = `${existing}${sep}${rawBlock}`;
+  await writeFile(readmePath, upsertLedgerEntry(appended, "persistence-block", blockVersion));
+}
+
+export type PersistenceBlockStatus =
+  | { kind: "current" }
+  | { kind: "stale"; currentVersion: string; installedVersion: string | undefined }
+  | { kind: "missing" };
+
+// Mirrors `agentsBlockStatus`'s exact-content comparison: current means the freshly
+// rendered block text (fence comments included) appears verbatim in the README,
+// regardless of what the ledger claims. A recognized section that doesn't match
+// exactly is stale; no README, or one with no recognizable section at all, is missing.
+export async function persistenceBlockStatus(
+  toolRoot: string,
+  agentsPath: string,
+  project: string,
+  branch: string,
+): Promise<PersistenceBlockStatus> {
+  const currentVersion = await templateVersion(toolRoot, "persistence-block.md");
+  const readmePath = path.join(agentsPath, "README.md");
+  if (!existsSync(readmePath)) return { kind: "missing" };
+
+  const existing = await readFile(readmePath, "utf8");
+  const currentBlock = normalized(await renderTemplate(toolRoot, "persistence-block.md", { project, branch }));
+  const match = persistenceSection(existing);
+  if (!match) return { kind: "missing" };
+  // Exact match against the extracted fenced (or legacy) section, not a substring search
+  // over the whole file — see the identical fix and rationale in `agentsBlockStatus`.
+  if (normalized(match[0]) === currentBlock) return { kind: "current" };
+  return { kind: "stale", currentVersion, installedVersion: readLedgerEntry(existing, "persistence-block") };
 }
 
 export function hasCurrentState(agentsPath: string): boolean {
