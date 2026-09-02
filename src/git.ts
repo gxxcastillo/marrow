@@ -120,7 +120,7 @@ export async function hasOrigin(cwd: string): Promise<boolean> {
   return res.stdout.split("\n").includes("origin");
 }
 
-// `git worktree add --orphan` — the mechanism behind every adopted project
+// `git worktree add --orphan` — the mechanism behind every attached project
 // (`commands/attach.ts`, `vault.ts`) — landed in git 2.42. Older git runs `init`
 // fine and then fails on the first `attach`, so this is checked up front by
 // `bin/setup` and re-checked by `doctor`.

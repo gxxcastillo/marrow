@@ -1,7 +1,7 @@
 # marrow
 
 marrow privately versions and syncs per-project agent working memory without putting that
-memory in each project's own git history. Adopted projects get a vault-backed worktree
+memory in each project's own git history. Attached projects get a vault-backed worktree
 for their local memory directory, one private branch per project.
 
 marrow preserves private working memory. It does not define or replace a project's
@@ -47,7 +47,7 @@ marrow doctor
 ```
 
 `doctor` on a brand-new vault reports a clean, empty state — that's expected before you've
-adopted anything.
+attached anything.
 
 ### Keeping marrow itself up to date
 
@@ -61,12 +61,12 @@ It refuses to run from a local development checkout (see Contributing, below); u
 that with `git pull` instead. It never resets a checkout with local changes, and it
 doesn't require a vault to exist.
 
-### First adoption
+### First attach
 
 marrow starts with only a **local** vault — nothing has been pushed anywhere yet. A
 local-only vault is fully usable for a single machine; `marrow publish <owner>/<repo>`
 is a separate, explicit step for when you want a private GitHub remote (for backup or a
-second machine). Nothing in first adoption requires it.
+second machine). Nothing in a first attach requires it.
 
 Preview before touching a real project:
 
@@ -95,11 +95,11 @@ output; don't script or automate that step (`spec/safety.md` → "Attended opera
 ### Everyday commands
 
 ```
-marrow attach /path/to/project         # adopt a project into the vault
+marrow attach /path/to/project         # bring a project's .agents under the vault
 marrow refresh                         # reconcile every attached project's footprint
 marrow status                          # attached memory needing attention
 marrow sync                            # commit + push everything dirty
-marrow grep "TODO" -C2                 # search across every adopted project
+marrow grep "TODO" -C2                 # search across every attached project
 marrow doctor                          # verify marrow's setup and safety
 marrow update                          # update the managed install (refuses a dev checkout)
 marrow --help                          # command list; <command> --help for one

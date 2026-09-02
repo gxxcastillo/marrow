@@ -1,6 +1,7 @@
 import path from "node:path";
 import { aheadBehind, dirtyCount, lastCommit, listProjectWorktrees, vaultDir } from "../git";
 import { clearProgress, countLabel, displayPath, showProgress } from "../format";
+import { WORKTREE_WEIGHT_KB_THRESHOLD, worktreeWeightKb } from "../layout";
 import {
   CURRENT_STATE_LINE_THRESHOLD,
   blockedOnYouLines,
@@ -79,6 +80,15 @@ function staleLabel(commitsPast: number | null): string {
   return `stale (parent ${countLabel(commitsPast, "commit")} past stamp)`;
 }
 
+// `du -sh`-style: K/M/G, one decimal above K. Only ever called above the
+// 5MiB threshold in practice, so K is unreachable today but kept for sanity.
+function formatWeight(kb: number): string {
+  if (kb < 1024) return `${Math.round(kb)}K`;
+  const mb = kb / 1024;
+  if (mb < 1024) return `${mb.toFixed(1)}M`;
+  return `${(mb / 1024).toFixed(1)}G`;
+}
+
 export async function statusCommand(marrowHome: string): Promise<number> {
   const progressShown = showProgress(PROGRESS_LINE);
   const vault = vaultDir(marrowHome);
@@ -104,6 +114,7 @@ export async function statusCommand(marrowHome: string): Promise<number> {
   let behindTotal = 0;
   let staleTotal = 0;
   let oversizedTotal = 0;
+  let heavyTotal = 0;
   const rows: string[][] = [];
   const missingBranches: string[] = [];
   const blockers: Array<{ project: string; line: string }> = [];
@@ -128,6 +139,11 @@ export async function statusCommand(marrowHome: string): Promise<number> {
     if (state && state.lineCount > CURRENT_STATE_LINE_THRESHOLD) {
       oversizedTotal++;
       signals.push(`large current-state.md (${state.lineCount} lines)`);
+    }
+    const weightKb = await worktreeWeightKb(wt.path);
+    if (weightKb > WORKTREE_WEIGHT_KB_THRESHOLD) {
+      heavyTotal++;
+      signals.push(`heavy worktree (${formatWeight(weightKb)})`);
     }
     for (const line of await blockedOnYouLines(wt.path)) blockers.push({ project: wt.branch, line });
     if (dirty > 0) dirtyTotal++;
@@ -159,6 +175,7 @@ export async function statusCommand(marrowHome: string): Promise<number> {
   const memory = [
     staleTotal > 0 ? countLabel(staleTotal, "stale project") : "",
     oversizedTotal > 0 ? countLabel(oversizedTotal, "oversized current-state.md", "oversized current-state.md files") : "",
+    heavyTotal > 0 ? countLabel(heavyTotal, "heavy worktree", "heavy worktrees") : "",
     blockers.length > 0 ? `${blockers.length} blocked on you` : "",
   ].filter(Boolean);
   const memorySummary = memory.length > 0 ? `, ${memory.join(", ")}` : "";

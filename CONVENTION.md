@@ -20,13 +20,13 @@ Ownership boundary:
    step, dependencies, discovered work), investigations, deferred work, working
    decisions, and resumption context.
 4. A task-local decision may remain in `.agents/`. A constraint future contributors
-   must honor must be distilled into the appropriate shared source before the work is
+   must honor must be canonized in the appropriate shared source before the work is
    considered complete.
 5. Route by what landing the work would change, not by what the document is called: if
    finishing work forces an edit to it — progress, status, next step, in-flight
    sequencing — it is stateful working memory and belongs in `.agents/` or the tracker;
-   if only a changed decision would force an edit, it is stateless and a candidate for
-   promotion under the rule above. Catching yourself editing a committed document
+   if only a changed decision would force an edit, it is stateless and a candidate to
+   canonize under the rule above. Catching yourself editing a committed document
    because work finished, not because a decision changed, means the document is
    misplaced. Stateful memory never goes in git; a committed spec stays canonical.
 6. If `.agents/` conflicts with a designated authority, the designated authority wins.
@@ -35,7 +35,7 @@ Ownership boundary:
 7. Link from `.agents/` to authoritative material rather than maintaining a second copy
    when practical.
 8. Working history may remain private. Historical rationale needed by the wider project
-   must be distilled into a shared record. Promotion is never a license to quote private
+   must be canonized in a shared record. Canonizing is never a license to quote private
    notes verbatim.
 9. Project instructions designate that project's authorities; `CONVENTION.md` governs
    `.agents/` structure and maintenance. When the two disagree, the project's
@@ -51,16 +51,18 @@ Ownership boundary:
     never need execution detail — usually gets only the decisions and contracts; work
     breakdown stays stateless but moves to a narrower shared source (a team doc, the
     issue tracker) instead of the audience-facing one, with embedded decisions still
-    promoted individually as they're made.
+    canonized individually as they're made.
 
 Examples of shared sources: specs, schemas, ADRs, docs, issue trackers, code/tests, and
 project instructions. None is required universally, and no rule here assumes a `spec/`
 directory or any other fixed project layout.
 
-Promote a decision or its rationale when future contributors must honor or rediscover
-it. Future need drives promotion — not every planning decision becomes project
-documentation. A procedure in `agent-notes.md` should become a harness skill when it is
-operational enough to reuse.
+**Canonize** a decision or its rationale when future contributors must honor or
+rediscover it: move it out of `.agents/` into a durable home that binds them. Future need
+decides what gets canonized — not every planning decision becomes project documentation.
+The destination is named each time and is usually a shared source above, but not always: a
+procedure in `agent-notes.md` is canonized as a harness skill once it is operational enough
+to reuse. Same boundary, same test, different home.
 
 A substantial plan is two documents fused: the stateless spec of the work (decisions,
 work breakdown, acceptance criteria) and the stateful state of the work (done, next,
@@ -89,7 +91,7 @@ at all is treated as missing. A note is recognized by its opener and its link to
 tag in the note itself. The version the note was last written against lives in
 `.agents/README.md`'s version ledger instead (see `## Version ledger` below), updated in the
 same step `attach`/`refresh` replace the note. That recorded version labels the repair; it
-does not decide whether one happens, so a template fix reaches every adopted project on its
+does not decide whether one happens, so a template fix reaches every attached project on its
 next `attach`/`refresh` without a version bump. Bump the version when the meaning changes, not
 for every edit.
 
@@ -97,24 +99,111 @@ for every edit.
 
 Every `.agents/` directory contains:
 
-- `README.md` — routing guide, the version ledger, and the Persistence block.
+- `README.md` — routing guide, the version ledger, and the Persistence block. It is the
+  entry point and marrow's own bookkeeping, not an artifact: the types below do not
+  classify it, and `detach` strips its ledger and block.
 - `current-state.md` — shortest resumption context: what landed, where it lives, next
   step.
 
-Other files are project-specific. Common choices are:
+### The five types
 
+The convention admits five artifact types. A file's type is its home, never its content:
+marrow recognizes a type only by where the file sits, and a reader gets the same answer
+the same way.
+
+| type       | home                                    | shape       | holds                                          |
+| ---------- | --------------------------------------- | ----------- | ---------------------------------------------- |
+| `state`    | `current-state.md`, `deferred-items.md` | named files | where the work is now                          |
+| `guidance` | `agent-notes.md`                        | named file  | how to work in this repo                       |
+| `plan`     | `plans/<slug>.md`                       | directory   | the stateful half of substantial active work   |
+| `research` | `research/<slug>.md`                    | directory   | evidence generated to answer an open question  |
+| `analysis` | `analysis/<slug>.md`                    | directory   | judgment reached over evidence already in hand |
+
+The two shapes behave differently, and the difference is what keeps this vocabulary from
+prescribing anything. `state` and `guidance` are named files: one file, one job, and only
+`current-state.md` is required. `plan`, `research`, and `analysis` are directories holding
+many. A directory a project has never needed is **absent, not missing** — a project that
+has done no research is not out of compliance, and `doctor` never fails a project for a
+type it does not have.
+
+- `deferred-items.md` — accepted limitations and deliberately deferred work, each with
+  the reason. Remove items once done, canonized upstream, or dropped.
 - `agent-notes.md` — private agent-facing guidance that is not code, spec, or build
   discipline.
-- `deferred-items.md` — accepted limitations and deliberately deferred work, each with
-  the reason. Remove items once done, encoded upstream, or dropped.
-- `plans/<slug>-plan.md` — optional. Holds a plan's stateful half only: status, next
-  step, dependencies, discovered work. Link to the stateless half (decisions, work
-  breakdown, acceptance criteria) in its designated shared source rather than
-  duplicating it here. Use only for substantial active work. A plan waiting on the user
-  also carries the blocked-on-you line below. Delete or collapse it when the work lands and any
-  rationale future contributors need has moved up.
-- Optional: `analysis/` for dated reviews; `research/` for private research records and
-  tools.
+- `plans/<slug>.md` — a plan's stateful half only: status, next step, dependencies,
+  discovered work. Link to the stateless half (decisions, work breakdown, acceptance
+  criteria) in its designated shared source rather than duplicating it here. Use only for
+  substantial active work. A plan waiting on the user also carries the blocked-on-you line
+  below. Delete or collapse it when the work lands and any rationale future contributors
+  need has been canonized. The filename carries the subject, not the type — the directory
+  already says `plan`, so a `-plan` suffix only stutters. Files that already carry one are
+  fine and need no rename.
+
+### Research and analysis
+
+Research produces evidence; analysis produces judgment. A pilot, spike, survey, or
+experiment is research: the answer is not in hand, so data gets generated. An audit,
+review, assessment, or reconciliation is analysis: the material already exists and a
+verdict is reached over it.
+
+The two form a loop, not a sequence. Analysis finds the evidence missing, research
+generates it, analysis judges what came back — and that may cycle several times or never
+start at all. Only the exits are one-way: into a `plan` when judgment is settled enough to
+commit to action, into `state` as the record of what happened, and out of `.agents/`
+entirely when something must bind future contributors, which is canonizing.
+
+Research is the only type that owns a workspace, and that follows from the definition:
+generating evidence needs apparatus, reaching judgment needs prose. A research record may
+own one — `research/<slug>.md` alongside a `research/<slug>/` directory holding the
+scripts, fixtures, and outputs that record depends on. The workspace is an attachment to
+that artifact, not an artifact itself: nothing here defines types for what goes inside it,
+and no rule below applies to its contents. Keep it beside the record that explains it,
+delete it with that record, and remember that everything in `.agents/` is pushed on every
+sync and searched by every `marrow grep` — a workspace that has become large or purely
+generated is a candidate for the project's own repo, ignored scratch space, or deletion.
+`marrow status` reports a worktree over 5MB as heavy for this reason.
+
+### Moving between types
+
+Material that changes kind is **recast** — rewritten into the new type's shape, not moved.
+A research finding becomes a plan by being written as one.
+
+A file already of its type but in the wrong place is **refiled** — moved, content
+untouched. `doctor`'s `move them into plans/` names a refile.
+
+Neither is canonizing. Canonizing leaves `.agents/`; recasting and refiling stay inside it.
+`attach` and `adopt` are marrow's own operations rather than movements of material:
+`attach` brings a project's `.agents/` under the vault, and `adopt` is the path `attach`
+takes when one is already there. A team choosing to use marrow is "adopting marrow" in
+ordinary English, unrelated to either.
+
+### `.agents/` holds no spec
+
+Do not create `.agents/spec/`. If the content is a spec it belongs in the project's spec,
+committed — see rule 11 for the personal-project case, where a solo maintainer is the whole
+audience and the stateless whole can be committed and designated authoritative. If it is
+not a spec it belongs in one of the five types above. A directory named for a destination
+it has not reached makes stalled canonizing look like conformance, and its contents drift:
+they read as authoritative while being neither committed nor current.
+
+### Admitting a sixth type
+
+The five above are the set. A sixth is admitted only when all of these hold:
+
+1. **Distinct lifecycle** — a different trigger to create it, to delete it, and to go
+   stale. Same triggers as an existing type means it is a variant of that type and lives
+   in that home.
+2. **Not grouped by origin** — a tool, an agent, or an author is not a type. Every tool
+   taken up wants a directory of its own and each request is individually reasonable;
+   that is how five types become fifteen.
+3. **Not already routed** — if a rule here already says where the material goes, follow
+   the rule.
+4. **Seen independently in several projects** — grounds to hear the question, never
+   grounds to answer it yes.
+
+Default is no. Two worked examples, both declined. A directory holding one tool's issue
+export beside a dated log of that tool's trial fails (1) — two lifecycles in one directory
+— and (2). A `spec/` directory fails (3) against the rule above.
 
 Do not use harness-provided per-user memory for project memory except as a pointer to
 `.agents/`.
@@ -180,7 +269,7 @@ names the plan.
   to an `analysis/` record and link that record from `current-state.md` when it still
   matters to resumption.
 - Do not leave `.agents/` as the sole copy of a rule future contributors must honor —
-  promote it to the appropriate shared source first.
+  canonize it in the appropriate shared source first.
 
 ## Version ledger
 
@@ -191,7 +280,7 @@ present in the file:
 ```markdown
 ---
 marrow-versions:
-  persistence-block: 3
+  persistence-block: 4
   agents-note: 4
 ---
 ```
@@ -218,9 +307,9 @@ It is never committed to the parent repo. Convention: `marrow convention`.
 - Updating this directory is part of finishing work, not a wrap-up chore: when work
   lands, a decision is made, or a plan changes status, update `current-state.md` in the
   same step, then `marrow sync <project> -m "<one-line summary of what changed>"`.
-- Promote decisions and rationale that future contributors must honor to the
-  appropriate shared source. Collapse or discard task-local planning context when it
-  is no longer useful.
+- Canonize decisions and rationale that future contributors must honor: move them out
+  of here into the appropriate shared source. Collapse or discard task-local planning
+  context when it is no longer useful.
 - On session start, check `current-state.md`'s `As of` stamp against `git log`;
   reconcile before building on stale state.
 - Edit files in place; git history replaces inline correction narrative.

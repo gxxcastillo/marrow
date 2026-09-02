@@ -176,7 +176,7 @@ home directory and shortened from the left when needed. `KEY` is the stable proj
 identity. `STATUS` combines local changes and sync state. Examples are `clean, synced`,
 `1 uncommitted change, synced`, and `clean, 1 commit to push`. It appends memory signals
 when present: `stale (parent 2 commits past stamp)`, `stale (parent distance from stamp
-unmeasurable)`, or `large current-state.md (418 lines)`.
+unmeasurable)`, `large current-state.md (418 lines)`, or `heavy worktree (5.6M)`.
 
 `LAST COMMIT` prints the branch's current commit date and subject. It is shortened so one
 long subject does not dominate the table, but never below a floor that preserves part of
@@ -185,8 +185,8 @@ the subject. An exact leading `<KEY>: ` is omitted from the displayed subject on
 Ahead/behind compares `HEAD` with the existing local `origin/<branch>` ref, so it may lag
 the actual remote until another command fetches. The summary names project count,
 missing worktrees, projects with uncommitted changes, sync work, stale projects,
-oversized `current-state.md` files, and blocked-on-you items. Zero signal counts are
-omitted, preserving the prior output when no signals exist.
+oversized `current-state.md` files, heavy worktrees, and blocked-on-you items. Zero
+signal counts are omitted, preserving the prior output when no signals exist.
 
 Staleness compares the first `@<short-sha>` in a `.agents/current-state.md` line beginning
 `As of YYYY-MM-DD (<repo> @<short-sha>)` with the parent repo's `HEAD`. Text
@@ -196,8 +196,14 @@ reports an unmeasurable distance. `@no-HEAD` never reports stale. A parent direc
 that is not a git repository and a missing or malformed stamp stay neutral in `status`;
 [`doctor`](#doctor) owns stamp-conformance warnings.
 
-A `current-state.md` over 300 physical lines reports as large. This is an informational
-compaction signal, not a failure. After the table, a `Blocked on you:` section is printed
+A `current-state.md` over 300 physical lines reports as large, and a worktree whose
+total content exceeds 5MB reports as heavy. Both are informational signals, not failures.
+Weight is the recursive size of the worktree directory. `.agents/` is designed for prose
+and the research records around it; a worktree that has grown to hold generated data,
+fixtures, or tooling is worth knowing about, because every byte is pushed on each `sync`
+and searched by each `grep`. The threshold is deliberately far above ordinary prose
+growth. `doctor` does not duplicate this: file size is a memory-state fact, and this
+document assigns those to `status`. After the table, a `Blocked on you:` section is printed
 when any attached worktree has a line beginning exactly `Blocked on you:` in a direct
 `plans/*.md` child. Each item prints the project key and that marker's first physical
 line. The section is omitted when empty. `status` reads only these convention-guaranteed
@@ -336,7 +342,7 @@ mode, including a no-op result for a project marrow already manages, `attach` ch
 maximal run of consecutive `>`-prefixed lines starting at that opener — there is no
 trailing version tag in the note itself; the version it was last written against lives in
 `.agents/README.md`'s `marrow-versions` ledger instead (`CONVENTION.md` → Version ledger).
-This match is a superset of the old tag-anchored shape, so an already-adopted project's
+This match is a superset of the old tag-anchored shape, so an already-attached project's
 note with a legacy trailing `> <p align="right">v<N></p>` line is still fully recognized
 and replaced, tag included. A recognized note whose text matches `templates/agents-block.md`
 exactly is left unchanged. Any other recognized note is stale, whether its content differs
@@ -616,6 +622,7 @@ project are summarized as one `OK` line rather than one per project. Output ends
 | Every project worktree's parent `AGENTS.md`/`CLAUDE.md` carries the current marrow `.agents` note, recognized the same way `attach`'s parent instruction block check recognizes it                                              | WARN per project missing or carrying a stale note, with `marrow refresh <project-dir>` as the remediation. Home-directory paths in the command may print with `~`            |
 | Every project worktree's `.agents/README.md` carries the current working-memory persistence block, by the same exact-content comparison `attach` uses                                                                          | WARN per project missing or carrying a stale block, with `marrow refresh <project-dir>` as the remediation |
 | Whenever a project worktree's parent `AGENTS.md` exists, its parent `CLAUDE.md` also exists (so Claude Code, which only auto-loads `CLAUDE.md`, actually loads the note) — a parent with no `AGENTS.md` at all passes, since there is nothing to redirect | WARN per project with `AGENTS.md` but no `CLAUDE.md`, with `marrow refresh <project-dir>` as the remediation |
+| No `*-plan.md` file sits directly in a project worktree's root. This catches only the legacy `-plan.md` naming: current guidance places plans at `plans/<slug>.md` (`../CONVENTION.md` → Files — the suffix stutters, though existing `-plan.md` files stay valid). `status`'s blocked-on-you scan reads only a direct `plans/*.md` child, so a root-level plan is invisible to it | WARN per project, naming the count and `move them into plans/` as the remediation. Never FAIL — misplaced plans degrade one `status` signal; they do not break marrow or risk data |
 | Every project worktree contains the required `current-state.md` resumption record with a well-formed line beginning `As of YYYY-MM-DD (<repo> @<short-sha>)` (`@no-HEAD` is also valid)                                          | WARN per project missing `.agents/current-state.md` or carrying a malformed stamp, with `marrow sync <project>` after correction                                        |
 | `origin` remote is configured on `<MARROW_HOME>/vault.git`                                                                                                                                                                    | WARN if absent                                                                                                                                                          |
 | `origin` is reachable (`git ls-remote origin`; no `--exit-code`, so a reachable remote with zero refs — e.g. before the first `marrow publish` — is not misreported as unreachable) | FAIL if unreachable                                                                                                                                                     |
@@ -626,7 +633,7 @@ project are summarized as one `OK` line rather than one per project. Output ends
 | `marrow` resolves on `PATH` (`Bun.which("marrow")`)                                                                                                                                                                           | WARN only                                                                                                                                                               |
 
 `doctor` checks the **vault's** origin only — the tool repo's own git hygiene is not
-marrow's concern, the same as it is not marrow's job to audit adopted parent repos.
+marrow's concern, the same as it is not marrow's job to audit attached projects' parent repos.
 
 A worktree reported missing is excluded from every other per-project check that needs its
 directory (`.agents`-ignored, ahead/behind) — there is nothing on disk to check — so those
@@ -657,6 +664,15 @@ alone would). `rg-args` are passed through verbatim after the pattern, before th
 paths, so ordinary `rg` flags (`-i`, `-C3`, …) work as expected. marrow does not parse them
 at all — that includes `-h`/`--help`, which `rg` receives rather than marrow (see "Global
 flags" above).
+
+marrow adds **no content-based default exclusions** beyond `-g '!.git'`, which exists to
+keep `rg` out of VCS internals rather than to filter project content. A mature `.agents/`
+can hold scripts, fixtures, and generated output alongside its prose, and skipping those
+by default would make `grep` report a partial search as a complete one — the exact failure
+the unattached-branch caveat above exists to prevent, one level down. Scoping is the
+caller's, and `rg`'s own globs already do it: `marrow grep "TODO" -g '*.md'` searches prose
+only. Because `rg-args` land after marrow's own flags, any glob given this way composes
+with the `.git` exclusion rather than replacing it.
 
 When the vault holds project branches that have no worktree on this machine, `grep`
 writes one caveat line to **stderr** before running the search, naming the count and the

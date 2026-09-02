@@ -190,6 +190,29 @@ describe("doctor", () => {
     expect(outLines.some((l) => l.includes("beta") && l.includes("working-memory block"))).toBe(false);
   });
 
+  test("warns about a root-level plan file, naming the count and remediation", async () => {
+    const agentsPath = await addProjectWorktree(fx, "alpha");
+    await writeFile(path.join(agentsPath, "rogue-plan.md"), "# Rogue\n");
+
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
+    expect(code).toBe(0);
+    const line = outLines.find((l) => l.includes("plan file"));
+    expect(line).toBeDefined();
+    expect(line).toStartWith("WARN");
+    expect(line).toBe("WARN  alpha: 1 plan file at .agents root, not plans/; move them into plans/");
+  });
+
+  test("does not warn when plan files live under plans/, and aggregates an OK line", async () => {
+    const agentsPath = await addProjectWorktree(fx, "alpha");
+    await mkdir(path.join(agentsPath, "plans"), { recursive: true });
+    await writeFile(path.join(agentsPath, "plans", "real-plan.md"), "# Real\n");
+
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot, { verbose: true }));
+    expect(code).toBe(0);
+    expect(outLines.some((l) => l.startsWith("WARN") && l.includes("plan file"))).toBe(false);
+    expect(outLines).toContain("OK    no misplaced plan files for 1 project worktree");
+  });
+
   test("shows transient progress without keeping it in final output", async () => {
     await addProjectWorktree(fx, "alpha");
 

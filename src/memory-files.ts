@@ -109,7 +109,7 @@ export async function templateVersion(toolRoot: string, name: string): Promise<s
 
 // `\r?\n` (not bare `\n`): a CRLF README must still be recognized, or the fenced/trailing
 // section goes undetected and gets duplicated below instead of replaced in place. The
-// opening tag's version suffix is optional (not required-absent): a real already-adopted
+// opening tag's version suffix is optional (not required-absent): a real already-attached
 // project's fence still reads `<!-- marrow:persistence-block v2 -->` until its next
 // `refresh`, and the fence markers alone are already an unambiguous, version-agnostic
 // signal — matching only the tag-less form here would strand every old-versioned fence

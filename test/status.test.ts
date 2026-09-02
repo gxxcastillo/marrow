@@ -104,6 +104,24 @@ describe("status", () => {
     expect(outLines[4]).toContain("clean, synced");
   });
 
+  test("flags a worktree over the weight threshold as heavy", async () => {
+    const agentsPath = await addProjectWorktree(fx, "alpha");
+    await Bun.write(path.join(agentsPath, "big.bin"), Buffer.alloc(6 * 1024 * 1024));
+
+    const { outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
+    expect(outLines[0]).toContain("1 heavy worktree");
+    expect(outLines[4]).toContain("heavy worktree (6.0M)");
+  });
+
+  test("does not flag a worktree under the weight threshold", async () => {
+    const agentsPath = await addProjectWorktree(fx, "alpha");
+    await Bun.write(path.join(agentsPath, "small.bin"), Buffer.alloc(4 * 1024 * 1024));
+
+    const { outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
+    expect(outLines[0]).not.toContain("heavy worktree");
+    expect(outLines[4]).not.toContain("heavy worktree");
+  });
+
   test("shows the branch key without rewriting it", async () => {
     await addProjectWorktree(fx, "alpha", "alpha");
 

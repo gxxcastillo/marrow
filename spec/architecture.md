@@ -18,7 +18,7 @@ marrow is deliberately two separate git repos, not one:
 - **The tool repo** (`marrow`) — the CLI, this spec, `CONVENTION.md`, and the templates.
   It is an ordinary coding project with its own git history and hygiene.
 - **The vault** — the git backing for every project's `.agents/` data: one orphan branch
-  per adopted project, checked out as a worktree at `<project-path>/.agents`
+  per attached project, checked out as a worktree at `<project-path>/.agents`
   inside that project's own directory. The vault is not a coding project — it holds no
   code of its own, only per-project data plus a minimal GitHub landing README on `main`
   — so it lives outside normal project checkouts. It is a **bare** git repository at
@@ -26,8 +26,8 @@ marrow is deliberately two separate git repos, not one:
   (non-git-tracked) sibling directory.
 
 Splitting these apart resolves a structural problem: if the tool repo and the vault are
-the same repository, the tool cannot adopt its own `.agents/` without nesting a worktree
-inside its own main checkout. With the split, a tool checkout can be adopted the same way
+the same repository, the tool cannot attach its own `.agents/` without nesting a worktree
+inside its own main checkout. With the split, a tool checkout can be attached the same way
 as any other project. That is the whole of the rationale.
 
 ## Design model
@@ -68,7 +68,7 @@ and reports a lock failure as an error. Retrying that failure is safe.
 
 **Deliberate syncs are the mechanism.** The expected rhythm is an agent running
 `marrow sync <project> -m "<summary>"` when work lands or a decision is made (per the
-Persistence block appended to every adopted `.agents/README.md`). Automation
+Persistence block appended to every attached `.agents/README.md`). Automation
 (scheduled/hook-driven syncing) is deliberately not built — see Non-goals below.
 
 ## Env overrides
@@ -112,9 +112,11 @@ marrow/
 │   ├── backup.ts            # verified adoption tarballs
 │   ├── claude-redirect.ts   # CLAUDE.md redirect stub for Claude Code auto-load
 │   ├── format.ts            # shared output formatting
+│   ├── doctor-checks.ts     # doctor's per-project worktree health checks
 │   ├── git.ts               # git process wrapper; worktree and ref helpers
 │   ├── gitignore.ts         # parent-repo .agents/ ignore-state handling
 │   ├── identity.ts          # stable project identity resolution
+│   ├── layout.ts            # structural .agents/ facts: plan placement, worktree weight
 │   ├── memory-files.ts      # seeding, stamp parsing, and status scans
 │   ├── project.ts           # parent instruction block: recognition, status, writes
 │   ├── remote.ts            # origin configuration and safety checks
@@ -192,9 +194,24 @@ to gitignore, since there's no enclosing repo to accidentally track it into.
 ## Non-goals
 
 - **Not a sync tool for `.agents/` prose.** What belongs inside `.agents/`, when to
-  promote it, and how to maintain it are `../CONVENTION.md`'s job. marrow recognizes the
-  canonical current-state filename, stamp, blocked marker, and size threshold required
-  by `status` and `doctor`. It does not interpret the prose.
+  canonize it, and how to maintain it are `../CONVENTION.md`'s job.
+
+  The rule for what marrow may recognize is **measure and locate, never interpret**. It
+  may key off a strict-verbatim marker the convention defines, a canonical path the
+  convention names, or a purely structural fact — size, count, placement. It may never
+  derive meaning from prose. Everything marrow recognizes today is one of those three:
+  the canonical `current-state.md` filename and its stamp format (canonical path,
+  verbatim marker), the `Blocked on you:` line and marrow's own template blocks
+  (verbatim markers), and the `current-state.md` line threshold, worktree weight, and
+  plan-file placement (structural facts).
+
+  This is a criterion, not a list, so a proposed signal can be tested against it rather
+  than argued from precedent. What it rules out is a *content-derived* type system — a
+  `plan` that marrow tells apart from an `analysis` by what the document *says* requires
+  interpretation, and interpretation belongs to whoever reads the file. It does not rule
+  out an artifact-type vocabulary as such: `../CONVENTION.md` gives each of its five types
+  a canonical home, so locating a `plans/*.md` child answers the type question by
+  position. That is exactly what the plan-file placement check named above already does.
 - **No CLI framework, no runtime dependencies.** Argument handling is a command table in
   `src/cli.ts` over `node:util`'s `parseArgs`. The fixed command and flag surface does not
   earn commander or yargs, and a runtime dependency would cost the install story: `bin/setup`

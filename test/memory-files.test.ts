@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import {
+  blockedOnYouLines,
   parentFreshness,
   parseCurrentStateStamp,
   persistenceBlockStatus,
@@ -84,6 +85,25 @@ describe("memory files", () => {
   test("templateVersion reads the leading tag and throws when one is absent", async () => {
     expect(await templateVersion(fx.toolRoot, "persistence-block.md")).toMatch(/^\d+(\.\d+)*$/);
     await expect(templateVersion(fx.toolRoot, "readme-seed.md")).rejects.toThrow(/no recognizable template-version tag/);
+  });
+
+  test("blockedOnYouLines reads only a direct plans/*.md child, not the worktree root", async () => {
+    const dir = path.join(fx.root, "blocked-on-you");
+    await mkdir(path.join(dir, "plans"), { recursive: true });
+    await Bun.write(path.join(dir, "rogue-plan.md"), "# Rogue\n\nBlocked on you: this must not surface (2026-09-02)\n");
+    await Bun.write(path.join(dir, "plans", "real-plan.md"), "# Real\n\nBlocked on you: this must surface (2026-09-02)\n");
+
+    expect(await blockedOnYouLines(dir)).toEqual(["Blocked on you: this must surface (2026-09-02)"]);
+  });
+
+  // Pins the exact pho failure: 48 root-level plan files with no `plans/` directory made
+  // this scan a structural no-op regardless of content, and `doctor` still reported OK.
+  test("blockedOnYouLines returns nothing when there is no plans/ directory at all", async () => {
+    const dir = path.join(fx.root, "no-plans-dir");
+    await mkdir(dir, { recursive: true });
+    await Bun.write(path.join(dir, "orphan-plan.md"), "# Orphan\n\nBlocked on you: pins the exact pho failure (2026-09-02)\n");
+
+    expect(await blockedOnYouLines(dir)).toEqual([]);
   });
 
   describe("persistenceBlockStatus", () => {

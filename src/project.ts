@@ -75,7 +75,7 @@ function noteFromVersion(noteText: string, agentsReadme: string | undefined): st
 
 // Recognizes the canonical note by its opener and its link to `.agents/README.md`,
 // regardless of prose wording changes elsewhere in the note, so a template edit doesn't
-// strand every already-adopted project with a permanently "unrecognized" block.
+// strand every already-attached project with a permanently "unrecognized" block.
 // Recognition is not acceptance: only text matching the template exactly is current.
 // Any other recognized note is stale, including one whose wording is the only thing
 // that drifted — treating same-content-family drift as current is what let four
