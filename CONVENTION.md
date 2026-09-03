@@ -87,13 +87,8 @@ This text is strict-verbatim; project-specific policy lives outside this block. 
 off the text itself: a note matching the template exactly is left alone, any recognized note
 that differs is replaced in place with the current text, and prose with no recognizable note
 at all is treated as missing. A note is recognized by its opener and its link to
-`.agents/README.md`, so wording may drift without stranding it — there is no trailing version
-tag in the note itself. The version the note was last written against lives in
-`.agents/README.md`'s version ledger instead (see `## Version ledger` below), updated in the
-same step `attach`/`refresh` replace the note. That recorded version labels the repair; it
-does not decide whether one happens, so a template fix reaches every attached project on its
-next `attach`/`refresh` without a version bump. Bump the version when the meaning changes, not
-for every edit.
+`.agents/README.md`, not by a version tag — it carries none; see `## Version ledger` for
+where its version lives instead.
 
 ## Files
 
@@ -244,9 +239,9 @@ names the plan.
   step, then sync: `marrow sync <project> -m "<one-line summary>"`. The task is not done
   until memory agrees with reality. Sessions end without warning — never defer memory
   updates to a wrap-up pass.
-- Stamp freshness. `current-state.md` opens with
-  `As of YYYY-MM-DD (<parent repo> @<short-sha>)`, refreshed with every content update.
-  Use `@no-HEAD` only when the parent has no commit to name.
+- Stamp freshness. `current-state.md` opens with its title, then
+  `As of YYYY-MM-DD (@<short-sha> + <parent commit subject>)`, refreshed with every
+  content update. Use `@no-HEAD` only when the parent has no commit to name.
 - Anchor regenerable evidence. A plan or research record that treats raw output (a
   rerun, a report file, a sweep) as disposable because it is cheap to regenerate must
   still name what it depended on — commit/tree-state, config, or data/fixture version —
@@ -280,25 +275,30 @@ present in the file:
 ```markdown
 ---
 marrow-versions:
-  persistence-block: 4
+  persistence-block: 5
   agents-note: 4
 ---
 ```
 
 This ledger holds marrow's own template versions only — never project-specific
-metadata. It is how `doctor`/`refresh` label a repair (`v<old> -> v<new>`) once a note
-or block no longer carries its own inline tag; the version tag itself has been dropped
-from both templates for exactly this reason (see `## Parent instruction block` and
-`## Persistence block`). `detach`'s default mode removes the whole ledger, along with
-the frontmatter delimiters if nothing else remains in them, since a detached project's
-retained files should carry no marrow bookkeeping at all.
+metadata. Neither the agents-note nor the persistence block carries an inline version
+tag (see `## Parent instruction block` and `## Persistence block`); this ledger is
+where each one's version lives instead, updated in the same step `attach`/`refresh`
+replaces the block. The recorded version only labels a repair (`v<old> -> v<new>`,
+printed by `doctor`/`refresh`) — it does not decide whether one happens, since
+recognition is by content match. A template wording fix therefore reaches every
+attached project on its next `attach`/`refresh` without a version bump; bump the
+version only when meaning changes. `detach`'s default mode removes the whole ledger,
+along with the frontmatter delimiters if nothing else remains in them, since a detached
+project's retained files should carry no marrow bookkeeping at all.
 
 ## Persistence block
 
-Every `.agents/README.md` ends with this block, substituting the project name:
+Every `.agents/README.md` ends with this block, substituting the project name. marrow
+recognizes it by its heading and the identifying sentence beneath it, so it needs no
+surrounding markers of its own:
 
 ```markdown
-<!-- marrow:persistence-block -->
 ## Working memory via marrow
 
 This directory is a git worktree of the private marrow vault (branch: `<project>`).
@@ -315,8 +315,7 @@ It is never committed to the parent repo. Convention: `marrow convention`.
 - Edit files in place; git history replaces inline correction narrative.
 - `marrow status` shows memory needing attention; `marrow doctor` verifies
   marrow's setup and safety.
-<!-- /marrow:persistence-block -->
 ```
 
 Its own version — a template-boilerplate detail, not something a reader of the file
-needs — lives only in the version ledger above, not inline in the fence.
+needs — lives only in the version ledger above, not inline in the block.

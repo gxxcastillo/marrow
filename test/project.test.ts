@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { git } from "../src/git";
 import { writeMemoryFiles } from "../src/memory-files";
 import { agentsBlock, findAgentsNote } from "../src/project";
-import { makeFixture, type Fixture } from "./fixtures";
+import { makeFixture, setTestIdentity, type Fixture } from "./fixtures";
 
 describe("project", () => {
   let fx: Fixture;
@@ -46,34 +47,7 @@ describe("project", () => {
       return { dir, readmePath: path.join(dir, "README.md") };
     }
 
-    test("upgrades a fenced v1 persistence block in place, without stacking", async () => {
-      const { dir, readmePath } = await readmeFixture("fenced-v1");
-      await Bun.write(
-        readmePath,
-        [
-          "# routing guide",
-          "",
-          "custom prose",
-          "",
-          "<!-- marrow:persistence-block v1 -->",
-          "## Persistence",
-          "",
-          "old body text.",
-          "<!-- /marrow:persistence-block -->",
-          "",
-        ].join("\n"),
-      );
-
-      await writeMemoryFiles(fx.toolRoot, dir, "widget", "widget");
-      const content = await readFile(readmePath, "utf8");
-
-      expect(content).toContain("custom prose");
-      expect(content).toContain("branch: `widget`");
-      expect(content).not.toContain("old body text.");
-      expect((content.match(/<!-- marrow:persistence-block/g) ?? []).length).toBe(1);
-    });
-
-    test("migrates an unfenced trailing ## Persistence section and plants fences", async () => {
+    test("migrates a trailing ## Persistence section to the current heading, without stacking", async () => {
       const { dir, readmePath } = await readmeFixture("unfenced");
       await Bun.write(
         readmePath,
@@ -97,8 +71,8 @@ describe("project", () => {
 
       expect(content).toContain("## Start here");
       expect(content).not.toContain("Old unfenced body.");
-      expect(content).toContain("<!-- marrow:persistence-block");
-      expect(content).toContain("<!-- /marrow:persistence-block -->");
+      expect(content).not.toContain("## Persistence\n");
+      expect((content.match(/## Working memory via marrow/g) ?? []).length).toBe(1);
     });
 
     test("a second pass does not stack a duplicate block", async () => {
@@ -110,7 +84,7 @@ describe("project", () => {
       const twice = await readFile(readmePath, "utf8");
 
       expect(twice).toBe(once);
-      expect((twice.match(/<!-- marrow:persistence-block/g) ?? []).length).toBe(1);
+      expect((twice.match(/## Working memory via marrow/g) ?? []).length).toBe(1);
     });
 
     test("appends when no persistence section exists at all", async () => {
@@ -121,7 +95,7 @@ describe("project", () => {
       const content = await readFile(readmePath, "utf8");
 
       expect(content).toContain("some hand-written notes.");
-      expect(content).toContain("<!-- marrow:persistence-block");
+      expect(content).toContain("## Working memory via marrow");
     });
 
     test("preserves a user-authored Persistence section and appends the managed block", async () => {
@@ -137,7 +111,7 @@ describe("project", () => {
       expect(content).toStartWith("---\nmarrow-versions:");
       expect(content).toContain(original);
       expect(content).toContain("Keep this user-authored policy.");
-      expect(content).toContain("<!-- marrow:persistence-block");
+      expect(content).toContain("## Working memory via marrow");
     });
 
     test("creates required current-state.md without overwriting an existing one", async () => {
@@ -147,11 +121,30 @@ describe("project", () => {
       const statePath = path.join(dir, "current-state.md");
       const seeded = await readFile(statePath, "utf8");
       expect(seeded).toContain("# Current state — widget");
-      expect(seeded).toContain("(widget @no-HEAD)");
+      expect(seeded).toContain("(@no-HEAD + no commits yet)");
 
       await Bun.write(statePath, "custom state\n");
       await writeMemoryFiles(fx.toolRoot, dir, "widget", "widget");
       expect(await readFile(statePath, "utf8")).toBe("custom state\n");
+    });
+
+    test("summarizes the parent's latest commit subject, truncated when long", async () => {
+      const { dir } = await readmeFixture("current-state-with-parent");
+      const parent = path.dirname(dir);
+      await git(["init", "-q", "-b", "main"], parent);
+      await setTestIdentity(parent);
+      await Bun.write(path.join(parent, "file.txt"), "content\n");
+      await git(["add", "file.txt"], parent);
+      const longSubject = "a very long commit subject line that should get truncated in the stamp because it runs on";
+      await git(["commit", "-q", "-m", longSubject], parent);
+      const head = (await git(["rev-parse", "--short", "HEAD"], parent)).stdout;
+
+      await writeMemoryFiles(fx.toolRoot, dir, "widget", "widget");
+      const seeded = await readFile(path.join(dir, "current-state.md"), "utf8");
+
+      expect(longSubject.length).toBeGreaterThan(72);
+      expect(seeded).toContain(`@${head} + ${longSubject.slice(0, 69)}...`);
+      expect(seeded).not.toContain(longSubject);
     });
   });
 });

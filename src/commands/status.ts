@@ -1,6 +1,6 @@
 import path from "node:path";
 import { aheadBehind, dirtyCount, lastCommit, listProjectWorktrees, vaultDir } from "../git";
-import { clearProgress, countLabel, displayPath, showProgress } from "../format";
+import { clearProgress, countLabel, displayPath, shorten, showProgress } from "../format";
 import { WORKTREE_WEIGHT_KB_THRESHOLD, worktreeWeightKb } from "../layout";
 import {
   CURRENT_STATE_LINE_THRESHOLD,
@@ -26,12 +26,6 @@ function syncLabel(aheadBehind: { ahead: number; behind: number } | null): strin
   if (aheadBehind.ahead > 0) pending.push(`${countLabel(aheadBehind.ahead, "commit")} to push`);
   if (aheadBehind.behind > 0) pending.push(`${countLabel(aheadBehind.behind, "commit")} to pull`);
   return pending.join(", ");
-}
-
-function shorten(value: string, width: number): string {
-  if (value.length <= width) return value;
-  if (width <= 3) return ".".repeat(width);
-  return `${value.slice(0, width - 3)}...`;
 }
 
 function shortenProject(value: string, width: number): string {

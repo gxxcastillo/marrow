@@ -213,6 +213,19 @@ describe("doctor", () => {
     expect(outLines).toContain("OK    no misplaced plan files for 1 project worktree");
   });
 
+  // A bare-named root file can't be told apart from a legitimate root file without
+  // reading content, which marrow does not do (`src/layout.ts`'s `misplacedPlanFiles`
+  // comment). Pins the under-detection as deliberate, not a bug for a later reader to fix.
+  test("does not warn about a bare-named root file with no -plan.md suffix", async () => {
+    const agentsPath = await addProjectWorktree(fx, "alpha");
+    await writeFile(path.join(agentsPath, "strategic-backlog.md"), "# Strategic backlog\n");
+
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot, { verbose: true }));
+    expect(code).toBe(0);
+    expect(outLines.some((l) => l.startsWith("WARN") && l.includes("plan file"))).toBe(false);
+    expect(outLines).toContain("OK    no misplaced plan files for 1 project worktree");
+  });
+
   test("shows transient progress without keeping it in final output", async () => {
     await addProjectWorktree(fx, "alpha");
 

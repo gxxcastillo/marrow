@@ -48,7 +48,6 @@ describe("attach", () => {
       expect(worktrees.map((w) => w.branch)).toContain(branch("alpha"));
 
       const readme = await readFile(path.join(agentsPath, "README.md"), "utf8");
-      expect(readme).toContain("<!-- marrow:persistence-block -->");
       expect(readme).toContain("## Working memory via marrow");
       expect(readme).toContain(`branch: \`${branch("alpha")}\``);
       expect(readLedgerEntry(readme, "persistence-block")).toBe(await templateVersion(fx.toolRoot, "persistence-block.md"));
@@ -121,7 +120,7 @@ describe("attach", () => {
 
       expect(code).toBe(0);
       const currentState = await readFile(path.join(projectDir, ".agents", "current-state.md"), "utf8");
-      expect(currentState).toContain(`(alpha @${parentHead})`);
+      expect(currentState).toContain(`(@${parentHead} + init)`);
     });
 
     test("reports a local-only attach after the result when the vault has no origin", async () => {
@@ -640,7 +639,6 @@ describe("attach", () => {
 
       const readme = await readFile(path.join(agentsPath, "README.md"), "utf8");
       expect(readme).toContain("freshproj");
-      expect(readme).toContain("<!-- marrow:persistence-block -->");
       expect(readme).toContain("## Working memory via marrow");
       expect(readme).toContain("## Ownership");
       expect(readme).toContain("remain authoritative for accepted requirements");
@@ -648,7 +646,7 @@ describe("attach", () => {
 
       const currentState = await readFile(path.join(agentsPath, "current-state.md"), "utf8");
       expect(currentState).toContain("# Current state — freshproj");
-      expect(currentState).toContain("(freshproj @no-HEAD)");
+      expect(currentState).toContain("(@no-HEAD + no commits yet)");
       expect(currentState).toContain("No resumption context has been recorded yet.");
 
       const agentsMd = await readFile(path.join(projectDir, "AGENTS.md"), "utf8");
@@ -771,7 +769,7 @@ describe("attach", () => {
     expect(outLines).toContain("  .agents/current-state.md created");
     expect(outLines).toContain("vault: pushed origin/steady");
     const currentState = await readFile(path.join(projectDir, ".agents", "current-state.md"), "utf8");
-    expect(currentState).toContain(`(steady @${parentHead})`);
+    expect(currentState).toContain(`(@${parentHead} + init)`);
     const rev = await git(["rev-parse", "HEAD"], path.join(projectDir, ".agents"));
     const remoteRev = await git(["rev-parse", "origin/steady"], path.join(projectDir, ".agents"));
     expect(remoteRev.stdout).toBe(rev.stdout);

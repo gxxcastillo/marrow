@@ -82,6 +82,22 @@ describe("status", () => {
     expect(outLines.join("\n")).not.toContain("continuation is not printed");
   });
 
+  test("surfaces blocked-on-you from a bare-named plan file, without a -plan.md suffix", async () => {
+    const agentsPath = await addProjectWorktree(fx, "alpha");
+    await mkdir(path.join(agentsPath, "plans"));
+    await Bun.write(
+      path.join(agentsPath, "plans", "approval.md"),
+      "# Approval\n\nBlocked on you: approve the fixture (2026-09-02)\n",
+    );
+    await git(["add", "plans/approval.md"], agentsPath);
+    await git(["commit", "-q", "-m", "alpha: add bare-named plan"], agentsPath);
+    await git(["push", "-q", "origin", "alpha"], agentsPath);
+
+    const { outLines } = await captureLogs(() => statusCommand(fx.marrowHome));
+    expect(outLines).toContain("Blocked on you:");
+    expect(outLines).toContain("  alpha: Blocked on you: approve the fixture (2026-09-02)");
+  });
+
   test("keeps clean output unchanged for a fresh stamp with no blocked lines", async () => {
     const projectDir = path.join(fx.projectsRoot, "alpha");
     await mkdir(projectDir, { recursive: true });

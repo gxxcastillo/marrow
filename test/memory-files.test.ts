@@ -42,9 +42,9 @@ describe("memory files", () => {
     expect(parseCurrentStateStamp("As of 2026-08-31 (marrow @not-a-sha)\n")).toBeNull();
   });
 
-  test("removes fenced and legacy persistence sections without disturbing adjacent prose", () => {
-    const fenced = "# Notes\n\n<!-- marrow:persistence-block -->\n## Working memory via marrow\nmanaged\n<!-- /marrow:persistence-block -->\n\n## Work\nkeep\n";
-    expect(withoutPersistenceSection(fenced)).toBe("# Notes\n\n## Work\nkeep\n");
+  test("removes current and legacy persistence sections without disturbing adjacent prose", () => {
+    const current = "# Notes\n\n## Working memory via marrow\n\nThis directory is a git worktree of the private marrow vault (branch: `notes`).\nmanaged\n\n## Work\nkeep\n";
+    expect(withoutPersistenceSection(current)).toBe("# Notes\n\n## Work\nkeep\n");
     const legacy = "# Notes\n\n## Persistence\n\nThis directory is a git worktree of the private `marrow` repo (branch: `notes`).\nold block\n\n## Work\nkeep\n";
     expect(withoutPersistenceSection(legacy)).toBe("# Notes\n\n## Work\nkeep\n");
     const userAuthored = "# Notes\n\n## Persistence\n\nKeep these notes after leaving this tool.\n\n## Work\nkeep\n";

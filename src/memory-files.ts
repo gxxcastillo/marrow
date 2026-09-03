@@ -1,10 +1,14 @@
 import { existsSync } from "node:fs";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { git } from "./git";
+import { shorten } from "./format";
+import { git, lastCommit } from "./git";
 import { readLedgerEntry, upsertLedgerEntry } from "./version-ledger";
 
 export const CURRENT_STATE_LINE_THRESHOLD = 300;
+// Keeps the stamp itself scannable as one line; the parent's own commit still names
+// the full subject for anyone who needs it.
+const PARENT_SUBJECT_WIDTH = 72;
 
 export interface CurrentStateStamp {
   date: string;
@@ -107,29 +111,23 @@ export async function templateVersion(toolRoot: string, name: string): Promise<s
   return match[1];
 }
 
-// `\r?\n` (not bare `\n`): a CRLF README must still be recognized, or the fenced/trailing
-// section goes undetected and gets duplicated below instead of replaced in place. The
-// opening tag's version suffix is optional (not required-absent): a real already-attached
-// project's fence still reads `<!-- marrow:persistence-block v2 -->` until its next
-// `refresh`, and the fence markers alone are already an unambiguous, version-agnostic
-// signal — matching only the tag-less form here would strand every old-versioned fence
-// behind the weaker sentence-based legacy fallback below, which anchors on `## Persistence`
-// and would leave the old opening tag line behind as orphaned debris (it precedes that
-// anchor, so it falls outside the matched, replaced span).
-const FENCED_PERSISTENCE_RE = /<!-- marrow:persistence-block(?: v[\d.]+)? -->[\s\S]*?<!-- \/marrow:persistence-block -->\r?\n?/;
-// Stops at the next heading (or true end-of-string) rather than devouring the rest of the
-// file — an old-style README may have content of the user's own after this section.
-const TRAILING_PERSISTENCE_SECTION_RE = /^## Persistence\r?\n[\s\S]*?(?=\r?\n#{1,6}[ \t]|(?![\s\S]))/m;
-// Fences are authoritative. The older unfenced format is recognized only by the
-// identifying sentence emitted by marrow before fences shipped; a user's unrelated
-// `## Persistence` section must never be treated as managed content.
-const LEGACY_MARROW_PERSISTENCE_RE = /^This directory is a git worktree of the private (?:`marrow` repo|marrow vault) \(branch: `[^`\r\n]+`\)\.\r?$/m;
+// The persistence block is recognized by its heading plus the identifying sentence
+// beneath it — never by heading text alone, since a user's own unrelated `## Persistence`
+// section must not be treated as managed content. `LEGACY_PERSISTENCE_SECTION_RE` covers
+// one older on-disk heading (`## Persistence`, before the section was renamed) so an
+// already-attached project still carrying it is fully matched and replaced, not stranded,
+// on its next `refresh`. Stops at the next heading (or true end-of-string) rather than
+// devouring the rest of the file — an old-style README may have content of the user's own
+// after this section.
+const CURRENT_PERSISTENCE_SECTION_RE = /^## Working memory via marrow\r?\n[\s\S]*?(?=\r?\n#{1,6}[ \t]|(?![\s\S]))/m;
+const LEGACY_PERSISTENCE_SECTION_RE = /^## Persistence\r?\n[\s\S]*?(?=\r?\n#{1,6}[ \t]|(?![\s\S]))/m;
+const MARROW_PERSISTENCE_SENTENCE_RE = /^This directory is a git worktree of the private (?:`marrow` repo|marrow vault) \(branch: `[^`\r\n]+`\)\.\r?$/m;
 
 function persistenceSection(existing: string): RegExpExecArray | null {
-  const fenced = FENCED_PERSISTENCE_RE.exec(existing);
-  if (fenced) return fenced;
-  const legacy = TRAILING_PERSISTENCE_SECTION_RE.exec(existing);
-  return legacy && LEGACY_MARROW_PERSISTENCE_RE.test(legacy[0]) ? legacy : null;
+  const current = CURRENT_PERSISTENCE_SECTION_RE.exec(existing);
+  if (current && MARROW_PERSISTENCE_SENTENCE_RE.test(current[0])) return current;
+  const legacy = LEGACY_PERSISTENCE_SECTION_RE.exec(existing);
+  return legacy && MARROW_PERSISTENCE_SENTENCE_RE.test(legacy[0]) ? legacy : null;
 }
 
 function normalized(content: string): string {
@@ -183,9 +181,9 @@ export type PersistenceBlockStatus =
   | { kind: "missing" };
 
 // Mirrors `agentsBlockStatus`'s exact-content comparison: current means the freshly
-// rendered block text (fence comments included) appears verbatim in the README,
-// regardless of what the ledger claims. A recognized section that doesn't match
-// exactly is stale; no README, or one with no recognizable section at all, is missing.
+// rendered block text appears verbatim in the README, regardless of what the ledger
+// claims. A recognized section that doesn't match exactly is stale; no README, or one
+// with no recognizable section at all, is missing.
 export async function persistenceBlockStatus(
   toolRoot: string,
   agentsPath: string,
@@ -200,8 +198,8 @@ export async function persistenceBlockStatus(
   const currentBlock = normalized(await renderTemplate(toolRoot, "persistence-block.md", { project, branch }));
   const match = persistenceSection(existing);
   if (!match) return { kind: "missing" };
-  // Exact match against the extracted fenced (or legacy) section, not a substring search
-  // over the whole file — see the identical fix and rationale in `agentsBlockStatus`.
+  // Exact match against the extracted section, not a substring search over the whole
+  // file — see the identical fix and rationale in `agentsBlockStatus`.
   if (normalized(match[0]) === currentBlock) return { kind: "current" };
   return { kind: "stale", currentVersion, installedVersion: readLedgerEntry(existing, "persistence-block") };
 }
@@ -216,8 +214,12 @@ export async function ensureCurrentState(toolRoot: string, agentsPath: string, p
   const parent = path.dirname(agentsPath);
   const head = await git(["rev-parse", "--short", "HEAD"], parent);
   const parentRevision = head.code === 0 ? head.stdout : "no-HEAD";
+  // No commit to summarize when the parent has no HEAD yet — say so explicitly rather
+  // than leaving the template's unconditional " + {{commitSummary}}" trailing on nothing.
+  const commit = head.code === 0 ? await lastCommit(parent) : null;
+  const commitSummary = commit ? shorten(commit.subject, PARENT_SUBJECT_WIDTH) : "no commits yet";
   const date = new Date().toISOString().slice(0, 10);
-  const content = await renderTemplate(toolRoot, "current-state.md", { project, date, parentRevision });
+  const content = await renderTemplate(toolRoot, "current-state.md", { project, date, parentRevision, commitSummary });
   await writeFile(statePath, content);
   return true;
 }

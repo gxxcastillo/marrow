@@ -93,7 +93,7 @@ export async function checkProjectWorktrees(
     } else if (!currentState.stamp) {
       warn(
         `${wt.branch}: malformed As of stamp in .agents/current-state.md; use ` +
-          `As of YYYY-MM-DD (<repo> @<short-sha>) or @no-HEAD, then run \`marrow sync ${wt.branch}\``,
+          `As of YYYY-MM-DD (@<short-sha> + <parent commit subject>) or @no-HEAD, then run \`marrow sync ${wt.branch}\``,
       );
     } else {
       wellformedCurrentStates++;

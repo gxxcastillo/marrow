@@ -42,9 +42,9 @@ async function vaultOnlyDetach(
   return 0;
 }
 
-// Composes the two disjoint marrow-authored regions of a retained README — the fenced
-// persistence block (or its identifiable historical unfenced form) and the frontmatter
-// version ledger — into one removal, returning `null` only when neither was present.
+// Composes the two disjoint marrow-authored regions of a retained README — the
+// persistence block (current or an older historical form) and the frontmatter version
+// ledger — into one removal, returning `null` only when neither was present.
 function withoutMarrowMetadata(content: string): string | null {
   const withoutPersistence = withoutPersistenceSection(content);
   const base = withoutPersistence ?? content;

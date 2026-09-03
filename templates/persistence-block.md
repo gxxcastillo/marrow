@@ -1,5 +1,4 @@
-<!-- marrow:template-version 4 -->
-<!-- marrow:persistence-block -->
+<!-- marrow:template-version 5 -->
 ## Working memory via marrow
 
 This directory is a git worktree of the private marrow vault (branch: `{{branch}}`).
@@ -16,4 +15,3 @@ It is never committed to the parent repo. Convention: `marrow convention`.
 - Edit files in place; git history replaces inline correction narrative.
 - `marrow status` shows memory needing attention; `marrow doctor` verifies
   marrow's setup and safety.
-<!-- /marrow:persistence-block -->

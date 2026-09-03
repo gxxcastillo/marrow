@@ -189,8 +189,8 @@ oversized `current-state.md` files, heavy worktrees, and blocked-on-you items. Z
 signal counts are omitted, preserving the prior output when no signals exist.
 
 Staleness compares the first `@<short-sha>` in a `.agents/current-state.md` line beginning
-`As of YYYY-MM-DD (<repo> @<short-sha>)` with the parent repo's `HEAD`. Text
-after that first SHA on the same line is ignored. A descendant `HEAD` reports the number
+`As of YYYY-MM-DD (@<short-sha> + <parent commit subject>)` with the parent repo's
+`HEAD`. Text after that first SHA on the same line is ignored. A descendant `HEAD` reports the number
 of commits past the stamp. A stamp that no longer belongs to the parent `HEAD` history
 reports an unmeasurable distance. `@no-HEAD` never reports stale. A parent directory
 that is not a git repository and a missing or malformed stamp stay neutral in `status`;
@@ -448,7 +448,7 @@ refs. It is safe to run against a real project.
 3. **Move aside.** `<project>/.agents` → `<project>/.agents.pre-marrow` (rename, same volume — not a copy).
 4. **Create the worktree.** `git worktree add --orphan -b <identity> <project>/.agents` runs against `<MARROW_HOME>/vault.git`. On failure, step 3 is undone (`.agents.pre-marrow` renamed back to `.agents`) before erroring out — the project directory is never left without a `.agents/`.
 5. **Restore contents.** Every entry under `.agents.pre-marrow/` — including dotfiles — is moved into the new (currently empty) worktree, then `.agents.pre-marrow` is removed.
-6. **Working-memory files.** `templates/persistence-block.md` (`{{project}}`/`{{branch}}` substituted, read from the tool's own install location) is appended to `.agents/README.md`; if no `README.md` existed, one is created first from `templates/readme-seed.md`. Either way, the block's current version is recorded under the `persistence-block` key in the README's frontmatter ledger (`CONVENTION.md` → Version ledger) in the same write. If `current-state.md` is absent, marrow creates it from `templates/current-state.md` with the current date and parent `HEAD` short SHA, or `no-HEAD` when the parent has no commit. An existing `current-state.md` is never overwritten.
+6. **Working-memory files.** `templates/persistence-block.md` (`{{project}}`/`{{branch}}` substituted, read from the tool's own install location) is appended to `.agents/README.md`; if no `README.md` existed, one is created first from `templates/readme-seed.md`. Either way, the block's current version is recorded under the `persistence-block` key in the README's frontmatter ledger (`CONVENTION.md` → Version ledger) in the same write. If `current-state.md` is absent, marrow creates it from `templates/current-state.md` with the current date, parent `HEAD` short SHA (or `no-HEAD` when the parent has no commit), and a truncated summary of that commit's subject line (blank when there is no commit). An existing `current-state.md` is never overwritten.
 7. **Commit and push.** `git add -A`, commit `<project>: adopt into marrow`. If the vault has no `origin` remote, the commit is left local; otherwise `git push -u origin <project>`.
 
 **Verification.** After the push succeeds, or after the commit when there is no origin, a
@@ -558,7 +558,7 @@ The registered worktree's state and the file-disposition flag decide what happen
 
 | Transition | Command and behavior |
 | --- | --- |
-| Attached → unmanaged, files kept | Bare `detach` removes the fenced marrow persistence block, or an identifiable historical unfenced marrow block, and the frontmatter version ledger — delimiters included, if nothing else remains in them — from `.agents/README.md`. It commits only that removal from the prior branch tip, releases the worktree registration, removes the `.git` pointer, and leaves `.agents/` on disk as ordinary files. Dirty worktrees are allowed because disk is the record; the uncommitted-change count is reported and unrelated README edits remain only in the retained files. |
+| Attached → unmanaged, files kept | Bare `detach` removes the marrow persistence block — recognized by its heading and identifying sentence, including an older differently-headed historical form — and the frontmatter version ledger — delimiters included, if nothing else remains in them — from `.agents/README.md`. It commits only that removal from the prior branch tip, releases the worktree registration, removes the `.git` pointer, and leaves `.agents/` on disk as ordinary files. Dirty worktrees are allowed because disk is the record; the uncommitted-change count is reported and unrelated README edits remain only in the retained files. |
 | Attached → branch-only | `detach --vault-only` removes the worktree directory and retains its branch. It refuses a dirty worktree because the branch becomes the only copy. This is reversible parking. Re-running `marrow attach <project-path>` later picks up exactly where it left off. |
 | Directory already missing (`architecture.md` → Design model) | Either form clears the stale registration only with `git worktree remove --force <path>`. There is no directory to keep or remove, so the flag is ignored. |
 
@@ -570,14 +570,13 @@ No mode is provided to merge them automatically.
 Default detach does not edit the parent repository. It leaves `.agents/` ignored, leaves
 the `.agents` instruction note in `AGENTS.md`/`CLAUDE.md`, and leaves `.codex`/`.claude`
 memory settings unchanged. Those files express the working-memory convention rather than
-vault backing. The command prints each retained artifact and how to change it. The fenced
-marrow persistence block, and its identifiable historical unfenced form, inside
-`.agents/README.md` is different: its worktree, sync,
-status, and doctor claims become false after detachment, so the default removes it before
-releasing the worktree — along with the frontmatter version ledger, since a detached
-project's retained files should carry no marrow bookkeeping at all. No backup tarball is
-needed: the default deletes no content, and `--vault-only` refuses unless the retained
-branch already holds all content.
+vault backing. The command prints each retained artifact and how to change it. The marrow
+persistence block inside `.agents/README.md` is different: its worktree, sync, status, and
+doctor claims become false after detachment, so the default removes it before releasing the
+worktree — along with the frontmatter version ledger, since a detached project's retained
+files should carry no marrow bookkeeping at all. No backup tarball is needed: the default
+deletes no content, and `--vault-only` refuses unless the retained branch already holds all
+content.
 
 **`--dry-run`.** Prints the full plan for the selected disposition and writes nothing.
 The default previews a dirty worktree successfully and says its changes remain in the
@@ -623,7 +622,7 @@ project are summarized as one `OK` line rather than one per project. Output ends
 | Every project worktree's `.agents/README.md` carries the current working-memory persistence block, by the same exact-content comparison `attach` uses                                                                          | WARN per project missing or carrying a stale block, with `marrow refresh <project-dir>` as the remediation |
 | Whenever a project worktree's parent `AGENTS.md` exists, its parent `CLAUDE.md` also exists (so Claude Code, which only auto-loads `CLAUDE.md`, actually loads the note) — a parent with no `AGENTS.md` at all passes, since there is nothing to redirect | WARN per project with `AGENTS.md` but no `CLAUDE.md`, with `marrow refresh <project-dir>` as the remediation |
 | No `*-plan.md` file sits directly in a project worktree's root. This catches only the legacy `-plan.md` naming: current guidance places plans at `plans/<slug>.md` (`../CONVENTION.md` → Files — the suffix stutters, though existing `-plan.md` files stay valid). `status`'s blocked-on-you scan reads only a direct `plans/*.md` child, so a root-level plan is invisible to it | WARN per project, naming the count and `move them into plans/` as the remediation. Never FAIL — misplaced plans degrade one `status` signal; they do not break marrow or risk data |
-| Every project worktree contains the required `current-state.md` resumption record with a well-formed line beginning `As of YYYY-MM-DD (<repo> @<short-sha>)` (`@no-HEAD` is also valid)                                          | WARN per project missing `.agents/current-state.md` or carrying a malformed stamp, with `marrow sync <project>` after correction                                        |
+| Every project worktree contains the required `current-state.md` resumption record with a well-formed line beginning `As of YYYY-MM-DD (@<short-sha> + <parent commit subject>)` (`@no-HEAD` is also valid)                                          | WARN per project missing `.agents/current-state.md` or carrying a malformed stamp, with `marrow sync <project>` after correction                                        |
 | `origin` remote is configured on `<MARROW_HOME>/vault.git`                                                                                                                                                                    | WARN if absent                                                                                                                                                          |
 | `origin` is reachable (`git ls-remote origin`; no `--exit-code`, so a reachable remote with zero refs — e.g. before the first `marrow publish` — is not misreported as unreachable) | FAIL if unreachable                                                                                                                                                     |
 | `origin` refs can be refreshed (`git fetch --prune origin`)                                                                                                                                                                   | FAIL if fetch fails                                                                                                                                                     |

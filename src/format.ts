@@ -4,6 +4,12 @@ export function countLabel(count: number, noun: string, plural = `${noun}s`): st
   return `${count} ${count === 1 ? noun : plural}`;
 }
 
+export function shorten(value: string, width: number): string {
+  if (value.length <= width) return value;
+  if (width <= 3) return ".".repeat(width);
+  return `${value.slice(0, width - 3)}...`;
+}
+
 export function displayPath(filePath: string, home = process.env.HOME): string {
   if (!home) return filePath;
   const resolvedHome = path.resolve(home);

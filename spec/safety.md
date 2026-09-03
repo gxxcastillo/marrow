@@ -114,9 +114,9 @@ remote-tracking refs.
 ## Detach preserves the selected record
 
 Default `detach` treats the files on disk as the record. It allows a dirty worktree,
-removes only the fenced marrow persistence block or an identifiable historical unfenced
-marrow block, and moves the complete `.agents/`
-directory aside before clearing the worktree registration. It then moves the same
+removes only the marrow persistence block (`cli.md` → `detach` describes how it's
+recognized), and moves the complete `.agents/` directory aside before clearing the
+worktree registration. It then moves the same
 directory back and removes only its `.git` pointer. It never edits the parent repo and
 never deletes unrelated `.agents/` content. The retained README keeps unrelated staged
 and unstaged edits, while the vault commit contains only the block removal from the prior
