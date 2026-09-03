@@ -23,6 +23,23 @@ export async function misplacedPlanFiles(agentsPath: string): Promise<string[]> 
     .sort();
 }
 
+// `../CONVENTION.md` → Files names exactly four recognized root filenames; everything
+// else structurally sitting as a file at the root has no defined home. Scoped to `.md`
+// only: `.agents/.git` is a real file at every worktree root (the worktree's gitdir
+// pointer), and flagging it would false-positive on every project. Excludes `*-plan.md`
+// so a root plan file gets only `misplacedPlanFiles`'s own WARN, never both. Purely
+// structural: no file content is read (`../spec/architecture.md` → Non-goals).
+const RECOGNIZED_ROOT_FILES = new Set(["README.md", "current-state.md", "deferred-items.md", "agent-notes.md"]);
+
+export async function unrecognizedRootFiles(agentsPath: string): Promise<string[]> {
+  const entries = await readdir(agentsPath, { withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md") && !entry.name.endsWith("-plan.md"))
+    .map((entry) => entry.name)
+    .filter((name) => !RECOGNIZED_ROOT_FILES.has(name))
+    .sort();
+}
+
 async function directorySizeBytes(dirPath: string): Promise<number> {
   let total = 0;
   for (const entry of await readdir(dirPath, { withFileTypes: true })) {

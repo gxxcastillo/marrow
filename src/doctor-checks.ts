@@ -2,18 +2,18 @@ import path from "node:path";
 import { needsClaudeRedirect } from "./claude-redirect";
 import { git, type ProjectWorktree } from "./git";
 import { countLabel, displayPath } from "./format";
-import { misplacedPlanFiles } from "./layout";
+import { misplacedPlanFiles, unrecognizedRootFiles } from "./layout";
 import { persistenceBlockStatus, readCurrentState } from "./memory-files";
 import { PARENT_INSTRUCTION_FILENAMES, agentsBlockStatus, updateLabel } from "./project";
 
 type Reporter = (msg: string) => void;
 
-// Six independent per-project health checks in one pass over presentWorktrees:
+// Seven independent per-project health checks in one pass over presentWorktrees:
 // gitignore state, the marrow .agents note, the working-memory persistence block,
-// the Claude Code redirect, plan-file placement, and current-state.md. None depends
-// on another, so they share a single traversal instead of six. Extracted out of
-// `doctor.ts` to keep that file under the ~250-line budget (`AGENTS.md` → Build
-// discipline).
+// the Claude Code redirect, plan-file placement, unrecognized root files, and
+// current-state.md. None depends on another, so they share a single traversal instead
+// of seven. Extracted out of `doctor.ts` to keep that file under the ~250-line budget
+// (`AGENTS.md` → Build discipline).
 export async function checkProjectWorktrees(
   toolRoot: string,
   presentWorktrees: ProjectWorktree[],
@@ -26,6 +26,7 @@ export async function checkProjectWorktrees(
   let currentPersistenceBlocks = 0;
   let claudeRedirectsPresent = 0;
   let wellPlacedPlans = 0;
+  let recognizedRootFiles = 0;
   let wellformedCurrentStates = 0;
   for (const wt of presentWorktrees) {
     const projectDir = path.dirname(wt.path);
@@ -85,6 +86,20 @@ export async function checkProjectWorktrees(
       wellPlacedPlans++;
     }
 
+    // `../CONVENTION.md` → Files recognizes exactly four root filenames; anything else
+    // sitting as a `.md` file at the root (other than a root `*-plan.md`, which gets its
+    // own WARN above) has no defined home and is invisible to `status` and `doctor` alike
+    // regardless of content. WARN, not FAIL — marrow can't say from a name alone where a
+    // file belongs, only that it doesn't belong at the root.
+    const unrecognized = await unrecognizedRootFiles(wt.path);
+    if (unrecognized.length > 0) {
+      warn(
+        `${wt.branch}: ${countLabel(unrecognized.length, "unrecognized file")} at .agents root (${unrecognized.join(", ")}); recast into plans/, research/, or analysis/, canonize it, or delete it`,
+      );
+    } else {
+      recognizedRootFiles++;
+    }
+
     const currentState = await readCurrentState(wt.path);
     if (!currentState) {
       warn(
@@ -113,6 +128,9 @@ export async function checkProjectWorktrees(
   }
   if (wellPlacedPlans === presentWorktrees.length && presentWorktrees.length > 0) {
     ok(`no misplaced plan files for ${countLabel(presentWorktrees.length, "project worktree")}`);
+  }
+  if (recognizedRootFiles === presentWorktrees.length && presentWorktrees.length > 0) {
+    ok(`no unrecognized root files for ${countLabel(presentWorktrees.length, "project worktree")}`);
   }
   if (wellformedCurrentStates === presentWorktrees.length && presentWorktrees.length > 0) {
     ok(`current-state.md stamps well formed for ${countLabel(presentWorktrees.length, "project worktree")}`);

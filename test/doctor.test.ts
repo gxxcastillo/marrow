@@ -226,6 +226,70 @@ describe("doctor", () => {
     expect(outLines).toContain("OK    no misplaced plan files for 1 project worktree");
   });
 
+  test("warns about an unrecognized root file, naming the count and remediation", async () => {
+    const agentsPath = await addProjectWorktree(fx, "alpha");
+    await writeFile(path.join(agentsPath, "notes.md"), "# Notes\n");
+
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot));
+    expect(code).toBe(0);
+    const line = outLines.find((l) => l.includes("unrecognized file"));
+    expect(line).toBeDefined();
+    expect(line).toStartWith("WARN");
+    expect(line).toBe(
+      "WARN  alpha: 1 unrecognized file at .agents root (notes.md); recast into plans/, research/, or analysis/, canonize it, or delete it",
+    );
+  });
+
+  test("does not warn when only the four recognized root files are present", async () => {
+    const agentsPath = await addProjectWorktree(fx, "alpha");
+    await writeFile(path.join(agentsPath, "current-state.md"), "# Current state\n");
+    await writeFile(path.join(agentsPath, "deferred-items.md"), "# Deferred items\n");
+    await writeFile(path.join(agentsPath, "agent-notes.md"), "# Agent notes\n");
+
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot, { verbose: true }));
+    expect(code).toBe(0);
+    expect(outLines.some((l) => l.startsWith("WARN") && l.includes("unrecognized file"))).toBe(false);
+    expect(outLines).toContain("OK    no unrecognized root files for 1 project worktree");
+  });
+
+  // `.agents/.git` is a real file at every worktree root (the worktree's gitdir pointer,
+  // not a symlink) — regression guard against the false positive `layout.ts` was written
+  // to avoid.
+  test("never flags .agents/.git as an unrecognized root file", async () => {
+    await addProjectWorktree(fx, "alpha");
+
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot, { verbose: true }));
+    expect(code).toBe(0);
+    expect(outLines.some((l) => l.includes("unrecognized file") && l.includes(".git"))).toBe(false);
+    expect(outLines).toContain("OK    no unrecognized root files for 1 project worktree");
+  });
+
+  test("a root *-plan.md file triggers only the plan-file WARN, not also the unrecognized-file WARN", async () => {
+    const agentsPath = await addProjectWorktree(fx, "alpha");
+    await writeFile(path.join(agentsPath, "rogue-plan.md"), "# Rogue\n");
+
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot, { verbose: true }));
+    expect(code).toBe(0);
+    expect(outLines.some((l) => l.includes("plan file"))).toBe(true);
+    expect(outLines.some((l) => l.includes("unrecognized file"))).toBe(false);
+    expect(outLines).toContain("OK    no unrecognized root files for 1 project worktree");
+  });
+
+  test("does not warn about .md files inside plans/, research/, or analysis/", async () => {
+    const agentsPath = await addProjectWorktree(fx, "alpha");
+    await mkdir(path.join(agentsPath, "plans"), { recursive: true });
+    await mkdir(path.join(agentsPath, "research"), { recursive: true });
+    await mkdir(path.join(agentsPath, "analysis"), { recursive: true });
+    await writeFile(path.join(agentsPath, "plans", "some-work.md"), "# Some work\n");
+    await writeFile(path.join(agentsPath, "research", "some-question.md"), "# Some question\n");
+    await writeFile(path.join(agentsPath, "analysis", "some-judgment.md"), "# Some judgment\n");
+
+    const { code, outLines } = await captureLogs(() => doctorCommand(fx.marrowHome, fx.toolRoot, { verbose: true }));
+    expect(code).toBe(0);
+    expect(outLines.some((l) => l.startsWith("WARN") && l.includes("unrecognized file"))).toBe(false);
+    expect(outLines).toContain("OK    no unrecognized root files for 1 project worktree");
+  });
+
   test("shows transient progress without keeping it in final output", async () => {
     await addProjectWorktree(fx, "alpha");
 

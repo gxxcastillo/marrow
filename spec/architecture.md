@@ -202,8 +202,8 @@ to gitignore, since there's no enclosing repo to accidentally track it into.
   derive meaning from prose. Everything marrow recognizes today is one of those three:
   the canonical `current-state.md` filename and its stamp format (canonical path,
   verbatim marker), the `Blocked on you:` line and marrow's own template blocks
-  (verbatim markers), and the `current-state.md` line threshold, worktree weight, and
-  plan-file placement (structural facts).
+  (verbatim markers), and the `current-state.md` line threshold, worktree weight,
+  plan-file placement, and unrecognized-root-file detection (structural facts).
 
   This is a criterion, not a list, so a proposed signal can be tested against it rather
   than argued from precedent. What it rules out is a *content-derived* type system — a
