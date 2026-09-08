@@ -198,3 +198,22 @@ exit 1
     process.env.GH_STUB_CREATE_EXIT = oldCreateExit;
   };
 }
+
+// Puts a dummy executable `marrow` first on PATH so doctor's "marrow on PATH"
+// check (`doctor.ts`'s `Bun.which("marrow")`, which by design reads real
+// ambient PATH — see its own comment) gets a deterministic hit instead of
+// depending on whether the machine running the tests has `bin/marrow`
+// symlinked on (i.e. whether `bin/setup` has been run there). Returns a
+// restorer; callers are responsible for calling it (typically in a
+// try/finally or afterEach) to undo the PATH mutation.
+export async function installMarrowOnPath(fx: Fixture): Promise<() => void> {
+  const dir = path.join(fx.root, `marrow-on-path-${Math.random().toString(16).slice(2)}`);
+  await mkdir(dir, { recursive: true });
+  await Bun.write(path.join(dir, "marrow"), "#!/usr/bin/env bash\nexit 0\n");
+  await chmod(path.join(dir, "marrow"), 0o755);
+  const oldPath = process.env.PATH;
+  process.env.PATH = `${dir}:${oldPath ?? ""}`;
+  return () => {
+    process.env.PATH = oldPath;
+  };
+}

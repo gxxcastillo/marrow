@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import path from "node:path";
 import { main } from "../src/cli";
 import { vaultDir } from "../src/git";
-import { FIXTURE_VERSION, installGhStub, makeFixture, type Fixture } from "./fixtures";
+import { FIXTURE_VERSION, installGhStub, installMarrowOnPath, makeFixture, type Fixture } from "./fixtures";
 import { captureLogs, withEnv } from "./helpers";
 
 describe("cli dispatch", () => {
@@ -154,6 +154,7 @@ describe("cli dispatch", () => {
 
   test("doctor prints only the summary by default; --verbose and -v both print every passing check", async () => {
     const restoreGh = await installGhStub(fx);
+    const restoreMarrow = await installMarrowOnPath(fx);
     try {
       const { code, outLines } = await call(["doctor"]);
       expect(code).toBe(0);
@@ -168,6 +169,7 @@ describe("cli dispatch", () => {
       expect(short.outLines).toEqual(long.outLines);
     } finally {
       restoreGh();
+      restoreMarrow();
     }
   });
 });

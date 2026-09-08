@@ -11,6 +11,7 @@ import {
   addUnattachedBranch,
   deleteWorktreeDir,
   installGhStub,
+  installMarrowOnPath,
   makeFixture,
   makeProjectRepo,
   setTestIdentity,
@@ -46,6 +47,7 @@ describe("doctor", () => {
 
   test("prints only the summary line by default for a clean vault", async () => {
     const restoreGh = await installGhStub(fx);
+    const restoreMarrow = await installMarrowOnPath(fx);
     try {
       const projectDir = await makeProjectRepo(fx, "alpha", "ignored");
       const { code: adoptCode } = await captureLogs(() =>
@@ -58,6 +60,7 @@ describe("doctor", () => {
       expect(code).toBe(0);
     } finally {
       restoreGh();
+      restoreMarrow();
     }
   });
 

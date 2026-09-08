@@ -140,7 +140,12 @@ export async function doctorCommand(marrowHome: string, toolRoot: string, opts: 
     if (stale > 0) warn(`${countLabel(stale, "backup")} older than ${STALE_BACKUP_DAYS} days under ${backupsDir}`);
   }
 
-  const marrowOnPath = Bun.which("marrow");
+  // Explicit `PATH` (rather than bare `Bun.which("marrow")`), matching
+  // `git.ts`'s `commandOnPath` — bare `Bun.which` resolves against the PATH
+  // captured at process start, not `process.env.PATH`'s live value, which
+  // would make this check blind to tests that put `marrow` on PATH after
+  // startup.
+  const marrowOnPath = Bun.which("marrow", { PATH: process.env.PATH ?? "" });
   if (marrowOnPath) ok(`marrow on PATH at ${marrowOnPath}`);
   else warn("bin/marrow is not on PATH");
 
