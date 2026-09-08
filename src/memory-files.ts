@@ -3,7 +3,7 @@ import { readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { shorten } from "./format";
 import { git, lastCommit } from "./git";
-import { readLedgerEntry, upsertLedgerEntry } from "./version-ledger";
+import { readLedgerEntry, stripLedger, upsertLedgerEntry } from "./version-ledger";
 
 export const CURRENT_STATE_LINE_THRESHOLD = 300;
 // Keeps the stamp itself scannable as one line; the parent's own commit still names
@@ -156,17 +156,25 @@ export async function writeReadme(toolRoot: string, agentsPath: string, project:
   const readmePath = path.join(agentsPath, "README.md");
   const blockVersion = await templateVersion(toolRoot, "persistence-block.md");
 
-  if (!existsSync(readmePath)) {
-    const seeded = `${await renderTemplate(toolRoot, "readme-seed.md", substitutions)}\n${rawBlock}`;
-    await writeFile(readmePath, upsertLedgerEntry(seeded, "persistence-block", blockVersion));
-    return;
-  }
-
-  const existing = await readFile(readmePath, "utf8");
+  const existing = existsSync(readmePath) ? await readFile(readmePath, "utf8") : "";
   const match = persistenceSection(existing);
   if (match) {
     const replaced = replacePersistenceSection(existing, match, normalized(rawBlock));
     await writeFile(readmePath, upsertLedgerEntry(replaced, "persistence-block", blockVersion));
+    return;
+  }
+
+  // Nothing but a ledger stub (or no file at all) — e.g. `recordAgentsNoteVersion`
+  // may already have created the file with just its `agents-note` frontmatter entry
+  // before this runs. `stripLedger` strips the ledger block and, when that's all the
+  // frontmatter held, returns whatever followed it — empty here — so this is the
+  // right signal for "needs the routing-guide seed," not `!existsSync`, which would
+  // wrongly skip seeding once that stub file exists.
+  if (stripLedger(existing).trim().length === 0) {
+    const seedText = await renderTemplate(toolRoot, "readme-seed.md", substitutions);
+    const withSeed = existing.length > 0 ? `${existing}${existing.endsWith("\n") ? "" : "\n"}${seedText}` : seedText;
+    const seeded = `${withSeed}\n${rawBlock}`;
+    await writeFile(readmePath, upsertLedgerEntry(seeded, "persistence-block", blockVersion));
     return;
   }
 

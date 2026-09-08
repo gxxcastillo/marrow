@@ -161,9 +161,15 @@ function joinWithBlankLine(head: string, tail: string): string {
 
 // After writing the note into the parent project, records the template version marrow
 // wrote in the `.agents/README.md` ledger — the only place that version now lives.
+// The README itself may not exist yet (a project can reach here with its agents-note
+// stale/missing before its own persistence block has ever been written, e.g. via
+// `refresh`, which runs this ahead of `ensurePersistenceBlock`); `upsertLedgerEntry`
+// already tolerates empty content, so a missing file is treated the same way. A later
+// `writeReadme` call merges into whatever this leaves behind — `upsertLedgerEntry`
+// preserves entries for other keys, so the version recorded here survives that merge.
 async function recordAgentsNoteVersion(toolRoot: string, agentsPath: string): Promise<void> {
   const readmePath = path.join(agentsPath, "README.md");
-  const readme = await readFile(readmePath, "utf8");
+  const readme = existsSync(readmePath) ? await readFile(readmePath, "utf8") : "";
   await writeFile(readmePath, upsertLedgerEntry(readme, "agents-note", await templateVersion(toolRoot, "agents-block.md")));
 }
 

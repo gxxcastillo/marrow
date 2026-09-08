@@ -198,6 +198,28 @@ describe("refresh", () => {
     expect(errLines.join("\n")).toContain("marrow detach alpha");
   });
 
+  test("repairs a project whose .agents/README.md is missing, and still refreshes the next one", async () => {
+    const alpha = await makeProjectRepo(fx, "alpha", "ignored");
+    const beta = await makeProjectRepo(fx, "beta", "ignored");
+    await captureLogs(() => attachCommand(alpha, {}, fx.marrowHome, fx.toolRoot));
+    await captureLogs(() => attachCommand(beta, {}, fx.marrowHome, fx.toolRoot));
+    await staleNote(alpha);
+    await rm(path.join(alpha, ".agents", "README.md"));
+    await staleNote(beta);
+
+    const { code, outLines } = await captureLogs(() => refreshCommand([], {}, fx.marrowHome, fx.toolRoot));
+    expect(code).toBe(0);
+    expect(outLines).toContain("alpha:");
+    expect(outLines).toContain("beta:");
+    expect(outLines).toContain("refresh: 2 project(s) updated, 0 unchanged");
+
+    expect(await noteStatus(fx.toolRoot, alpha, "alpha")).toBe("current");
+    expect(await noteStatus(fx.toolRoot, beta, "beta")).toBe("current");
+    expect(existsSync(path.join(alpha, ".agents", "README.md"))).toBe(true);
+    const readmeContent = await readFile(path.join(alpha, ".agents", "README.md"), "utf8");
+    expect(readmeContent).toContain(".agents routing guide");
+  });
+
   test("errors on a deleted project directory named explicitly", async () => {
     const alpha = await makeProjectRepo(fx, "alpha", "ignored");
     await captureLogs(() => attachCommand(alpha, {}, fx.marrowHome, fx.toolRoot));

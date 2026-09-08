@@ -1,8 +1,10 @@
-<!-- marrow:template-version 5 -->
+<!-- marrow:template-version 6 -->
 ## Working memory via marrow
 
 This directory is a git worktree of the private marrow vault (branch: `{{branch}}`).
-It is never committed to the parent repo. Convention: `marrow convention`.
+It has its own complete git history, kept separate from the parent repo's: the
+parent's `.gitignore` excludes this directory from the parent's history, not from git
+itself. Convention: `marrow convention`.
 
 - Updating this directory is part of finishing work, not a wrap-up chore: when work
   lands, a decision is made, or a plan changes status, update `current-state.md` in the

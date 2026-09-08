@@ -234,11 +234,14 @@ names the plan.
 
 ## Maintenance
 
-- Update on events, not at session end. When work lands, a decision is made, or a plan
-  changes status, update `current-state.md` (and the affected plan) in the same working
+- Update on events, not at session end. When work lands, a decision is made, a plan
+  changes status, or a measurement, benchmark, or report is produced, update
+  `current-state.md` (and the affected plan) in the same working
   step, then sync: `marrow sync <project> -m "<one-line summary>"`. The task is not done
   until memory agrees with reality. Sessions end without warning — never defer memory
-  updates to a wrap-up pass.
+  updates to a wrap-up pass. Producing a measurement includes reading it: record what it
+  changed before moving on, since a measurement nobody read is not evidence, and a plan
+  written before the numbers arrived is stale the moment they do.
 - Stamp freshness. `current-state.md` opens with its title, then
   `As of YYYY-MM-DD (@<short-sha> + <parent commit subject>)`, refreshed with every
   content update. Use `@no-HEAD` only when the parent has no commit to name.
@@ -275,7 +278,7 @@ present in the file:
 ```markdown
 ---
 marrow-versions:
-  persistence-block: 5
+  persistence-block: 6
   agents-note: 4
 ---
 ```
@@ -302,7 +305,9 @@ surrounding markers of its own:
 ## Working memory via marrow
 
 This directory is a git worktree of the private marrow vault (branch: `<project>`).
-It is never committed to the parent repo. Convention: `marrow convention`.
+It has its own complete git history, kept separate from the parent repo's: the
+parent's `.gitignore` excludes this directory from the parent's history, not from git
+itself. Convention: `marrow convention`.
 
 - Updating this directory is part of finishing work, not a wrap-up chore: when work
   lands, a decision is made, or a plan changes status, update `current-state.md` in the
