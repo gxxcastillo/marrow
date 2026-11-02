@@ -223,4 +223,115 @@ describe("sync", () => {
     expect(errLines.join("\n")).not.toContain("fans out");
     expect(errLines.join("\n")).not.toContain("dirty projects");
   });
+
+  describe("stale stamp warning", () => {
+    // Parent repo with one commit; .agents/ stamped at that commit.
+    async function stampedProject(): Promise<{ parent: string; agentsPath: string }> {
+      const agentsPath = await addProjectWorktree(fx, "alpha");
+      const parent = path.dirname(agentsPath);
+      await git(["init", "-q", "-b", "main"], parent);
+      await setTestIdentity(parent);
+      await Bun.write(path.join(parent, "one.txt"), "one\n");
+      await git(["add", "one.txt"], parent);
+      await git(["commit", "-q", "-m", "one"], parent);
+      const sha = (await git(["rev-parse", "--short", "HEAD"], parent)).stdout;
+      await Bun.write(path.join(agentsPath, "current-state.md"), `# Current state\n\nAs of 2026-09-08 (@${sha} + one)\n`);
+      await git(["add", "-A"], agentsPath);
+      await git(["commit", "-q", "-m", "alpha: stamp"], agentsPath);
+      return { parent, agentsPath };
+    }
+
+    async function advanceParent(parent: string): Promise<void> {
+      await Bun.write(path.join(parent, "two.txt"), "two\n");
+      await git(["add", "two.txt"], parent);
+      await git(["commit", "-q", "-m", "two"], parent);
+    }
+
+    test("warns, but still commits, when the parent moved and current-state.md is not in the changeset", async () => {
+      const { parent, agentsPath } = await stampedProject();
+      await advanceParent(parent);
+      await Bun.write(path.join(agentsPath, "note.md"), "note\n");
+
+      const { code, errLines } = await captureLogs(() => syncCommand([], {}, fx.marrowHome));
+      expect(code).toBe(0);
+      expect(await dirtyCount(agentsPath)).toBe(0);
+      expect(errLines.join("\n")).toContain("alpha: WARN current-state.md not in this sync");
+      expect(errLines.join("\n")).toContain("parent HEAD is 1 commit past its stamp");
+    });
+
+    // The stamp stays valid-but-stale (the original sha, parent one commit ahead), so only the
+    // changeset check keeps this quiet: without it, the same state warns (see the test above).
+    test("stays quiet when current-state.md is part of the changeset", async () => {
+      const { parent, agentsPath } = await stampedProject();
+      await advanceParent(parent);
+      const statePath = path.join(agentsPath, "current-state.md");
+      await Bun.write(statePath, `${await Bun.file(statePath).text()}Edited without moving the stamp.\n`);
+
+      const { code, errLines } = await captureLogs(() => syncCommand([], {}, fx.marrowHome));
+      expect(code).toBe(0);
+      expect(errLines.join("\n")).not.toContain("current-state.md not in this sync");
+    });
+
+    test("stays quiet when the stamp still matches the parent HEAD", async () => {
+      const { agentsPath } = await stampedProject();
+      await Bun.write(path.join(agentsPath, "note.md"), "note\n");
+
+      const { code, errLines } = await captureLogs(() => syncCommand([], {}, fx.marrowHome));
+      expect(code).toBe(0);
+      expect(errLines.join("\n")).not.toContain("current-state.md not in this sync");
+    });
+
+    test("only notes, not warns, about a stamp that is not in the parent's history", async () => {
+      const { agentsPath } = await stampedProject();
+      await Bun.write(path.join(agentsPath, "current-state.md"), "As of 2026-09-08 (@deadbee + gone)\n");
+      await git(["add", "-A"], agentsPath);
+      await git(["commit", "-q", "-m", "alpha: bad stamp"], agentsPath);
+      await Bun.write(path.join(agentsPath, "note.md"), "note\n");
+
+      const { errLines } = await captureLogs(() => syncCommand([], {}, fx.marrowHome));
+      expect(errLines.join("\n")).toContain("alpha: note: current-state.md not in this sync");
+      expect(errLines.join("\n")).not.toContain("WARN");
+    });
+
+    test("stays quiet when current-state.md has no stamp, even though the parent moved", async () => {
+      const { parent, agentsPath } = await stampedProject();
+      await Bun.write(path.join(agentsPath, "current-state.md"), "# Current state\n\nno stamp here\n");
+      await git(["add", "-A"], agentsPath);
+      await git(["commit", "-q", "-m", "alpha: unstamp"], agentsPath);
+      await advanceParent(parent);
+      await Bun.write(path.join(agentsPath, "note.md"), "note\n");
+
+      const { code, errLines } = await captureLogs(() => syncCommand([], {}, fx.marrowHome));
+      expect(code).toBe(0);
+      expect(errLines.join("\n")).not.toContain("current-state.md not in this sync");
+    });
+
+    test("stays quiet when the parent is not a git repo", async () => {
+      const agentsPath = await addProjectWorktree(fx, "alpha");
+      await Bun.write(path.join(agentsPath, "current-state.md"), "# Current state\n\nAs of 2026-09-08 (@abc1234 + x)\n");
+      await git(["add", "-A"], agentsPath);
+      await git(["commit", "-q", "-m", "alpha: stamp"], agentsPath);
+      await Bun.write(path.join(agentsPath, "note.md"), "note\n");
+
+      const { code, errLines } = await captureLogs(() => syncCommand([], {}, fx.marrowHome));
+      expect(code).toBe(0);
+      expect(errLines.join("\n")).not.toContain("current-state.md not in this sync");
+    });
+
+    test("a failure while checking the stamp does not fail the sync", async () => {
+      const { parent, agentsPath } = await stampedProject();
+      await advanceParent(parent);
+      // A directory named current-state.md makes reading it throw (EISDIR).
+      await git(["rm", "-q", "current-state.md"], agentsPath);
+      await Bun.write(path.join(agentsPath, "current-state.md", "inner.md"), "inner\n");
+      await git(["add", "-A"], agentsPath);
+      await git(["commit", "-q", "-m", "alpha: state as directory"], agentsPath);
+      await Bun.write(path.join(agentsPath, "note.md"), "note\n");
+
+      const { code, errLines } = await captureLogs(() => syncCommand([], {}, fx.marrowHome));
+      expect(code).toBe(0);
+      expect(errLines.join("\n")).not.toContain("ERROR");
+      expect(await dirtyCount(agentsPath)).toBe(0);
+    });
+  });
 });

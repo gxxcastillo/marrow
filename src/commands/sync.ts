@@ -1,5 +1,6 @@
 import path from "node:path";
 import { aheadBehind, dirtyCount, git, hasOrigin, listProjectWorktrees, vaultDir } from "../git";
+import { parentFreshness, readCurrentState } from "../memory-files";
 import { report, reportMissingWorktree, resolveTargets } from "../target-resolution";
 
 export interface SyncOptions {
@@ -30,6 +31,31 @@ function reconciliationMessage(name: string, agentsPath: string, branch: string,
     ...(dirty ? ["  git stash pop"] : []),
   ];
   return `${name} ${reason}; reconcile manually:\n${steps.join("\n")}\nThen re-run: marrow sync ${name}`;
+}
+
+// A changeset that leaves `current-state.md` alone while the parent's HEAD has moved past
+// the stamp is the slip this catches: work landed in the parent, memory was synced, but the
+// resumption record still points at older state. Warn-only — `sync` is also the backup path,
+// and refusing would leave the work uncommitted. Neutral (null) when the changeset includes
+// `current-state.md`, the stamp is missing or malformed (`doctor` owns that), or the parent
+// is not a git repo.
+async function staleStampWarning(name: string, agentsPath: string): Promise<string | null> {
+  const committed = await git(["show", "--name-only", "--format=", "HEAD"], agentsPath);
+  if (committed.code !== 0 || committed.stdout.split("\n").includes("current-state.md")) return null;
+  const stamp = (await readCurrentState(agentsPath))?.stamp;
+  if (!stamp) return null;
+  const freshness = await parentFreshness(path.dirname(agentsPath), stamp);
+  if (freshness.kind !== "stale") return null;
+  // Not a descendant case: a rebased, unpulled, or other-branch parent. Not evidence that
+  // work landed unrecorded, so a quieter note rather than a WARN.
+  if (freshness.commitsPast === null) {
+    return `${name}: note: current-state.md not in this sync; its stamp @${stamp.revision} is not in the parent's ` +
+      `history (rebased, unpulled, or another branch) — check it when convenient`;
+  }
+  const count = `${freshness.commitsPast} commit${freshness.commitsPast === 1 ? "" : "s"}`;
+  return `${name}: WARN current-state.md not in this sync; parent HEAD is ${count} past its stamp @${stamp.revision}. ` +
+    `Re-read current-state.md against those commits and reconcile it, then update the stamp ` +
+    `(refreshing the stamp alone certifies state nobody checked), then re-run: marrow sync ${name}`;
 }
 
 export async function syncCommand(targets: string[], opts: SyncOptions, marrowHome: string): Promise<number> {
@@ -93,6 +119,10 @@ export async function syncCommand(targets: string[], opts: SyncOptions, marrowHo
       if (commitRes.code !== 0) throw new Error(commitRes.stderr);
 
       report(`${name}: committed (${dirty} change(s))`);
+      // Advisory only: a failure here must not mark a project whose commit already
+      // landed as errored (exit code) or skip nothing else — the warning is best-effort.
+      const stale = await staleStampWarning(name, wt.path).catch(() => null);
+      if (stale) report(stale, true);
     } catch (err) {
       hadError = true;
       report(`${wt.branch}: ERROR ${(err as Error).message}`, true);

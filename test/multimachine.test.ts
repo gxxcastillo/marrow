@@ -91,7 +91,7 @@ describe("multi-machine attachment", () => {
     const { code, errLines } = await captureLogs(() => syncCommand([], {}, machineBHome));
 
     expect(code).toBe(0);
-    expect(errLines).toEqual([]);
+    expect(errLines.join("\n")).not.toContain("ERROR");
     const remoteBeta = await git(["rev-parse", "origin/beta"], vaultDir(machineBHome));
     const localBeta = await git(["rev-parse", "refs/heads/beta"], vaultDir(machineBHome));
     expect(remoteBeta.stdout).toBe(localBeta.stdout);

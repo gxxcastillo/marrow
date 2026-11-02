@@ -263,6 +263,22 @@ precision>`. A clean project is skipped — its last commit is untouched. Bare `
 -m "<message>"` (no targets, more than one project dirty) prints one notice line first,
 since the same message is about to land on every dirty project's commit.
 
+After committing a project, `sync` checks whether the commit includes `current-state.md`.
+If it does not, `sync` compares the stamp's commit with the parent repo's `HEAD` (`status` →
+staleness) and prints to stderr, without changing the exit code or blocking the commit or
+push (`sync` is also the backup path):
+
+- Stamp is an ancestor of `HEAD`: `WARN`, naming the project, the number of commits past the
+  stamp, and the action — reconcile `current-state.md` against those commits, then update the
+  stamp. Refreshing the stamp alone certifies state nobody checked.
+- Stamp is not in the parent's history (rebased, unpulled, another branch): a quieter `note:`
+  line, since this is not evidence that work landed unrecorded.
+
+A changeset that includes `current-state.md`, a missing or malformed stamp, `@no-HEAD`, a
+parent that is not a git repo, and a clean project (no commit) stay silent. This catches the
+slip a commit-count threshold misses: memory synced after parent work landed, with the
+resumption record left at older state.
+
 After every target has been processed (regardless of per-project failures), `sync` pushes
 every project branch attached on this machine — `git push origin <branch>...` over the
 full local worktree list, not just the named targets — run once from
